@@ -1,0 +1,20 @@
+[package]
+name = "rust"
+version = "0.1.0"
+authors = ["Scott Williams <scott@mightydevco.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[patch.crates-io.enumset_derive]
+git = "https://github.com/ocboogie/enumset"
+branch = "span-fix"
+
+[dependencies]
+semver = "0.11.0"
+anyhow = "1.0.38"
+no_proto = "0.9.0"
+wasmer = "1.0.1"
+lazy_static = "1.4.0"
+bytes = "1.0.1"
+astrotk_config =  { path = "../astrotk_config" }

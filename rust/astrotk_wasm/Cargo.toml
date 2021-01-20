@@ -1,8 +1,10 @@
 [package]
-name = "example"
+name = "astrotk_wasm"
 version = "0.1.0"
 authors = ["Scott Williams <scott@mightydevco.com>"]
 edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -14,7 +16,8 @@ default = ["console_error_panic_hook"]
 wasm-bindgen = "0.2.63"
 bytes = "1.0.1"
 lazy_static = "1.4.0"
-astrotk_wasm = { path="../../rust/astrotk_wasm"}
+
+astrotk_config = { path="../astrotk_config"}
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires

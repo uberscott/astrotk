@@ -1,0 +1,6 @@
+name: My First Actor
+content: 
+  path: actor-content.json
+wasm:
+  path: actor.wasm
+

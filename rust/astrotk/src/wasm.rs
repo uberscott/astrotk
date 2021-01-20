@@ -1,4 +1,3 @@
-use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use no_proto::error::NP_Error;
 
@@ -13,11 +12,13 @@ use std::sync::atomic::{{AtomicUsize,Ordering}};
 use std::ops::Deref;
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
-use serde::export::Formatter;
 use std::fmt;
 use std::rc::Rc;
 use bytes::{Bytes,BytesMut,BufMut,Buf};
 use std::string::FromUtf8Error;
+use std::error::Error;
+use astrotk_config::artifact_config::{ArtifactFile, Artifact, ArtifactRepository};
+use astrotk_config::actor_config::ActorConfig;
 
 
 pub struct WasmBinder<'a>
@@ -25,6 +26,18 @@ pub struct WasmBinder<'a>
     module: &'a Module,
     guest: Guest,
     host: Arc<Mutex<Host>>
+}
+
+impl <'a> WasmBinder <'a> {
+    pub fn write_string( &mut self, str: &str ) -> i32
+    {
+        let buffer_id = self.guest.alloc_buffer(str.len() as i32 );
+        for b in str.bytes()
+        {
+            self.guest.append_to_buffer(buffer_id,b);
+        }
+        return buffer_id;
+    }
 }
 
 struct Guest
@@ -110,25 +123,14 @@ impl <'a> WasmBinder<'a>
             } ),
         } };
 
-
-
         let instance = Instance::new( module, &imports )?;
 
         let guest = Guest { instance: instance };
 
         let binder = WasmBinder{ module: &module, guest: guest, host:host };
 
-        binder.init();
         return Ok(binder);
     }
-
-
-    pub fn init(&self)
-    {
-        let init = self.guest.instance.exports.get_function("init").unwrap();
-        init.call(&[]);
-    }
-
 }
 
 impl <'a> WasmBinder <'a>
@@ -145,11 +147,29 @@ pub trait Buffers
     fn append_to_buffer(&mut self,id: i32, value: u8 );
 }
 
+pub trait GuestActor
+{
+    fn actor_init(&mut self,
+                  actor_config_buffer_id: i32,
+                  actor_config_artifact_buffer_id: i32,
+                  content_config_buffer_id: i32) -> Result<i32,Box<std::error::Error>>;
+}
+
 pub trait BufferConsume
 {
     fn consume_buffer(&mut self, id: i32) -> Option<Bytes>;
 }
 
+impl <'a> GuestActor for Guest
+{
+    fn actor_init(&mut self,
+                  actor_config_buffer_id: i32,
+                  actor_config_artifact_buffer_id: i32,
+                  content_config_buffer_id: i32) -> Result<i32,Box<std::error::Error>>
+    {
+        return Ok(self.instance.exports.get_native_function::<(i32, i32, i32),i32>("actor_init").unwrap().call(actor_config_buffer_id,actor_config_artifact_buffer_id, content_config_buffer_id)?);
+    }
+}
 
 impl <'a> Buffers for Guest
 {
@@ -205,5 +225,32 @@ impl BufferConsume for Host
     }
 }
 
+
+pub struct WasmActor<'a>
+{
+    config: &'a ActorConfig,
+    wasm: WasmBinder<'a>
+}
+
+impl <'a> WasmActor<'a>
+{
+    pub fn create( astroTK: &'a AstroTK, config: &'a ActorConfig ) -> Result<Self,Box<Error>>
+    {
+        let module = astroTK.get_wasm_module(&config.wasm).unwrap();
+        let mut binder = WasmBinder::new(module)?;
+
+        let actor_config_buffer_id = binder.write_string(astroTK.artifact_repository.get_cached_string( &config.source ).unwrap());
+        let actor_config_artifact_buffer_id = binder.write_string( config.source.to().as_str() );
+        let content_config_buffer_id = binder.write_string(astroTK.artifact_repository.get_cached_string(&config.content ).unwrap() );
+        binder.guest.actor_init(actor_config_buffer_id,actor_config_artifact_buffer_id,content_config_buffer_id)?;
+
+        binder.guest.dealloc_buffer(actor_config_buffer_id);
+        binder.guest.dealloc_buffer(actor_config_artifact_buffer_id);
+        binder.guest.dealloc_buffer(content_config_buffer_id);
+
+        return Ok(WasmActor{config:config,wasm:binder});
+    }
+
+}
 
 
