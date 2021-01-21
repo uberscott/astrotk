@@ -25,7 +25,7 @@ pub trait TK_Buffer
 
 pub struct AstroTK<'a>
 {
-    buffer_factories : HashMap<String, NP_Factory<'a>>,
+    buffer_factories : HashMap<ArtifactFile, NP_Factory<'a>>,
     wasm_modules : HashMap<ArtifactFile, Module>,
     wasm_store: Store,
     pub artifact_repository: Repository,
@@ -34,26 +34,43 @@ pub struct AstroTK<'a>
 
 impl <'a> AstroTK <'a> {
 
-  pub fn create_buffer(&mut self, name:&str)->NP_Buffer{
-      return self.get_buffer_factory(name).empty_buffer(None);
-  }
+  pub fn create_buffer(&self, artifact_file:&ArtifactFile)->Result<NP_Buffer,Box<std::error::Error>>{
+      let factory_option = self.get_buffer_factory(artifact_file);
 
-  pub fn get_buffer_factory(&mut self, name:&str)->&NP_Factory
-  {
-      if ! self.buffer_factories.contains_key(name )
-      {
-          let mut file = File::open(name).expect("Unable to open file");
-
-          let mut contents = String::new();
-
-          file.read_to_string(&mut contents)
-              .expect("Unable to read file");
-
-          let factory = NP_Factory::new(contents).unwrap();
-          self.buffer_factories.insert(name.to_string(), factory);
+      if factory_option.is_none() {
+          return Err(format!("could not find {}",artifact_file.to()).into());
       }
 
-      return &self.buffer_factories.get(name ).unwrap();
+      let factory = factory_option.unwrap();
+      let buffer = factory.empty_buffer(Option::None);
+      return Ok(buffer);
+  }
+
+  pub fn load_buffer_factory(&mut self, artifact_file:&ArtifactFile )->Result<(),Box<std::error::Error>>
+  {
+    if self.buffer_factories.contains_key(artifact_file )
+    {
+        return Ok(());
+    }
+    self.artifact_repository.cache_file_as_string(artifact_file);
+    let schema_option = self.artifact_repository.get_cached_string(artifact_file);
+    if schema_option.is_none(){
+        return Err(format!("cannot find cached string for buffer factory {}",artifact_file.to()).into());
+    }
+    let schema = schema_option.unwrap();
+    let factory_result = NP_Factory::new(schema );
+    if factory_result.is_err()
+    {
+        return Err(factory_result.err().unwrap().message.into());
+    }
+    let factory = factory_result.unwrap();
+    self.buffer_factories.insert(artifact_file.clone(),factory);
+    return Ok(());
+  }
+
+  pub fn get_buffer_factory(&self, artifact_file:&ArtifactFile )->Option<&NP_Factory>
+  {
+      return self.buffer_factories.get(artifact_file );
   }
 
     pub fn load_wasm_module(&mut self, artifact_file:&ArtifactFile) -> Result<(),Box<std::error::Error>>
@@ -89,6 +106,9 @@ impl <'a> AstroTK <'a> {
             let actor_config = actor_config_yaml.to_actor_config(artifact_file)?;
             self.load_wasm_module(&actor_config.wasm);
             actor_config.cache(&mut self.artifact_repository)?;
+            for a in actor_config.message_artifact_files(){
+                self.load_buffer_factory(&a);
+            }
             self.actor_configs.insert(artifact_file.clone(), actor_config );
             return Ok(());
         }

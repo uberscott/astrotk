@@ -6,6 +6,9 @@ use std::sync::atomic::{{AtomicUsize,Ordering}};
 use astrotk_config::actor_config::{ActorConfigYaml, ActorConfig};
 use wasm_bindgen::__rt::std::error::Error;
 use astrotk_config::artifact_config::ArtifactFile;
+use no_proto::NP_Factory;
+use no_proto::buffer::NP_Buffer;
+use no_proto::buffer_ro::NP_Buffer_RO;
 
 #[macro_use]
 extern crate lazy_static;
@@ -22,12 +25,10 @@ extern "C"
     fn host_append_to_buffer( id: i32, value: i32 );
     fn host_dealloc_buffer( id: i32 );
     fn host_log( buffer_id: i32 );
+    fn host_content_update( buffer_id: i32 );
+    fn actor_create( ctx: &ActorContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>;
 }
 
-extern "C"
-{
-    fn actor_create( ctx: &ActorContext ) -> Result<(),Box<std::error::Error>>;
-}
 
 
 lazy_static! {
@@ -42,8 +43,24 @@ lazy_static! {
         let a = ActorContext::new();
         Mutex::new(a)
     };
+
+    static ref message_buffer_factories: Mutex<HashMap<ArtifactFile, NP_Factory<'static>>> = {
+        let m = HashMap::new();
+        Mutex::new(m)
+    };
 }
 
+pub fn host_write_buffer( buffer: &NP_Buffer ) -> i32
+{
+    unsafe{
+        let buffer_id = host_alloc_buffer(buffer.calc_bytes().unwrap().current_buffer as _ );
+        for b in buffer.read_bytes()
+        {
+            host_append_to_buffer(buffer_id,*b as _);
+        }
+        return buffer_id;
+    }
+}
 
 pub fn log( str: &str )
 {
@@ -85,6 +102,18 @@ pub fn dealloc_buffer( id: i32 )
     buffers.lock().unwrap().remove(&id);
 }
 
+
+#[wasm_bindgen]
+pub fn bind_message_artifact( artifact_file_buffer_id: i32, artifact_file_content_buffer_id: i32 )
+{
+    let artifact_file = ArtifactFile::from(&consume_string(artifact_file_buffer_id).unwrap()).unwrap();
+    let artifact_file_content = consume_string(artifact_file_content_buffer_id).unwrap();
+    let mut factories = message_buffer_factories.lock().unwrap();
+    let factory = NP_Factory::new(artifact_file_content).unwrap();
+    log(&format!("bound artifact: {}", &artifact_file.clone().to()));
+    factories.insert( artifact_file, factory );
+}
+
 pub fn consume_buffer( buffer_id: i32 ) -> Result<Box<Bytes>,Box<std::error::Error>>
 {
     let option = buffers.lock().unwrap().remove(&buffer_id);
@@ -103,7 +132,7 @@ fn consume_string(  buffer_id: i32 ) -> Result<String,Box<Error>>
 }
 
 #[wasm_bindgen]
-pub fn actor_init(actor_config_buffer_id:i32, actor_config_artifact_buffer_id: i32, actor_context_buffer_id: i32) -> i32
+pub fn actor_init(actor_config_buffer_id:i32, actor_config_artifact_buffer_id: i32) -> i32
 {
     log( &"hello from WebAssembly actor_init" );
     let result = init_context(actor_config_buffer_id,actor_config_artifact_buffer_id);
@@ -138,13 +167,43 @@ fn init_context( actor_config_buffer_id:i32, actor_config_artifact_buffer_id:i32
 
 
 #[wasm_bindgen]
-pub fn astrotk_actor_create( content_buffer_id:i32, create_message_buffer_id: i32 ) -> i32
+pub fn astrotk_actor_create( create_message_buffer_id: i32 ) -> i32
 {
 
+    log("astrotk_actor_create");
+    let factories = message_buffer_factories.lock().unwrap();
+    log("got factories");
+    let ctx = context.lock().unwrap();
+
+    let actor_config = &ctx.actor_config.as_ref().unwrap();
+    log("got actor_config");
+
+    let create_factory = factories.get( &actor_config.create_message ).unwrap();
+    let content_factory = factories.get( &actor_config.content ).unwrap();
+
+    log("got create factor and content_factory");
+    let raw_create_message = consume_buffer(create_message_buffer_id).unwrap();
+    log(format!("raw create message size: {}",raw_create_message.len()).as_str() );
+    log("raw_create_messagE");
+
+    let create_message = create_factory.open_buffer_ro(raw_create_message.as_ref());
+    let mut content = content_factory.empty_buffer(Option::None );
+    log("content");
+
     unsafe {
-        match actor_create(&context.lock().unwrap() ) {
-            Ok(_) => return 0,
-            Err(_) => return 1
+        match actor_create(&ctx, &create_message, &mut content ) {
+            Ok(_) => {
+                log( "wrign host buffeR" );
+                let content_buffer_id = host_write_buffer(&content);
+                log( "astrotk_actor_create: host_content_update()");
+                host_content_update(content_buffer_id);
+                log( "astrotk_actor_create: host_content_update() DONE");
+                return content_buffer_id;
+            },
+            Err(e) => {
+                log("error during create...");
+                return 1
+            }
         }
     }
 }
