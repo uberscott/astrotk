@@ -7,22 +7,7 @@
     <cargoProject FILE="$PROJECT_DIR$/astrotk_wasm/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/astrotk/src/node.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/astrotk/src/simulation.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor-content.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor.wasm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/actor.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/actor.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/data.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/data.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/wasm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/wasm.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk_config/src/actor_config.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_config/src/actor_config.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk_wasm/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_wasm/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk_wasm/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_wasm/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../wasm/example/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../wasm/example/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/src/lib.rs" afterDir="false" />
-    </list>
+    <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -117,7 +102,7 @@
       <workItem from="1609860663192" duration="55287000" />
       <workItem from="1610802487761" duration="59816000" />
       <workItem from="1611061264948" duration="48532000" />
-      <workItem from="1611229897214" duration="6105000" />
+      <workItem from="1611229897214" duration="6476000" />
     </task>
     <servers />
   </component>
