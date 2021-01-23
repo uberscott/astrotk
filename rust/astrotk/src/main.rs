@@ -7,17 +7,22 @@ mod wasm;
 mod data;
 mod artifact;
 mod actor;
+mod message;
 
 use crate::data::{AstroTK};
 use crate::wasm::{WasmBinder, Buffers, WasmActorEngine};
 use astrotk_config::artifact_config::ArtifactFile;
 use astrotk_config::actor_config::ActorConfig;
 use crate::actor::ActorEngine;
+use astrotk_config::buffers::BufferFactories;
+
+#[macro_use]
+extern crate lazy_static;
+
 
 fn main() -> Result<(),Box<std::error::Error>>{
 
-    let mut astroTK = data::new();
-
+    let mut astroTK = AstroTK::new();
     let artifact_file = ArtifactFile::from( "astrotk:actor:1.0.0-alpha:actor.yaml" )?;
     astroTK.load_actor_config(&artifact_file)?;
     let actor_config = astroTK.get_actor_config(&artifact_file).unwrap();

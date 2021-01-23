@@ -24,6 +24,7 @@ use std::cell::RefCell;
 use std::any::Any;
 use no_proto::buffer_ro::NP_Buffer_RO;
 use crate::actor::ActorEngine;
+use astrotk_config::buffers::BufferFactories;
 
 
 pub struct WasmBinder<'a>

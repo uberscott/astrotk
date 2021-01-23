@@ -13,6 +13,8 @@ use astrotk_config::artifact_config::{ArtifactFile, ArtifactRepository, Artifact
 use astrotk_config::actor_config::{ActorConfig,ActorConfigYaml};
 use std::sync::{Arc, Mutex};
 use std::ops::Deref;
+use astrotk_config::buffers::BufferFactories;
+use std::error::Error;
 
 struct TK_Buffer_Struct<'a>
 {
@@ -33,18 +35,17 @@ pub struct AstroTK<'a>
 }
 
 impl <'a> AstroTK <'a> {
+    pub fn new()->Self
+    {
+        return AstroTK {
+            buffer_factories: HashMap::new(),
+            wasm_modules: HashMap::new(),
+            wasm_store: Store::new(&JIT::new(Cranelift::default()).engine()),
+            artifact_repository: Repository::new( "../../repo/".to_string() ),
+            actor_configs: HashMap::new()
+        }
+    }
 
-  pub fn create_buffer(&self, artifact_file:&ArtifactFile)->Result<NP_Buffer,Box<std::error::Error>>{
-      let factory_option = self.get_buffer_factory(artifact_file);
-
-      if factory_option.is_none() {
-          return Err(format!("could not find {}",artifact_file.to()).into());
-      }
-
-      let factory = factory_option.unwrap();
-      let buffer = factory.empty_buffer(Option::None);
-      return Ok(buffer);
-  }
 
   pub fn load_buffer_factory(&mut self, artifact_file:&ArtifactFile )->Result<(),Box<std::error::Error>>
   {
@@ -68,10 +69,6 @@ impl <'a> AstroTK <'a> {
     return Ok(());
   }
 
-  pub fn get_buffer_factory(&self, artifact_file:&ArtifactFile )->Option<&NP_Factory>
-  {
-      return self.buffer_factories.get(artifact_file );
-  }
 
     pub fn load_wasm_module(&mut self, artifact_file:&ArtifactFile) -> Result<(),Box<std::error::Error>>
     {
@@ -121,16 +118,39 @@ impl <'a> AstroTK <'a> {
 
 }
 
-pub fn new()->AstroTK<'static>
+impl <'a> BufferFactories for AstroTK<'a>
 {
-    return AstroTK {
-        buffer_factories: HashMap::new(),
-        wasm_modules: HashMap::new(),
-        wasm_store: Store::new(&JIT::new(Cranelift::default()).engine()),
-        artifact_repository: Repository::new( "../../repo/".to_string() ),
-        actor_configs: HashMap::new()
+    fn create_buffer(&self, artifact_file:&ArtifactFile)->Result<NP_Buffer,Box<std::error::Error>>{
+        let factory_option = self.get_buffer_factory(artifact_file);
+
+        if factory_option.is_none() {
+            return Err(format!("could not find {}",artifact_file.to()).into());
+        }
+
+        let factory = factory_option.unwrap();
+        let buffer = factory.empty_buffer(Option::None);
+        return Ok(buffer);
+    }
+
+    fn create_buffer_from(&self, artifact_file: &ArtifactFile, array: Vec<u8>) -> Result<NP_Buffer, Box<dyn Error>> {
+        let factory_option = self.get_buffer_factory(artifact_file);
+
+        if factory_option.is_none() {
+            return Err(format!("could not find {}",artifact_file.to()).into());
+        }
+
+        let factory = factory_option.unwrap();
+        let buffer = factory.open_buffer(array );
+        return Ok(buffer);
+    }
+
+
+    fn get_buffer_factory(&self, artifact_file:&ArtifactFile )->Option<&NP_Factory>
+    {
+        return self.buffer_factories.get(artifact_file );
     }
 }
+
 
 
 
