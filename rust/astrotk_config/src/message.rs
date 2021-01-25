@@ -1,10 +1,11 @@
-use astrotk_config::artifact_config::ArtifactFile;
+use crate::artifact_config::ArtifactFile;
 use std::collections::HashMap;
 use no_proto::buffer::NP_Buffer;
 use no_proto::NP_Factory;
 use no_proto::error::NP_Error;
-use astrotk_config::buffers::BufferFactories;
+use crate::buffers::BufferFactories;
 use no_proto::pointer::{NP_Scalar, NP_Value};
+use bytes::Bytes;
 
 static MESSAGE_SCHEMA: &'static str = r#"{
     "type":"list",
@@ -30,12 +31,12 @@ static ref MESSAGES_FACTORY : NP_Factory<'static> = NP_Factory::new(MESSAGE_SCHE
 
 
 #[derive(Clone)]
-struct Address {
-    actor: i64
+pub struct Address {
+    pub actor: i64
 }
 
 #[derive(Clone)]
-enum MessageKind{
+pub enum MessageKind{
     Create,
     Content,
     Request,
@@ -64,15 +65,15 @@ fn index_to_message_kind( index: i32 ) -> Result<MessageKind,Box<std::error::Err
 }
 
 #[derive(Clone)]
-struct Message<'a> {
-    kind: MessageKind,
-    from: Address,
-    to: Address,
-    port: String,
-    payload: NP_Buffer<'a>,
-    payload_artifact_file: ArtifactFile,
-    meta: HashMap<String,String>,
-    transaction: Option<String>
+pub struct Message<'a> {
+    pub kind: MessageKind,
+    pub from: Address,
+    pub to: Address,
+    pub port: String,
+    pub payload: NP_Buffer<'a>,
+    pub payload_artifact_file: ArtifactFile,
+    pub meta: HashMap<String,String>,
+    pub transaction: Option<String>
 }
 
 
@@ -169,6 +170,12 @@ impl <'a> Message <'a> {
         return Ok(message);
     }
 
+    pub fn messages_from_bytes(  buffer_factories: &'a BufferFactories, bytes: &Bytes) -> Result<Vec<Self>,Box<std::error::Error>>
+    {
+        let buffer = MESSAGES_FACTORY.open_buffer( bytes.to_vec() );
+        return Ok( Message::messages_from_buffer( buffer_factories, &buffer)? );
+    }
+
     pub fn messages_from_buffer( buffer_factories: &'a BufferFactories, buffer: &NP_Buffer ) -> Result<Vec<Self>,Box<std::error::Error>>
     {
         let length = match buffer.length(&[] )
@@ -206,14 +213,12 @@ impl <'a> Message <'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::message::{Message, MessageKind, Address, MESSAGE_SCHEMA};
-    use astrotk_config::artifact_config::ArtifactFile;
-    use crate::data;
-    use astrotk_config::buffers::BufferFactories;
-    use crate::data::AstroTK;
+    use crate::artifact_config::ArtifactFile;
+    use rust::data;
+    use crate::buffers::BufferFactories;
+    use rust::data::AstroTK;
     use no_proto::NP_Factory;
-
-
+    use crate::message::{MESSAGE_SCHEMA, MessageKind, Message, Address};
 
     #[test]
     fn check_schema() {

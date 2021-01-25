@@ -9,6 +9,7 @@ use astrotk_config::artifact_config::ArtifactFile;
 use no_proto::NP_Factory;
 use no_proto::buffer::NP_Buffer;
 use no_proto::buffer_ro::NP_Buffer_RO;
+use astrotk_config::buffers::BufferFactories;
 
 #[macro_use]
 extern crate lazy_static;
@@ -26,6 +27,7 @@ extern "C"
     fn host_dealloc_buffer( id: i32 );
     fn host_log( buffer_id: i32 );
     fn host_content_update( buffer_id: i32 );
+    fn host_messages( buffer_id: i32 );
     fn actor_create( ctx: &ActorContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>;
 }
 
@@ -44,10 +46,59 @@ lazy_static! {
         Mutex::new(a)
     };
 
-    static ref message_buffer_factories: Mutex<HashMap<ArtifactFile, NP_Factory<'static>>> = {
-        let m = HashMap::new();
-        Mutex::new(m)
+    static ref message_buffer_factories: Mutex<Box<BufferFactoriesCache<'static>>> = {
+        let bfc = BufferFactoriesCache::new();
+        Mutex::new(bfc)
     };
+}
+
+struct BufferFactoriesCache<'a>
+{
+    cache: HashMap<ArtifactFile,NP_Factory<'a>>
+}
+
+impl <'a> BufferFactoriesCache<'a>
+{
+    fn new()->Box<Self>
+    {
+        return Box::new(BufferFactoriesCache{cache:HashMap::new()});
+    }
+
+    fn add_factory(&mut self, artifact_file_buffer_id: i32, factory_schema_buffer_id: i32 ) ->Result<(),Box<std::error::Error>>
+    {
+        let artifact_file = ArtifactFile::from( consume_string(artifact_file_buffer_id)?.as_str() )?;
+        let result = NP_Factory::new(consume_string(factory_schema_buffer_id)?);
+        match result{
+            Ok(factory)=>{
+                self.cache.insert( artifact_file.clone(), factory );
+                Ok(())
+            },
+            Err(_)=> Err("could not parse factory config".into())
+        }
+    }
+}
+
+impl <'a> BufferFactories for BufferFactoriesCache<'a>
+{
+    fn create_buffer(&self, artifact_file: &ArtifactFile) -> Result<NP_Buffer, Box<dyn Error>> {
+        return match self.get_buffer_factory(artifact_file)
+        {
+            Some(factory)=>Ok(factory.empty_buffer(Option::None)),
+            None=>Err(format!("could not find factory: {}", artifact_file.to()).into())
+        }
+    }
+
+    fn create_buffer_from(&self, artifact_file: &ArtifactFile, array: Vec<u8>) -> Result<NP_Buffer, Box<dyn Error>> {
+        return match self.get_buffer_factory(artifact_file)
+        {
+            Some(factory)=>Ok(factory.open_buffer(array)),
+            None=>Err(format!("could not find factory: {}", artifact_file.to()).into())
+        }
+    }
+
+    fn get_buffer_factory(&self, artifact_file: &ArtifactFile) -> Option<&NP_Factory> {
+        return self.cache.get(artifact_file);
+    }
 }
 
 pub fn host_write_buffer( buffer: &NP_Buffer ) -> i32
@@ -106,15 +157,11 @@ pub fn dealloc_buffer( id: i32 )
 #[wasm_bindgen]
 pub fn bind_message_artifact( artifact_file_buffer_id: i32, artifact_file_content_buffer_id: i32 )
 {
-    let artifact_file = ArtifactFile::from(&consume_string(artifact_file_buffer_id).unwrap()).unwrap();
-    let artifact_file_content = consume_string(artifact_file_content_buffer_id).unwrap();
     let mut factories = message_buffer_factories.lock().unwrap();
-    let factory = NP_Factory::new(artifact_file_content).unwrap();
-    log(&format!("bound artifact: {}", &artifact_file.clone().to()));
-    factories.insert( artifact_file, factory );
+    factories.add_factory(artifact_file_buffer_id,artifact_file_content_buffer_id);
 }
 
-pub fn consume_buffer( buffer_id: i32 ) -> Result<Box<Bytes>,Box<std::error::Error>>
+fn consume_buffer( buffer_id: i32 ) -> Result<Box<Bytes>,Box<std::error::Error>>
 {
     let option = buffers.lock().unwrap().remove(&buffer_id);
     match option {
@@ -178,8 +225,8 @@ pub fn astrotk_actor_create( create_message_buffer_id: i32 ) -> i32
     let actor_config = &ctx.actor_config.as_ref().unwrap();
     log("got actor_config");
 
-    let create_factory = factories.get( &actor_config.create_message ).unwrap();
-    let content_factory = factories.get( &actor_config.content ).unwrap();
+    let create_factory = factories.get_buffer_factory( &actor_config.create_message ).unwrap();
+    let content_factory = factories.get_buffer_factory( &actor_config.content ).unwrap();
 
     log("got create factor and content_factory");
     let raw_create_message = consume_buffer(create_message_buffer_id).unwrap();

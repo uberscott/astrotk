@@ -1,6 +1,8 @@
 use no_proto::buffer::NP_Buffer;
 use no_proto::buffer_ro::NP_Buffer_RO;
 
+use astrotk_config::message::Message;
+
 struct Actor
 {
     id: i64,
@@ -10,12 +12,12 @@ struct Actor
 impl Actor
 {
 
-    fn create( &mut self, create_message: &NP_Buffer ) -> Result<NP_Buffer,Box<std::error::Error>>
+    fn create( &mut self, create_message: &Message) -> Result<(NP_Buffer,Vec<Message>),Box<std::error::Error>>
     {
         return Ok(self.engine.create(create_message)?);
     }
 
-    fn update( &mut self, content: &NP_Buffer, messages: Box<[&NP_Buffer]> )-> Result<(NP_Buffer,Box<[NP_Buffer]>),Box<std::error::Error>>
+    fn update( &mut self, content: &NP_Buffer, messages: Vec<&Message> )-> Result<(NP_Buffer,Vec<Message>),Box<std::error::Error>>
     {
         return Ok(self.engine.update(content, messages )?);
     }
@@ -25,8 +27,8 @@ impl Actor
 
 pub trait ActorEngine
 {
-    fn create( &mut self, create_message: &NP_Buffer ) -> Result<NP_Buffer,Box<std::error::Error>>;
+    fn create( &mut self, create_message: &Message ) -> Result<(NP_Buffer,Vec<Message>),Box<std::error::Error>>;
 
-    fn update( &mut self, content: &NP_Buffer, messages: Box<[&NP_Buffer]> )-> Result<(NP_Buffer,Box<[NP_Buffer]>),Box<std::error::Error>>;
+    fn update( &mut self, content: &NP_Buffer, messages: Vec<&Message> )-> Result<(NP_Buffer,Vec<Message>),Box<std::error::Error>>;
 }
 

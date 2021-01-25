@@ -25,6 +25,7 @@ use std::any::Any;
 use no_proto::buffer_ro::NP_Buffer_RO;
 use crate::actor::ActorEngine;
 use astrotk_config::buffers::BufferFactories;
+use astrotk_config::message::Message;
 
 
 pub struct WasmBinder<'a>
@@ -47,7 +48,8 @@ struct Host
 {
     buffer_map: HashMap<i32,BytesMut>,
     buffer_index: i32,
-    content_buffer_id: Option<i32>
+    content_buffer_id: Option<i32>,
+    messages_buffer_id: Option<i32>
 }
 
 impl Host
@@ -57,7 +59,8 @@ impl Host
         Host {
             buffer_map: HashMap::new(),
             buffer_index: 0,
-            content_buffer_id: Option::None
+            content_buffer_id: Option::None,
+            messages_buffer_id: Option::None
         }
     }
 
@@ -82,6 +85,11 @@ impl Host
         }
     }
 
+    fn has_messages( &self ) -> bool
+    {
+        return self.messages_buffer_id.is_some();
+    }
+
     fn consume_content( &mut self ) -> Result<Bytes,Box<std::error::Error>>
     {
         let content_buffer_id_option = self.content_buffer_id;
@@ -98,6 +106,24 @@ impl Host
         self.content_buffer_id = Option::None;
         return Ok(content_buffer);
     }
+
+    fn consume_messages( &mut self ) -> Result<Bytes,Box<std::error::Error>>
+    {
+        let messages_buffer_id = self.messages_buffer_id;
+        if messages_buffer_id.is_none()
+        {
+            return Err("messages buffer was not created by wasm guest".into());
+        }
+        let messages_buffer_option = self.consume_buffer(messages_buffer_id.unwrap());
+        if messages_buffer_option.is_none()
+        {
+            return Err("messages buffer is not available".into());
+        }
+        let messages_buffer = messages_buffer_option.unwrap();
+        self.messages_buffer_id= Option::None;
+        return Ok(messages_buffer);
+    }
+
 
     fn log(&mut self, buffer_id: i32)
     {
@@ -117,6 +143,11 @@ impl Host
     {
 println!("content_update: {}",buffer_id);
         self.content_buffer_id = Option::Some(buffer_id);
+    }
+
+    fn messages_update( &mut self, buffer_id: i32 )
+    {
+        self.messages_buffer_id = Option::Some(buffer_id);
     }
 }
 
@@ -148,6 +179,9 @@ struct Env {
 
         "host_content_update"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,buffer_id:i32| {
                  env.host.lock().unwrap().content_update(buffer_id);
+            } ),
+        "host_messages"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,buffer_id:i32| {
+                 env.host.lock().unwrap().messages_update(buffer_id);
             } ),
         } };
 
@@ -366,23 +400,25 @@ impl <'a> WasmActorEngine<'a>
 
 impl <'a> ActorEngine for WasmActorEngine<'a>
 {
-    fn create( &mut self, create_message: &NP_Buffer ) -> Result<NP_Buffer,Box<std::error::Error>>
+    fn create( &mut self, create_message: &Message) -> Result<(NP_Buffer,Vec<Message>),Box<std::error::Error>>
     {
-        self.wasm.guest.actor_create(create_message)?;
+        self.wasm.guest.actor_create(&create_message.payload )?;
         let mut host = self.wasm.host.lock().unwrap();
 
         let content_buffer = host.consume_content()?;
         let content = self.to_np_buffer(content_buffer,&self.config.content)?;
 
-        let name = content.get::<String>(&[&"name"]).unwrap().unwrap();
-        let age = content.get::<i32>(&[&"age"]).unwrap().unwrap();
-println!("CONTENT name: {} and age: {}",name, age);
+        let messages:Vec<Message> = vec![];
+        if host.has_messages()
+        {
+            let messages_bytes = host.consume_messages()?;
+            Message::messages_from_bytes(self.astroTK, &messages_bytes);
+        }
 
-        return Ok(content);
+        return Ok((content,messages));
     }
 
-    fn update(&mut self, content: &NP_Buffer, messages: Box<[&NP_Buffer]>) -> Result<(NP_Buffer,Box<[NP_Buffer]>),Box<std::error::Error>>
-    {
+    fn update(&mut self, content: &NP_Buffer, messages: Vec<&Message>) -> Result<(NP_Buffer, Vec<Message>), Box<std::error::Error>> {
         unimplemented!()
     }
 }
