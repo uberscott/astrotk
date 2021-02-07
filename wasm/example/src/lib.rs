@@ -1,11 +1,11 @@
 mod utils;
 
-use astrotk_wasm::*;
+use mechtron_wasm::*;
 use no_proto::buffer::NP_Buffer;
 use no_proto::buffer_ro::NP_Buffer_RO;
 
 #[no_mangle]
-pub extern "C" fn actor_create( ctx: &ActorContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>
+pub extern "C" fn mechtron_create(ctx: &MechtronContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>
 {
    log("actor_create() called! XX");
    let name = create_message.get::<String>(&[&"name"]);

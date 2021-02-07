@@ -14,7 +14,7 @@ default = ["console_error_panic_hook"]
 wasm-bindgen = "0.2.63"
 bytes = "1.0.1"
 lazy_static = "1.4.0"
-astrotk_wasm = { path="../../rust/astrotk_wasm"}
+mechtron_wasm = { path="../../rust/mechtron_wasm"}
 no_proto = "0.9.0"
 
 

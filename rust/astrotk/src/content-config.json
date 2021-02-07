@@ -1,9 +1,0 @@
-
-
-
-{
-"type": "table",
-"columns": [
-["name",         {"type": "string"}]
-]
-}

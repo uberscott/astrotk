@@ -1,21 +1,24 @@
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::__rt::std::collections::HashMap;
-use bytes::{BytesMut, BufMut, Buf, Bytes};
-use std::sync::Mutex;
-use std::sync::atomic::{{AtomicUsize,Ordering}};
-use astrotk_config::actor_config::{ActorConfigYaml, ActorConfig};
-use wasm_bindgen::__rt::std::error::Error;
-use astrotk_config::artifact_config::ArtifactFile;
-use no_proto::NP_Factory;
-use no_proto::buffer::NP_Buffer;
-use no_proto::buffer_ro::NP_Buffer_RO;
-use astrotk_config::buffers::BufferFactories;
-
 #[macro_use]
 extern crate lazy_static;
 
+use std::sync::atomic::{{AtomicUsize, Ordering}};
+use std::sync::Mutex;
+
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use no_proto::buffer::NP_Buffer;
+use no_proto::buffer_ro::NP_Buffer_RO;
+use no_proto::NP_Factory;
+use wasm_bindgen::__rt::std::collections::HashMap;
+use wasm_bindgen::__rt::std::error::Error;
+use wasm_bindgen::prelude::*;
+
+use mechtron_config::artifact_config::Artifact;
+use mechtron_config::buffers::BufferFactories;
+use mechtron_config::mechtron_config::{ActorConfigYaml, MechtronConfig};
+
+
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
+// allocator
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
@@ -28,7 +31,7 @@ extern "C"
     fn host_log( buffer_id: i32 );
     fn host_content_update( buffer_id: i32 );
     fn host_messages( buffer_id: i32 );
-    fn actor_create( ctx: &ActorContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>;
+    fn mechtron_create(ctx: &MechtronContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>;
 }
 
 
@@ -41,8 +44,8 @@ lazy_static! {
 
     static ref buffer_index : AtomicUsize = { AtomicUsize::new(0) };
 
-    static ref context : Mutex<ActorContext> = {
-        let a = ActorContext::new();
+    static ref context : Mutex<MechtronContext> = {
+        let a = MechtronContext::new();
         Mutex::new(a)
     };
 
@@ -54,7 +57,7 @@ lazy_static! {
 
 struct BufferFactoriesCache<'a>
 {
-    cache: HashMap<ArtifactFile,NP_Factory<'a>>
+    cache: HashMap<Artifact,NP_Factory<'a>>
 }
 
 impl <'a> BufferFactoriesCache<'a>
@@ -64,9 +67,9 @@ impl <'a> BufferFactoriesCache<'a>
         return Box::new(BufferFactoriesCache{cache:HashMap::new()});
     }
 
-    fn add_factory(&mut self, artifact_file_buffer_id: i32, factory_schema_buffer_id: i32 ) ->Result<(),Box<std::error::Error>>
+    fn add_factory(&mut self, artifact_file_buffer_id: i32, factory_schema_buffer_id: i32 ) ->Result<(),Box<dyn Error>>
     {
-        let artifact_file = ArtifactFile::from( consume_string(artifact_file_buffer_id)?.as_str() )?;
+        let artifact_file = Artifact::from( consume_string(artifact_file_buffer_id)?.as_str() )?;
         let result = NP_Factory::new(consume_string(factory_schema_buffer_id)?);
         match result{
             Ok(factory)=>{
@@ -80,7 +83,7 @@ impl <'a> BufferFactoriesCache<'a>
 
 impl <'a> BufferFactories for BufferFactoriesCache<'a>
 {
-    fn create_buffer(&self, artifact_file: &ArtifactFile) -> Result<NP_Buffer, Box<dyn Error>> {
+    fn create_buffer(&self, artifact_file: &Artifact) -> Result<NP_Buffer, Box<dyn Error>> {
         return match self.get_buffer_factory(artifact_file)
         {
             Some(factory)=>Ok(factory.empty_buffer(Option::None)),
@@ -88,7 +91,7 @@ impl <'a> BufferFactories for BufferFactoriesCache<'a>
         }
     }
 
-    fn create_buffer_from(&self, artifact_file: &ArtifactFile, array: Vec<u8>) -> Result<NP_Buffer, Box<dyn Error>> {
+    fn create_buffer_from(&self, artifact_file: &Artifact, array: Vec<u8>) -> Result<NP_Buffer, Box<dyn Error>> {
         return match self.get_buffer_factory(artifact_file)
         {
             Some(factory)=>Ok(factory.open_buffer(array)),
@@ -96,7 +99,7 @@ impl <'a> BufferFactories for BufferFactoriesCache<'a>
         }
     }
 
-    fn get_buffer_factory(&self, artifact_file: &ArtifactFile) -> Option<&NP_Factory> {
+    fn get_buffer_factory(&self, artifact_file: &Artifact) -> Option<&NP_Factory> {
         return self.cache.get(artifact_file);
     }
 }
@@ -179,10 +182,10 @@ fn consume_string(  buffer_id: i32 ) -> Result<String,Box<Error>>
 }
 
 #[wasm_bindgen]
-pub fn actor_init(actor_config_buffer_id:i32, actor_config_artifact_buffer_id: i32) -> i32
+pub fn mechtron_init(mechtron_config_buffer_id:i32, mechtron_config_artifact_buffer_id: i32) -> i32
 {
     log( &"hello from WebAssembly actor_init" );
-    let result = init_context(actor_config_buffer_id,actor_config_artifact_buffer_id);
+    let result = init_context(mechtron_config_buffer_id, mechtron_config_artifact_buffer_id);
 
     if result.is_err()
     {
@@ -195,10 +198,10 @@ pub fn actor_init(actor_config_buffer_id:i32, actor_config_artifact_buffer_id: i
     return 0;
 }
 
-fn get_artifact_file( artifact_buffer_id:i32)->Result<ArtifactFile,Box<std::error::Error>>
+fn get_artifact_file( artifact_buffer_id:i32)->Result<Artifact,Box<std::error::Error>>
 {
     let artifact_file_str= consume_string(artifact_buffer_id)?;
-    return Ok(ArtifactFile::from(&artifact_file_str )?);
+    return Ok(Artifact::from(&artifact_file_str )?);
 }
 
 fn init_context( actor_config_buffer_id:i32, actor_config_artifact_buffer_id:i32) -> Result<(),Box<std::error::Error>>
@@ -214,10 +217,10 @@ fn init_context( actor_config_buffer_id:i32, actor_config_artifact_buffer_id:i32
 
 
 #[wasm_bindgen]
-pub fn astrotk_actor_create( create_message_buffer_id: i32 ) -> i32
+pub fn mechtron_actor_create( create_message_buffer_id: i32 ) -> i32
 {
 
-    log("astrotk_actor_create");
+    log("mechtron_actor_create");
     let factories = message_buffer_factories.lock().unwrap();
     log("got factories");
     let ctx = context.lock().unwrap();
@@ -238,13 +241,13 @@ pub fn astrotk_actor_create( create_message_buffer_id: i32 ) -> i32
     log("content");
 
     unsafe {
-        match actor_create(&ctx, &create_message, &mut content ) {
+        match mechtron_create(&ctx, &create_message, &mut content ) {
             Ok(_) => {
                 log( "wrign host buffeR" );
                 let content_buffer_id = host_write_buffer(&content);
-                log( "astrotk_actor_create: host_content_update()");
+                log( "mechtron_actor_create: host_content_update()");
                 host_content_update(content_buffer_id);
-                log( "astrotk_actor_create: host_content_update() DONE");
+                log( "mechtron_actor_create: host_content_update() DONE");
                 return content_buffer_id;
             },
             Err(e) => {
@@ -256,15 +259,15 @@ pub fn astrotk_actor_create( create_message_buffer_id: i32 ) -> i32
 }
 
 
-pub struct ActorContext
+pub struct MechtronContext
 {
-    actor_config: Option<ActorConfig>
+    actor_config: Option<MechtronConfig>
 }
 
-impl ActorContext
+impl MechtronContext
 {
     fn new( ) -> Self
     {
-        return ActorContext{actor_config:Option::None};
+        return MechtronContext {actor_config:Option::None};
     }
 }

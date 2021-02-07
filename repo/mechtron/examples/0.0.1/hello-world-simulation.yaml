@@ -1,0 +1,6 @@
+name: Hello World Simulation
+main:
+ path: blah.yaml
+create_message:
+ path: blah.json
+

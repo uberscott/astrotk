@@ -5,18 +5,50 @@
     <cargoProject FILE="$PROJECT_DIR$/astrotk/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/astrotk_config/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/astrotk_wasm/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtron_common/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/mechtron/src/message.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron/src/nucleus.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron/src/scheduler.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron/src/simulation.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron/src/tron.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_common/mechtron_common.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/astrotk/actor/1.0.0-alpha/actor.wasm" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/rust.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/rust.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/actor.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/actor.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_config/src/message.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk/src/wasm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk/src/wasm.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk_config/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_config/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk_config/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_config/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/astrotk_wasm/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/astrotk_wasm/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/main/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/.idea/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/main/.idea/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/main/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/main/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/main/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/main/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/main/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/rust.iml" beforeDir="false" afterPath="$PROJECT_DIR$/main/rust.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/actor.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/artifact.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/content-config.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/data.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/app.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/main/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/node.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/simulation.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk/src/wasm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/wasm.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/src/actor_config.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/mechtron_config.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/src/artifact_config.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_config/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_wasm/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_wasm/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/astrotk_wasm/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_wasm/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../wasm/example/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../wasm/example/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/src/lib.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -59,7 +91,7 @@
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/astrotk_config/src" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
   </component>
   <component name="RecentsManager">
@@ -67,27 +99,43 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/mechtron_common/src" />
+      <recent name="$PROJECT_DIR$/mechtron/src" />
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test message::tests::create_message (1)">
-    <configuration default="true" type="ArquillianTestNG" factoryName="" nameIsGenerated="true">
+  <component name="RunManager" selected="Cargo.Run">
+    <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
           <option name="containerStateName" value="" />
         </value>
       </option>
-      <option name="TEST_OBJECT" value="CLASS" />
-      <properties />
-      <listeners />
+      <option name="TEST_OBJECT" value="class" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
     </configuration>
     <configuration name="Run" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="run --package rust --bin rust" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron" />
       <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_config --lib message" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
       <option name="emulateTerminal" value="false" />
       <option name="backtrace" value="SHORT" />
@@ -102,6 +150,7 @@
       <option name="command" value="test --package rust --bin rust message::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
       <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
       <option name="emulateTerminal" value="false" />
       <option name="backtrace" value="SHORT" />
@@ -116,6 +165,7 @@
       <option name="command" value="test --package rust --bin rust message::tests::check_schema -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
       <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
       <option name="emulateTerminal" value="false" />
       <option name="backtrace" value="SHORT" />
@@ -130,6 +180,7 @@
       <option name="command" value="test --package astrotk_config --lib message::tests::create_message -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
       <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
       <option name="emulateTerminal" value="false" />
       <option name="backtrace" value="SHORT" />
@@ -144,6 +195,7 @@
       <option name="command" value="test --package rust --bin rust message::tests::create_message -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
       <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
       <option name="emulateTerminal" value="false" />
       <option name="backtrace" value="SHORT" />
@@ -154,8 +206,33 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+      <option name="command" value="test --package rust --lib tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <list>
+      <item itemvalue="Cargo.Run" />
+      <item itemvalue="Cargo.Test message" />
+      <item itemvalue="Cargo.Test message::tests" />
+      <item itemvalue="Cargo.Test message::tests::check_schema" />
+      <item itemvalue="Cargo.Test message::tests::create_message" />
+      <item itemvalue="Cargo.Test message::tests::create_message (1)" />
+      <item itemvalue="Cargo.Test" />
+    </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test message" />
         <item itemvalue="Cargo.Test message::tests::create_message (1)" />
         <item itemvalue="Cargo.Test message::tests::create_message" />
         <item itemvalue="Cargo.Test message::tests::check_schema" />
@@ -182,7 +259,10 @@
       <workItem from="1610802487761" duration="59816000" />
       <workItem from="1611061264948" duration="48532000" />
       <workItem from="1611229897214" duration="26524000" />
-      <workItem from="1611449259284" duration="5477000" />
+      <workItem from="1611449259284" duration="11813000" />
+      <workItem from="1612292567155" duration="326000" />
+      <workItem from="1612355973641" duration="1185000" />
+      <workItem from="1612499400927" duration="56171000" />
     </task>
     <servers />
   </component>

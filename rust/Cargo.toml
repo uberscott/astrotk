@@ -1,5 +1,7 @@
 [workspace]
 members = [
-  "astrotk",
-  "astrotk_config",
-  "astrotk_wasm"]
+  "main",
+  "mechtron",
+  "mechtron_common",
+  "mechtron_wasm"
+  ]

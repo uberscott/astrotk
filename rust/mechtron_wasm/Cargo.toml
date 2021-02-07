@@ -1,5 +1,5 @@
 [package]
-name = "astrotk_wasm"
+name = "mechtron_wasm"
 version = "0.1.0"
 authors = ["Scott Williams <scott@mightydevco.com>"]
 edition = "2018"
@@ -18,7 +18,7 @@ bytes = "1.0.1"
 lazy_static = "1.4.0"
 no_proto = "0.9.0"
 
-astrotk_config = { path="../astrotk_config"}
+mechtron = { path= "../mechtron" }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
