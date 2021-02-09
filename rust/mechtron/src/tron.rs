@@ -29,13 +29,13 @@ pub trait UpdateContext
 pub trait CreateContext: UpdateContext {
 }
 
-pub struct InitContext<'a>
+pub struct InitContext
 {
     pub id: i64,
     config_artifact: Artifact
 }
 
-impl <'a> InitContext<'a>
+impl InitContext
 {
     pub fn new(id:i64, config_artifact: Artifact )->Self
     {

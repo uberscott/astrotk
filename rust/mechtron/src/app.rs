@@ -22,18 +22,19 @@ use mechtron_common::buffers::BufferFactories;
 use mechtron_common::configs::{Configs, MechtronConfig, MechtronConfigYaml, Keeper, Parser};
 use mechtron_common::message::Message;
 
-use crate::message::MessageRouter;
-use crate::nucleus::Nucleus;
+use crate::message::{MessageRouter, MessageIntake};
+use crate::nucleus::NucleiStore;
 use crate::repository::FileSystemArtifactRepository;
-use crate::simulation::Simulation;
+use crate::content::{ContentStore, TronKey};
+use crate::source::Source;
 
 lazy_static! {
-  pub static ref SYS : System = System::new();
+  pub static ref SYS : System<'static> = System::new();
 }
 
 pub struct System<'a> {
-    pub local: Local<'a>,
-    pub net: Network,
+    pub local: Local,
+    pub net: Network<'a>,
 }
 
 impl <'a> System<'a>
@@ -46,12 +47,11 @@ impl <'a> System<'a>
     }
 }
 
-pub struct Local<'a>
+pub struct Local
 {
     pub wasm_store: Store,
     pub configs: Configs,
-    pub wasm_module_keeper: Keeper<Module>,
-    runner: Runner<'a>
+    pub wasm_module_keeper: Keeper<Module>
 }
 
 impl Local {
@@ -62,26 +62,25 @@ impl Local {
             wasm_store: Store::new(&JIT::new(Cranelift::default()).engine()),
             configs: Configs::new(repo.clone()),
             wasm_module_keeper: Keeper::new(repo.clone(), Box::new(WasmModuleParser)),
-            runner: Runner{ simulations }
         }
     }
 }
 
-pub struct Network
+pub struct Network<'a>
 {
     nucleus_seq: AtomicI64,
     sim_seq: AtomicI64,
-    router: Mutex<Box<dyn MessageRouter>>
+    router: Mutex<Box<dyn MessageRouter<'a>>>
 }
 
-impl Network
+impl <'a> Network<'a>
 {
     fn new() -> Self
     {
         Network {
             nucleus_seq: AtomicI64::new(0),
             sim_seq: AtomicI64::new(0),
-            router: Mutex::new(Box::new(LocalMessageRouter) )
+            router: Mutex::new(Box::new(LocalMessageRouter{} ) )
         }
     }
 
@@ -92,7 +91,6 @@ impl Network
     pub fn next_sim_id(&self) -> i64 {
         self.sim_seq.fetch_add(1,Ordering::Relaxed)
     }
-
 }
 
 
@@ -127,13 +125,43 @@ impl MessageRouter<'_> for LocalMessageRouter
     }
 }
 
-
-struct Runner<'a>
+struct Sources<'a>
 {
-    simulations: Vec<Simulation<'a>>
+    sources: RwLock<HashMap<i64,Source<'a>>>
 }
 
-impl <'a> Runner<'a>
+impl <'a> Sources<'a>
 {
+    pub fn new()->Self
+    {
+        Sources{
+            sources: RwLock::new(HashMap::new() )
+        }
+    }
+
+    pub fn add( &mut self, sim_id: i64 )->Result<(),Box<dyn Error>>
+    {
+        let mut sources = self.sources.write()?;
+        if sources.contains_key(&sim_id)
+        {
+           return Err(format!("sim id {} has already been added to the sources",sim_id).into());
+        }
+
+        sources.insert( sim_id, Source::new(sim_id));
+
+        Ok(())
+    }
+
+    pub fn get( &self, sim_id: i64 ) -> Result<&Source,Box<dyn Error>>
+    {
+        let sources = self.sources.read()?;
+        if !sources.contains_key(&sim_id)
+        {
+            return Err(format!("sim id {} is not present in the sources",sim_id).into());
+        }
+
+        let source = sources.get(&sim_id);
+        return Ok(source.unwrap());
+    }
 
 }

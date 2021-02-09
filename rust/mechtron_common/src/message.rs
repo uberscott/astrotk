@@ -10,6 +10,7 @@ use bytes::Bytes;
 use std::error::Error;
 use std::rc::Rc;
 use uuid::Uuid;
+use std::sync::Arc;
 
 
 static MESSAGE_SCHEMA: &'static str = r#"{
@@ -254,7 +255,7 @@ pub struct Message<'b> {
     pub from: Option<Address>,
     pub to: Address,
     pub port: String,
-    pub payload: NP_Buffer<'b>,
+    pub payload: Arc<NP_Buffer<'b>>,
     pub payload_artifact: Artifact,
     pub meta: HashMap<String,String>,
     pub transaction: Option<String>
@@ -276,7 +277,7 @@ impl <'b> Message <'b> {
             from: from,
             to: to,
             port: port,
-            payload: payload,
+            payload: Arc::new(payload),
             payload_artifact: payload_artifact,
             meta: HashMap::new(),
             transaction: Option::None
@@ -377,7 +378,7 @@ impl <'b> Message <'b> {
                 }
             },
             port: Message::get::<String>(&buffer,&[&index,&"port"])?,
-            payload: buffer_factories.create_buffer_from( &payload_artifact, payload )?,
+            payload: Arc::new(buffer_factories.create_buffer_from( &payload_artifact, payload )?),
             payload_artifact: payload_artifact,
             meta: meta,
             transaction: buffer.get::<String>(&[&index,&"transaction"] ).unwrap()
