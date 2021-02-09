@@ -1,12 +1,3 @@
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use mechtron_common::artifact::{Artifact, ArtifactRepository};
-use mechtron_common::mechtron_config::MechtronConfig;
-use mechtron_common::buffers::BufferFactories;
-use mechtron_common::message::Message;
-use no_proto::buffer::NP_Buffer;
-use no_proto::buffer_ro::NP_Buffer_RO;
-use no_proto::error::NP_Error;
-use no_proto::pointer::{NP_Scalar, NP_Value};
 use std::any::Any;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
@@ -20,8 +11,17 @@ use std::rc::Rc;
 use std::string::FromUtf8Error;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{{AtomicUsize, Ordering}};
+
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use no_proto::buffer::NP_Buffer;
+use no_proto::buffer_ro::NP_Buffer_RO;
+use no_proto::error::NP_Error;
+use no_proto::pointer::{NP_Scalar, NP_Value};
 use wasmer::{Array, Function, FunctionType, ImportObject, imports, Instance, Module, Resolver, Val, ValType, Value, WasmerEnv, WasmPtr};
 
+use mechtron_common::artifact::{Artifact, ArtifactRepository};
+use mechtron_common::buffers::BufferFactories;
+use mechtron_common::message::Message;
 
 pub struct WasmBinder<'a>
 {

@@ -1,81 +1,20 @@
-use std::collections::HashMap;
+use std::borrow::Borrow;
+use std::cell::{Cell, Ref, RefCell};
+use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-use std::error::Error;
+use std::ops::Deref;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-pub struct Repository
-{
-    repo_path: String,
-    cache : HashMap<Artifact,String>
-}
+use crate::configs::Configs;
 
-
-impl Repository
-{
-    pub fn new(repo_path: String) -> Self
-    {
-        return Repository {
-            repo_path: repo_path,
-            cache: HashMap::new()
-        };
-    }
-}
-
-impl ArtifactRepository for Repository
-{
-    fn fetch_artifact_bundle(&mut self, bundle: &ArtifactBundle) -> Result<(),io::Error>
-    {
-        // at this time we don't do anything
-        // later we will pull a zip file from a public repository and
-        // extract the files to 'repo_path'
-        return Ok(());
-    }
-
-    fn cache_file_as_string(&mut self, artifact_file: &Artifact) -> Result<(),Box<dyn Error>>
-    {
-        if self.cache.contains_key(artifact_file )
-        {
-            return Ok(());
-        }
-        let string = String::from_utf8(self.load_file(artifact_file)? )?;
-        self.cache.insert( artifact_file.clone(), string );
-        return Ok(());
-    }
-
-    fn load_file(&self, artifact_file: &Artifact) -> Result<Vec<u8>,io::Error>
-    {
-        let mut path = String::new();
-        path.push_str( self.repo_path.as_str() );
-        if !self.repo_path.ends_with("/")
-        {
-            path.push_str( "/" );
-        }
-        path.push_str( artifact_file.bundle.group.as_str() );
-        path.push_str( "/" );
-        path.push_str( artifact_file.bundle.id.as_str() );
-        path.push_str( "/" );
-        path.push_str( artifact_file.bundle.version.to_string().as_str() );
-        path.push_str( "/" );
-        path.push_str( artifact_file.path.as_str() );
-
-        let mut file = File::open(path)?;
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
-        return Ok(data);
-    }
-
-    fn get_cached_string(&self, artifact_file:&Artifact) -> Option<&String>
-    {
-        return  self.cache.get( artifact_file );
-    }
-
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash,Debug,Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 pub struct ArtifactBundle
 {
     pub group: String,
@@ -84,14 +23,26 @@ pub struct ArtifactBundle
 }
 
 impl ArtifactBundle {
-    pub fn parse( string: &str ) -> Result<Self,Box<dyn Error>> {
-        let mut parts = string.split(":" );
+    pub fn parse(string: &str) -> Result<Self, Box<dyn Error>> {
+        let mut parts = string.split(":");
 
         return Ok(ArtifactBundle {
             group: parts.next().unwrap().to_string(),
             id: parts.next().unwrap().to_string(),
-            version: Version::parse( parts.next().unwrap() )?
+            version: Version::parse(parts.next().unwrap())?,
         });
+    }
+
+    pub fn to(&self) -> String
+    {
+        let mut rtn = String::new();
+        rtn.push_str(self.group.as_str());
+        rtn.push_str(":");
+        rtn.push_str(self.id.as_str());
+        rtn.push_str(":");
+        rtn.push_str(self.version.to_string().as_str());
+        let rtn = rtn;
+        return rtn;
     }
 }
 
@@ -155,16 +106,19 @@ impl ArtifactYaml {
 
 pub trait ArtifactRepository
 {
-    fn fetch_artifact_bundle(&mut self, artifact: &ArtifactBundle) -> Result<(),io::Error>;
+    fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Box<dyn Error + '_>>;
+}
 
-    fn cache_file_as_string(&mut self, artifact_file: &Artifact) -> Result<(),Box<dyn Error>>;
+pub trait ArtifactCache
+{
+    fn cache(&self, artifact: &Artifact) -> Result<(), Box<dyn Error + '_>>;
 
-    fn load_file(&self, artifact_file: &Artifact) -> Result<Vec<u8>,io::Error>;
+    fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Box<dyn Error + '_>>;
 
-    fn get_cached_string(&self, artifact_file:&Artifact) -> Option<&String>;
+    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Box<dyn Error + '_>>;
 }
 
 pub trait ArtifactCacher
 {
-    fn cache(&self, repo:&mut dyn ArtifactRepository) -> Result<(),Box<dyn Error>>;
+    fn cache(&self, configs: Arc<Configs>) -> Result<(), Box<dyn Error + '_>>;
 }

@@ -2,7 +2,7 @@
 extern crate lazy_static;
 
 use std::sync::atomic::{{AtomicUsize, Ordering}};
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use no_proto::buffer::NP_Buffer;
@@ -15,6 +15,9 @@ use wasm_bindgen::prelude::*;
 use mechtron_config::artifact_config::Artifact;
 use mechtron_config::buffers::BufferFactories;
 use mechtron_config::mechtron_config::{ActorConfigYaml, MechtronConfig};
+use std::ops::Deref;
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
 
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -30,8 +33,9 @@ extern "C"
     fn host_dealloc_buffer( id: i32 );
     fn host_log( buffer_id: i32 );
     fn host_content_update( buffer_id: i32 );
-    fn host_messages( buffer_id: i32 );
-    fn mechtron_create(ctx: &MechtronContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>;
+    fn host_messages(buffer_id: i32);
+    fn host_write_artifact_as_string(artifact_name_buffer_id: i32) -> i32;
+    fn mechtron_create(ctx: &MechtronContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer) -> Result<(), Box<std::error::Error>>;
 }
 
 
@@ -106,24 +110,47 @@ impl <'a> BufferFactories for BufferFactoriesCache<'a>
 
 pub fn host_write_buffer( buffer: &NP_Buffer ) -> i32
 {
-    unsafe{
-        let buffer_id = host_alloc_buffer(buffer.calc_bytes().unwrap().current_buffer as _ );
+    unsafe {
+        let buffer_id = host_alloc_buffer(buffer.calc_bytes().unwrap().current_buffer as _);
         for b in buffer.read_bytes()
         {
-            host_append_to_buffer(buffer_id,*b as _);
+            host_append_to_buffer(buffer_id, *b as _);
         }
         return buffer_id;
     }
 }
 
-pub fn log( str: &str )
+pub fn host_write_string(str: &str) -> i32
+{
+    unsafe {
+        let buffer_id = host_alloc_buffer(str.len() as _);
+        for b in str.bytes()
+        {
+            host_append_to_buffer(buffer_id, b as _);
+        }
+        return buffer_id;
+    }
+}
+
+pub fn host_get_artifact_as_str(artifact: &str) -> Result<String, Box<dyn Error>>
+{
+    let artifact_name_buffer_id = host_write_string(artifact);
+    unsafe {
+        let artifact_as_string_buffer_id =
+            host_write_artifact_as_string(artifact_name_buffer_id);
+        let rtn = consume_string(artifact_as_string_buffer_id)?;
+        Ok(rtn)
+    }
+}
+
+pub fn log(str: &str)
 {
     unsafe
         {
             let buffer_id = host_alloc_buffer(str.len() as _);
             for b in str.as_bytes()
             {
-                host_append_to_buffer(buffer_id,*b as i32);
+                host_append_to_buffer(buffer_id, *b as i32);
             }
             host_log(buffer_id);
             host_dealloc_buffer(buffer_id);
@@ -175,10 +202,10 @@ fn consume_buffer( buffer_id: i32 ) -> Result<Box<Bytes>,Box<std::error::Error>>
     }
 }
 
-fn consume_string(  buffer_id: i32 ) -> Result<String,Box<Error>>
+fn consume_string(buffer_id: i32) -> Result<String, Box<dyn Error>>
 {
     let buffer = consume_buffer(buffer_id)?;
-    return Ok(String::from_utf8(buffer.to_vec() )?);
+    return Ok(String::from_utf8(buffer.to_vec())?);
 }
 
 #[wasm_bindgen]
@@ -266,8 +293,83 @@ pub struct MechtronContext
 
 impl MechtronContext
 {
-    fn new( ) -> Self
+    fn new() -> Self
     {
-        return MechtronContext {actor_config:Option::None};
+        return MechtronContext { actor_config: Option::None };
+    }
+}
+
+
+pub struct MechtronArtifactCache
+{
+    cache: Mutex<RefCell<HashMap<Artifact, Arc<String>>>>,
+}
+
+
+impl<'a> MechtronArtifactCache
+{
+    pub fn new(repo_path: String) -> Self
+    {
+        return MechtronArtifactCache {
+            cache: Mutex::new(RefCell::new(HashMap::new())),
+        };
+    }
+}
+
+impl<'a> ArtifactRepository for MechtronArtifactCache
+{
+    fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Box<dyn Error + '_>>
+    {
+        let lock = self.fetches.read()?;
+        if lock.contains(bundle)
+        {
+            return Ok(())
+        }
+
+        let mut lock = self.fetches.write()?;
+        lock.insert(bundle.clone());
+
+        // at this time we don't do anything
+        // later we will pull a zip file from a public repository and
+        // extract the files to 'repo_path'
+        return Ok(());
+    }
+}
+
+impl<'a> ArtifactCache for MechtronArtifactCache
+{
+    fn cache(&self, artifact: &Artifact) -> Result<(), Box<dyn Error + '_>>
+    {
+        let cache = self.cache.lock();
+        let cell = &*cache.unwrap();
+        let cache = cell.borrow();
+        if cache.contains_key(artifact)
+        {
+            return Ok(());
+        }
+        let mut cache = cell.borrow_mut();
+        let string = String::from_utf8(self.load(artifact)?)?;
+        cache.insert(artifact.clone(), Arc::new(string));
+        return Ok(());
+    }
+
+    fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Box<dyn Error + '_>>
+    {
+        host
+        return Ok(data);
+    }
+
+    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Box<dyn Error + '_>>
+    {
+        let cache = self.cache.lock();
+        let cache = cache.unwrap();
+        let cache = cache.deref();
+        let cache = cache.borrow();
+        let option = cache.get(artifact);
+
+        match option {
+            None => Err(format!("artifact is not cached: {}", artifact.to()).into()),
+            Some(rtn) => Ok(rtn.clone())
+        }
     }
 }
