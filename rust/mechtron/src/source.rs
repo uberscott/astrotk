@@ -21,7 +21,5 @@ impl <'a> Source<'a>
         }
     }
 
-    pub fn message_intake() -> &'a dyn MessageIntake<'a>
-    {
-    }
+
 }

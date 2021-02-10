@@ -6,10 +6,8 @@ use mechtron_common::message::Cycle;
 use mechtron_common::message::Message;
 
 use mechtron_common::revision::Revision;
-use std::sync::{RwLock, Arc};
+use std::sync::{RwLock, Arc, Mutex};
 use crate::content::TronKey;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
 use std::error::Error;
 
 struct MessageFutures<'a>{
@@ -25,8 +23,6 @@ struct MessageDelivery<'a>
 
 pub struct MessageStore<'a>
 {
-    sender: Arc<Sender<Message<'a>>>,
-    receiver: Arc<Receiver<Message<'a>>>,
     futures: HashMap<TronKey,RwLock<MessageFutures<'a>>>
 }
 
@@ -34,40 +30,14 @@ impl <'a> MessageStore<'a>
 {
     pub fn new()->Self
     {
-        let (sender, receiver) = mpsc::channel::<Message<'a>>(128);
         MessageStore{
-            sender: Arc::new(sender ),
-            receiver: Arc::new( receiver ),
             futures: HashMap::new()
         }
     }
 
-    pub fn intake( &self )->Box<dyn MessageIntake>
-    {
-        return Box::new(MessageChamber { sender: self.sender.clone() });
-    }
-
-    pub fn flood( &mut self ) -> Result<(),Box<dyn Error>>
-    {
-        // somehow open the receiver up until everything is drained
-        Ok(())
-    }
 
 }
 
-struct MessageChamber<'a>
-{
-    sender: Arc<Sender<Message<'a>>>
-}
-
-
-impl <'a> MessageIntake<'a> for MessageChamber<'a>
-{
-    fn intake(&mut self, message: Message) -> Result<(),Box<dyn Error>>
-    {
-        self.sender.send(message)?;
-    }
-}
 
 
 pub trait MessageIntake<'a>

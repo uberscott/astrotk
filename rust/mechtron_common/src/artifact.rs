@@ -109,7 +109,55 @@ pub trait ArtifactRepository
     fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Box<dyn Error + '_>>;
 }
 
-pub trait ArtifactCache
+pub struct ArtifactCacheMutex{
+    cache: Arc<Mutex<Box<dyn ArtifactCache>>>
+}
+
+impl ArtifactCacheMutex{
+    pub fn new( cache: Arc<Mutex<Box<dyn ArtifactCache>>> )->Self
+    {
+        ArtifactCacheMutex{
+            cache: cache
+        }
+    }
+}
+
+impl ArtifactCache for ArtifactCacheMutex{
+
+
+    fn cache(&self, artifact: &Artifact) -> Result<(), Box<dyn Error+'_>> {
+        let cache = self.cache.lock()?;
+        let result = cache.cache(artifact);
+        match result
+        {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("issue when trying to cache artifact: {:?} received message: {}",artifact,e.to_string()).into())
+        }
+
+    }
+
+    fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Box<dyn Error+'_>> {
+        let cache = self.cache.lock()?;
+        let rtn = cache.load(artifact);
+        match rtn
+        {
+            Ok(r) => Ok(r),
+            Err(e) => Err(format!("issue when trying to load artifact: {:?} received message: {}",artifact,e.to_string()).into())
+        }
+    }
+
+    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Box<dyn Error+'_>> {
+        let cache = self.cache.lock()?;
+        let rtn = cache.get(artifact);
+        match rtn
+        {
+            Ok(r) => Ok(r),
+            Err(e) => Err(format!("issue when trying to get artifact: {:?} received message: {}",artifact,e.to_string()).into())
+        }
+    }
+}
+
+pub trait ArtifactCache: Send + Sync
 {
     fn cache(&self, artifact: &Artifact) -> Result<(), Box<dyn Error + '_>>;
 
@@ -120,5 +168,5 @@ pub trait ArtifactCache
 
 pub trait ArtifactCacher
 {
-    fn cache(&self, configs: Arc<Configs>) -> Result<(), Box<dyn Error + '_>>;
+    fn cache(&self, configs: &mut Arc<Cell<Configs>>) -> Result<(), Box<dyn Error + '_>>;
 }

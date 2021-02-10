@@ -17,7 +17,7 @@ use no_proto::NP_Factory;
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use wasmer::{Cranelift, JIT, Module, Store, CompileError};
 
-use mechtron_common::artifact::{Artifact, ArtifactCacher};
+use mechtron_common::artifact::{Artifact, ArtifactCacher, ArtifactCacheMutex};
 use mechtron_common::buffers::BufferFactories;
 use mechtron_common::configs::{Configs, MechtronConfig, MechtronConfigYaml, Keeper, Parser};
 use mechtron_common::message::Message;
@@ -27,22 +27,23 @@ use crate::nucleus::NucleiStore;
 use crate::repository::FileSystemArtifactRepository;
 use crate::content::{ContentStore, TronKey};
 use crate::source::Source;
+use std::fmt::{Debug, Display};
 
 lazy_static! {
-  pub static ref SYS : System<'static> = System::new();
+  pub static ref SYS : System = System::new();
 }
 
-pub struct System<'a> {
+pub struct System {
     pub local: Local,
-    pub net: Network<'a>,
+    pub net: Network,
 }
 
-impl <'a> System<'a>
+impl System
 {
     fn new() -> Self {
         System {
             local: Local::new(),
-            net: Network::new(),
+            net: Network::new()
         }
     }
 }
@@ -51,36 +52,35 @@ pub struct Local
 {
     pub wasm_store: Store,
     pub configs: Configs,
-    pub wasm_module_keeper: Keeper<Module>
+//    pub wasm_module_keeper: Keeper<Module>
 }
 
 impl Local {
     fn new() -> Self
     {
-        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/".to_string()));
+        //let repo = Arc::new(Mutex::new(Box::new(FileSystemArtifactRepository::new("../../repo/".to_string()))));
+        let repo = Box::new(FileSystemArtifactRepository::new("../../repo/".to_string()));
         Local {
             wasm_store: Store::new(&JIT::new(Cranelift::default()).engine()),
-            configs: Configs::new(repo.clone()),
-            wasm_module_keeper: Keeper::new(repo.clone(), Box::new(WasmModuleParser)),
+            configs: Configs::new(repo),
+ //           wasm_module_keeper: Keeper::new(ArtifactCacheMutex::new(repo.clone()), Box::new(WasmModuleParser)),
         }
     }
 }
 
-pub struct Network<'a>
+pub struct Network
 {
     nucleus_seq: AtomicI64,
     sim_seq: AtomicI64,
-    router: Mutex<Box<dyn MessageRouter<'a>>>
 }
 
-impl <'a> Network<'a>
+impl Network
 {
     fn new() -> Self
     {
         Network {
             nucleus_seq: AtomicI64::new(0),
             sim_seq: AtomicI64::new(0),
-            router: Mutex::new(Box::new(LocalMessageRouter{} ) )
         }
     }
 
@@ -94,7 +94,10 @@ impl <'a> Network<'a>
 }
 
 
-struct WasmModuleParser;
+struct WasmModuleParser
+{
+    wasm_store: Store
+}
 
 impl Parser<Module> for WasmModuleParser
 {
@@ -130,6 +133,7 @@ struct Sources<'a>
     sources: RwLock<HashMap<i64,Source<'a>>>
 }
 
+
 impl <'a> Sources<'a>
 {
     pub fn new()->Self
@@ -139,7 +143,7 @@ impl <'a> Sources<'a>
         }
     }
 
-    pub fn add( &mut self, sim_id: i64 )->Result<(),Box<dyn Error>>
+    pub fn add( &mut self, sim_id: i64 )->Result<(),Box<dyn Error + '_>>
     {
         let mut sources = self.sources.write()?;
         if sources.contains_key(&sim_id)
@@ -151,8 +155,8 @@ impl <'a> Sources<'a>
 
         Ok(())
     }
-
-    pub fn get( &self, sim_id: i64 ) -> Result<&Source,Box<dyn Error>>
+    /*
+    pub fn get( &self, sim_id: i64 ) -> Result<&'a Source,Box<dyn Error+'_>>
     {
         let sources = self.sources.read()?;
         if !sources.contains_key(&sim_id)
@@ -160,8 +164,10 @@ impl <'a> Sources<'a>
             return Err(format!("sim id {} is not present in the sources",sim_id).into());
         }
 
-        let source = sources.get(&sim_id);
-        return Ok(source.unwrap());
+        let source:Option<&'a Source> = sources.get(&sim_id);
+        let source:&'a Source = source.unwrap();
+        return Ok(source);
     }
+     */
 
 }
