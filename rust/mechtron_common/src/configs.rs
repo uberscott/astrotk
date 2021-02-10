@@ -1,18 +1,18 @@
-use no_proto::NP_Factory;
-use std::sync::{Arc, RwLock, Mutex};
-use crate::artifact::{ArtifactRepository, ArtifactCache, Artifact, ArtifactBundle, ArtifactCacher, ArtifactYaml, ArtifactCacheMutex};
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::error::Error;
-use serde::{Deserialize, Serialize};
-use no_proto::error::NP_Error;
 use std::borrow::BorrowMut;
 use std::cell::Cell;
+use std::collections::HashMap;
+use std::error::Error;
 use std::ops::Deref;
+use std::sync::{Arc, RwLock};
+
+use no_proto::NP_Factory;
+use serde::{Deserialize, Serialize};
+
+use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactCacher, ArtifactRepository, ArtifactYaml};
 
 pub struct Configs
 {
-    pub artifact_cache: ArtifactCacheMutex,
+    pub artifact_cache: Arc<dyn ArtifactCache+Sync+Send>,
     pub buffer_factory_keeper: Keeper<NP_Factory<'static>>,
     pub sim_config_keeper: Keeper<SimConfig>,
     pub mechtron_config_keeper: Keeper<MechtronConfig>,
@@ -20,72 +20,32 @@ pub struct Configs
 
 impl Configs{
 
-    pub fn new(artifact_source:Box<dyn ArtifactCache>)->Self
+    pub fn new(artifact_source:Arc<dyn ArtifactCache+Sync+Send>)->Self
     {
-        let artifact_source = Arc::new(Mutex::new(artifact_source ));
         Configs{
-            artifact_cache: ArtifactCacheMutex::new(artifact_source.clone()) ,
-            buffer_factory_keeper: Keeper::new(ArtifactCacheMutex::new(artifact_source.clone() ) , Box::new(NP_Buffer_Factory_Parser )),
-            sim_config_keeper: Keeper::new(ArtifactCacheMutex::new(artifact_source.clone()), Box::new( SimConfigParser )),
-            mechtron_config_keeper: Keeper::new(ArtifactCacheMutex::new(artifact_source.clone()), Box::new( MechtronConfigParser ))
+            artifact_cache: artifact_source.clone(),
+            buffer_factory_keeper: Keeper::new(artifact_source.clone() , Box::new(NP_Buffer_Factory_Parser )),
+            sim_config_keeper: Keeper::new(artifact_source.clone(), Box::new( SimConfigParser )),
+            mechtron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( MechtronConfigParser ))
         }
     }
 }
+
 
 
 pub struct Keeper<V>
 {
-    core: RwLock<KeeperCore<V>>
+    config_cache: RwLock<HashMap<Artifact,Arc<V>>>,
+    repo: Arc<dyn ArtifactCache+Send+Sync>,
+    parser: Box<dyn Parser<V> + Send+Sync>
 }
 
 impl <V> Keeper<V>
 {
-    pub fn new(repo: ArtifactCacheMutex, parser: Box<dyn Parser<V>+Send+Sync>)->Self
+    pub fn new(repo: Arc<dyn ArtifactCache + Send + Sync>, parser: Box<dyn Parser<V> + Send + Sync>) -> Self
     {
-        Keeper{
-            core: RwLock::new(KeeperCore::new(repo,parser))
-        }
-    }
-
-    pub fn cache(&self, artifact: &Artifact ) ->Result<(),Box<dyn Error + '_>>
-    {
-       let mut core = self.core.write()?;
-       let result = core.cache(artifact);
-       match result
-       {
-           Ok(_) => Ok(()),
-           Err(e) => Err(format!("could not cache artifact: {}",artifact.to()).into())
-       }
-    }
-
-    pub fn get( &self, artifact: &Artifact ) -> Result<Arc<V>,Box<dyn Error + '_>>
-    {
-        let core= self.core.read()?;
-        let result = core.get(artifact);
-        match result {
-            Ok(rtn) => Ok(rtn),
-            Err(e) => Err(format!("could not get artifact: {} error: {}",artifact.to(),e.to_string()).into())
-        }
-    }
-}
-struct KeeperCore<V>
-{
-    config_cache: HashMap<Artifact,Arc<V>>,
-    repo: ArtifactCacheMutex,
-    parser: Box<dyn Parser<V> + Send+Sync>
-}
-
-pub trait Parser<V>
-{
-    fn parse( &self, artifact: &Artifact, str: &str )->Result<V,Box<dyn Error>>;
-}
-
-impl <V> KeeperCore<V>
-{
-    pub fn new(repo: ArtifactCacheMutex, parser: Box<dyn Parser<V>+Send+Sync>)->Self
-    {
-        KeeperCore {
-            config_cache: HashMap::new(),
+        Keeper {
+            config_cache: RwLock::new(HashMap::new()),
             parser: parser,
             repo: repo
         }
@@ -93,24 +53,39 @@ impl <V> KeeperCore<V>
 
     pub fn cache(&mut self, artifact: &Artifact ) ->Result<(),Box<dyn Error + '_>>
     {
+        let mut cache = self.config_cache.write()?;
+
+        if cache.contains_key(artifact)
+        {
+            return Ok(());
+        }
 
         self.repo.cache(&artifact);
+
+
         let str = self.repo.get(&artifact)?;
 
         let value = self.parser.parse(&artifact, str.as_ref())?;
-        self.config_cache.insert( artifact.clone(), Arc::new(value) );
+        cache.insert( artifact.clone(), Arc::new(value) );
         Ok(())
     }
 
     pub fn get( &self, artifact: &Artifact ) -> Result<Arc<V>,Box<dyn Error + '_>>
     {
-        match self.config_cache.get(&artifact)
+        let cache = self.config_cache.read()?;
+        match cache.get(&artifact)
         {
             None => Err(format!("could not find config for artifact: {}",artifact.to()).into()),
             Some(value) => Ok(value.clone())
         }
     }
 }
+
+pub trait Parser<V>
+{
+    fn parse( &self, artifact: &Artifact, str: &str )->Result<V,Box<dyn Error>>;
+}
+
 
 struct NP_Buffer_Factory_Parser;
 
@@ -167,7 +142,7 @@ impl MechtronConfig {
 }
 
 impl ArtifactCacher for MechtronConfig {
-    fn cache(&self, configs: &mut Arc<Cell<Configs>>) -> Result<(), Box<dyn Error>> {
+    fn cache(&self, _: &mut Arc<Cell<Configs>>) -> Result<(), Box<dyn Error>> {
         {
 /*            let configs = (*configs).get_mut();
             configs.buffer_factory_keeper.cache(&self.content);

@@ -10,7 +10,7 @@ use std::io::Read;
 pub struct FileSystemArtifactRepository
 {
     repo_path: String,
-    cache : Mutex<RefCell<HashMap<Artifact,Arc<String>>>>,
+    cache : RwLock<HashMap<Artifact,Arc<String>>>,
     fetches : RwLock<HashSet<ArtifactBundle>>
 }
 
@@ -21,7 +21,7 @@ impl FileSystemArtifactRepository
     {
         return FileSystemArtifactRepository {
             repo_path: repo_path,
-            cache: Mutex::new(RefCell::new(HashMap::new())),
+            cache: RwLock::new(HashMap::new()),
             fetches: RwLock::new(HashSet::new())
         };
     }
@@ -50,14 +50,18 @@ impl ArtifactCache for FileSystemArtifactRepository
 {
     fn cache(&self, artifact: &Artifact) -> Result<(),Box<dyn Error + '_>>
     {
-        let cache = self.cache.lock();
-        let cell = &*cache.unwrap();
-        let cache = cell.borrow();
+        let lock = self.fetches.read()?;
+        if !lock.contains(&artifact.bundle )
+        {
+            return Err(format!("fetch must be called on bundle: {} before artifact can be loaded: {}", artifact.bundle.to(), artifact.to() ).into());
+        }
+
+        let mut cache = self.cache.write()?;
         if cache.contains_key(artifact)
         {
             return Ok(());
         }
-        let mut cache = cell.borrow_mut();
+//        let mut cache = cell.borrow_mut();
         let string = String::from_utf8(self.load(artifact)? )?;
         cache.insert(artifact.clone(), Arc::new(string) );
         return Ok(());
@@ -94,10 +98,7 @@ impl ArtifactCache for FileSystemArtifactRepository
 
     fn get(&self, artifact:&Artifact) -> Result<Arc<String>,Box<dyn Error + '_>>
     {
-        let cache = self.cache.lock();
-        let cache = cache.unwrap();
-        let cache = cache.deref();
-        let cache = cache.borrow();
+        let cache = self.cache.read()?;
         let option = cache.get(artifact);
 
         match option {

@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::{Debug, Display};
 use std::fs::File;
 use std::io::prelude::*;
 use std::ops::Deref;
@@ -15,19 +16,18 @@ use no_proto::collection::table::NP_Table;
 use no_proto::error::NP_Error;
 use no_proto::NP_Factory;
 use no_proto::pointer::{NP_Scalar, NP_Value};
-use wasmer::{Cranelift, JIT, Module, Store, CompileError};
+use wasmer::{CompileError, Cranelift, JIT, Module, Store};
 
-use mechtron_common::artifact::{Artifact, ArtifactCacher, ArtifactCacheMutex};
+use mechtron_common::artifact::{Artifact, ArtifactCacher};
 use mechtron_common::buffers::BufferFactories;
-use mechtron_common::configs::{Configs, MechtronConfig, MechtronConfigYaml, Keeper, Parser};
+use mechtron_common::configs::{Configs, Keeper, MechtronConfig, MechtronConfigYaml, Parser};
 use mechtron_common::message::Message;
 
-use crate::message::{MessageRouter, MessageIntake};
+use crate::content::{ContentStore, TronKey};
+use crate::message::{MessageIntake, MessageRouter};
 use crate::nucleus::NucleiStore;
 use crate::repository::FileSystemArtifactRepository;
-use crate::content::{ContentStore, TronKey};
 use crate::source::Source;
-use std::fmt::{Debug, Display};
 
 lazy_static! {
   pub static ref SYS : System = System::new();
@@ -58,8 +58,7 @@ pub struct Local
 impl Local {
     fn new() -> Self
     {
-        //let repo = Arc::new(Mutex::new(Box::new(FileSystemArtifactRepository::new("../../repo/".to_string()))));
-        let repo = Box::new(FileSystemArtifactRepository::new("../../repo/".to_string()));
+        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/".to_string()));
         Local {
             wasm_store: Store::new(&JIT::new(Cranelift::default()).engine()),
             configs: Configs::new(repo),

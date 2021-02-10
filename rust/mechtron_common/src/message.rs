@@ -8,7 +8,6 @@ use crate::buffers::BufferFactories;
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use bytes::Bytes;
 use std::error::Error;
-use std::rc::Rc;
 use uuid::Uuid;
 use std::sync::Arc;
 
@@ -360,7 +359,7 @@ impl <'b> Message <'b> {
             kind: index_to_message_kind(Message::get::<i32>(&buffer, &[&index, &"kind"])?)?,
             from: match buffer.get::<i64>(&[&index,&"from",&"tron"]).unwrap() {
                 None => Option::None,
-                Some(v) => Option::Some(
+                Some(_) => Option::Some(
                     Address{ nucleus: Message::get::<i64>(&buffer, &[&index,&"from",&"nucleus"])?,
                         tron: Message::get::<i64>(&buffer, &[&index,&"from",&"tron"])?,
                         cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
