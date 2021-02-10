@@ -33,9 +33,14 @@ lazy_static! {
   pub static ref SYS : System = System::new();
 }
 
+pub fn sys()->&System
+{
+    return &SYS;
+}
+
 pub struct System {
-    pub local: Local,
-    pub net: Network,
+    local: Local,
+    net: Network,
 }
 
 impl System
@@ -46,23 +51,35 @@ impl System
             net: Network::new()
         }
     }
+
+    pub fn local(&self)->&Local
+    {
+        &self.local
+    }
+
+    pub fn net(&self)->&Network
+    {
+        &self.net
+    }
 }
 
 pub struct Local
 {
-    pub wasm_store: Store,
+    pub wasm_store: Arc<Store>,
     pub configs: Configs,
-//    pub wasm_module_keeper: Keeper<Module>
+    pub wasm_module_keeper: Keeper<Module>
 }
 
 impl Local {
     fn new() -> Self
     {
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/".to_string()));
+        let wasm_store =Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
+
         Local {
-            wasm_store: Store::new(&JIT::new(Cranelift::default()).engine()),
-            configs: Configs::new(repo),
- //           wasm_module_keeper: Keeper::new(ArtifactCacheMutex::new(repo.clone()), Box::new(WasmModuleParser)),
+            wasm_store: wasm_store.clone(),
+            configs: Configs::new(repo.clone()),
+            wasm_module_keeper: Keeper::new(repo.clone(), Box::new(WasmModuleParser { wasm_store: wasm_store.clone() })),
         }
     }
 }
@@ -95,7 +112,7 @@ impl Network
 
 struct WasmModuleParser
 {
-    wasm_store: Store
+    wasm_store: Arc<Store>
 }
 
 impl Parser<Module> for WasmModuleParser
