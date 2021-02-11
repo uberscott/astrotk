@@ -1,0 +1,15 @@
+name: Hello World Simulation
+
+trons:
+- artifact:
+    path:  hello/mechtron/hello.yaml
+  create: 
+    data:
+      artifact:
+        path: hello/data/hello-message.yaml
+
+- name: stdout
+  artifact: 
+    bundle: mechtron.io:core:0.0.1
+    path:   tron/stdout.yaml
+

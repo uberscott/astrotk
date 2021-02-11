@@ -12,6 +12,7 @@ use uuid::Uuid;
 use std::sync::Arc;
 use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New};
 use std::sync::Mutex;
+use crate::id::{Id, IdSeq};
 
 
 static MESSAGE_SCHEMA: &'static str = r#"{
@@ -270,7 +271,7 @@ impl  MessageBuilder {
 
 #[derive(Clone)]
 pub struct Message {
-    pub uuid: String,
+    pub id: Id,
     pub kind: MessageKind,
     pub from: Address,
     pub to: Address,
@@ -284,7 +285,8 @@ pub struct Message {
 
 
 impl Message {
-    pub fn new(kind: MessageKind,
+    pub fn new(seq: & mut IdSeq,
+               kind: MessageKind,
                to: Address,
                from: Address,
                delivery_moment: DeliveryMoment,
@@ -294,7 +296,7 @@ impl Message {
                 ) -> Self
     {
         Message{
-            uuid: Uuid::new_v4().to_string(),
+            id: seq.next(),
             kind: kind,
             from: from,
             to: to,
@@ -368,7 +370,7 @@ impl Message {
         Ok(())
     }
 
-    pub fn from_buffer<M: NP_Memory + Clone + NP_Mem_New>(buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M>, index: usize ) -> Result<Self,Box<dyn Error>>
+    pub fn from_buffer<M: NP_Memory + Clone + NP_Mem_New>(seq: & mut IdSeq, buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M>, index: usize ) -> Result<Self,Box<dyn Error>>
     {
         let index = index.to_string();
         let payload_artifact = Message::get::<String,M>(&buffer, &[&index,&"payload_artifact"])?;
@@ -387,7 +389,7 @@ impl Message {
         let meta= meta;
 
         let message = Message {
-            uuid: Uuid::new_v4().to_string(),
+            id: seq.next(),
             kind: index_to_message_kind(Message::get::<i32,M>(&buffer, &[&index, &"kind"])?)?,
             from:
                     Address{ nucleus: Message::get::<i64,M>(&buffer, &[&index,&"from",&"nucleus"])?,
@@ -416,20 +418,20 @@ impl Message {
         return Ok(message);
     }
 
-    pub fn messages_from_bytes(  buffer_factories: & dyn BufferFactories, bytes: &Bytes) -> Result<Vec<Self>,Box<dyn Error>>
+    pub fn messages_from_bytes(  seq: &mut IdSeq,buffer_factories: & dyn BufferFactories, bytes: &Bytes) -> Result<Vec<Self>,Box<dyn Error>>
     {
         let buffer = MESSAGES_FACTORY.open_buffer( bytes.to_vec() );
-        return Ok( Message::messages_from_buffer( buffer_factories, &buffer)? );
+        return Ok( Message::messages_from_buffer( seq, buffer_factories, &buffer)? );
     }
 
-    pub fn messages_from_buffer<M: NP_Memory + Clone + NP_Mem_New>( buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M> ) -> Result<Vec<Self>,Box<dyn Error>>
+    pub fn messages_from_buffer<M: NP_Memory + Clone + NP_Mem_New>( seq: &mut IdSeq, buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M> ) -> Result<Vec<Self>,Box<dyn Error>>
     {
         let length = buffer.data_length();
 
         let mut rtn = vec![];
         for index in 0..length
         {
-            rtn.push(Message::from_buffer(buffer_factories, buffer, index )?);
+            rtn.push(Message::from_buffer(seq, buffer_factories, buffer, index )?);
         }
 
         return Ok(rtn);

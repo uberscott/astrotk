@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, PoisonError, RwLockWriteGuard, RwLockReadGuard};
 use std::error::Error;
 use no_proto::memory::NP_Memory_Owned;
+use mechtron_common::id::{RevisionKey, TronKey};
 
 pub struct ContentStore{
     history: RwLock<HashMap<TronKey,RwLock<ContentHistory>>>
@@ -92,27 +93,8 @@ pub trait ContentRetrieval
     fn retrieve( &self, revision: &RevisionKey  )->Result<Content,Box<dyn Error+'_>>;
 }
 
-#[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
-pub struct TronKey
-{
-    nucleus_id: i64,
-    tron_id: i64
-}
 
-impl TronKey
-{
-    pub fn new( nucleus_id: i64, tron_id : i64 ) -> Self {
-        TronKey{ nucleus_id: nucleus_id,
-                 tron_id: tron_id }
-    }
-}
 
-#[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
-pub struct RevisionKey
-{
-    content_key: TronKey,
-    cycle: i64
-}
 
 #[derive(Clone)]
 pub struct Content<'buffer>

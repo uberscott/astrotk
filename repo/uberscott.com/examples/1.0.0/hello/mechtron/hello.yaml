@@ -1,0 +1,9 @@
+name: Hello World
+wasm: 
+  artifact:
+    path: hello/wasm/hello.wasm
+tron:
+  artifact:
+    path: hello/tron/printer.yaml
+      
+     

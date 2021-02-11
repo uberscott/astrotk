@@ -38,24 +38,24 @@ impl NucleiStore
 }
 
 
-struct NucTron
+struct NueTron
 {
 
 }
 
-impl Tron for NucTron {
+impl Tron for NueTron {
 
     fn init(context: InitContext) -> Result<Box<Self>, Box<dyn Error>> where Self: Sized {
-        Ok(Box::new(NucTron{}))
+        Ok(Box::new(NueTron {}))
     }
 
-    fn create(&self, context: &dyn CreateContext, content: &mut NP_Buffer<NP_Memory_Owned>, create_message: &Message) -> Result<Vec<Message>, Box<dyn Error>> {
-        content.list_push(&[&"ids"], context.id() );
-        content.list_push(&[&"names",&"nuctron"], context.id() );
-        Ok(vec!())
+    fn create(&self, context: &dyn CreateContext, content: &mut NP_Buffer<NP_Memory_Owned>, create_message: &Message) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+        content.list_push(&[&"tron_ids"], context.id() );
+        content.list_push(&[&"tron_names",&"neutron"], context.id() );
+        Ok(Option::None)
     }
 
-    fn update(&self, context: &dyn UpdateContext, content: &NP_Buffer<NP_Memory_Owned>, messages: Vec<&Message>) -> Result<Vec<Message>, Box<dyn Error>> {
-        Ok(vec!())
+    fn update(&self, context: &dyn UpdateContext, content: &NP_Buffer<NP_Memory_Owned>, messages: Vec<&Message>) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+        Ok(Option::None)
     }
 }

@@ -1,0 +1,7 @@
+{"type": "table",
+ "columns": 
+  [
+  ["tron_ids", {"type": "list", "of": {"type":"i64"}}],
+  ["tron_names", {"type": "map", "value": {"type":"i64"}}]
+  ]
+}

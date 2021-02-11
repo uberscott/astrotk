@@ -9,21 +9,23 @@ use mechtron_common::revision::Revision;
 use std::sync::{RwLock, Arc, Mutex};
 use crate::content::TronKey;
 use std::error::Error;
+use mechtron_common::id::{ContentKey, TronKey, Revision, DeliveryMomentKey};
 
-struct MessageFutures{
+struct MessageChamber {
     key: TronKey,
-    messages: HashMap<i64,RwLock<Vec<MessageDelivery>>>
+    messages: HashMap<DeliveryMomentKey,RwLock<Vec<MessageDelivery>>>
 }
 
 struct MessageDelivery
 {
-    received: i64,
+    received: Instant,
     message: Message
 }
 
 pub struct MessageStore
 {
-    futures: HashMap<i64,RwLock<MessageFutures>>
+    chambers: HashMap<TronKey,RwLock<MessageChamber>>,
+    pipeline: Arc<MessagePipeline>
 }
 
 impl MessageStore
@@ -31,25 +33,72 @@ impl MessageStore
     pub fn new()->Self
     {
         MessageStore{
-            futures: HashMap::new()
+            chambers: HashMap::new(),
+            pipeline: Arc::new(MessagePipeline::new() )
         }
     }
 
-    pub fn create( &mut self, tron_id: i64 )->Result<(),Box<dyn Error>>
+    pub fn create( &mut self, tron_id: TronKey )->Result<(),Box<dyn Error>>
     {
-        if self.futures.contains_key(&tron_id )
+        if self.chambers.contains_key(&tron_id )
         {
-            return Err(format!("MessageStore already contains tron_id {} ",tron_id).into());
+            return Err(format!("MessageStore already contains tron_id {:?} ",tron_id).into());
         }
 
-        self.futures.insert(tron_id,RwLock::new(MessageFutures::new()));
+        self.chambers.insert(tron_id, RwLock::new(MessageChamber::new()));
 
         return Ok(());
     }
 
+    pub fn intake( &self )->Arc<dyn MessageIntake>
+    {
+        return self.pipeline.clone();
+    }
+
+    pub fn flood(&mut self)
+    {
+        let messages = self.pipeline.flood();
+    }
 }
 
 
+pub struct MessagePipeline
+{
+    pipeline: Mutex<Vec<MessageDelivery>>
+}
+
+impl MessageIntake for MessagePipeline{
+
+    fn intake(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
+        let mut pipeline = self.pipeline.lock()?;
+        let delivery = MessageDelivery{
+            received: Instant::now(),
+            message: message
+        };
+        pipeline.push(delivery );
+        Ok(())
+    }
+}
+
+impl MessagePipeline{
+
+    pub fn new()->Self{
+       MessagePipeline{
+           pipeline: Mutex::new(vec!() )
+       }
+    }
+
+    pub fn flood(&mut self)->Vec<MessageDelivery>
+    {
+        let mut pipeline = self.pipeline.lock()?;
+        let mut rtn = vec!();
+        while let Some(delivery)= pipeline.pop()
+        {
+            rtn.push(delivery );
+        }
+        return rtn;
+    }
+}
 
 pub trait MessageIntake
 {

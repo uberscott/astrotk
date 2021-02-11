@@ -11,12 +11,12 @@ pub trait Tron
     fn create (&self,
                context: &dyn CreateContext,
                content: &NP_Buffer<NP_Memory_Owned>,
-               create_message: &Message) -> Result<(Vec<Message>), Box<dyn Error>>;
+               create_message: &Message) -> Result<(Option<Vec<Message>>), Box<dyn Error>>;
 
     fn update( &self,
                context: &dyn UpdateContext,
                content: &NP_Buffer<NP_Memory_Owned>,
-               messages: Vec<&Message>) -> Result<Vec<Message>, Box<dyn Error>>;
+               messages: Vec<&Message>) -> Result<Option<Vec<Message>>, Box<dyn Error>>;
 }
 
 pub trait UpdateContext

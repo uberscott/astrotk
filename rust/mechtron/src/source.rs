@@ -1,25 +1,28 @@
-use crate::content::{ContentStore, TronKey};
+use crate::content::{ContentStore};
 use crate::nucleus::NucleiStore;
 use crate::message::{MessageStore, MessageIntake};
 use std::error::Error;
 use mechtron_common::revision::Revision;
+use mechtron_common::id::Id;
+use mechtron_common::id::TronKey;
+use mechtron_common::id::Revision;
 
 pub struct Source
 {
-    sim_id: i64,
+    sim_id: Id,
     pub content: ContentStore,
-    pub nuclei: Vec<i64>,
-//    pub messages: MessageStore<'a>
+    pub nuclei: Vec<Id>,
+    pub messages: MessageStore
 }
 
 impl Source
 {
-    pub fn new(sim_id:i64)->Self{
+    pub fn new(sim_id:Id)->Self{
         Source{
             sim_id: sim_id,
             content: ContentStore::new(),
             nuclei: vec!(),
-//            messages: MessageStore::new()
+            messages: MessageStore::new()
         }
     }
 
@@ -28,15 +31,22 @@ impl Source
         self.id
     }
 
-    pub fn add_nuclues(&mut self, nucleus_id: i64, nuctron_id: i64 ) -> Result<(),Box<dyn Error>>
+    pub fn add_nucleus(&mut self, nucleus_id: Id, nuctron_id: Id) -> Result<(),Box<dyn Error>>
     {
-        self.nuclei.push(nucleus_id);
+        self.nuclei.push(nucleus_id.clone() );
         self.content.create(&TronKey::new(nucleus_id, nuctron_id ) )?;
         return Ok(())
     }
 
-    pub fn revise( from: Revision, to: Revision )
+    pub fn revise( from: Revision, to: Revision )->Result<(),Box<dyn Error>>
     {
+        if from.cycle != to.cycle-1
+        {
+            return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
+        }
 
+
+
+        Ok(())
     }
 }

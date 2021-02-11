@@ -1,0 +1,7 @@
+{"type": "table",
+ "columns": 
+  [
+  ["nuclues_ids", {"type": "list", "of": {"type":"i64"}}],
+  ["nucleus_names", {"type": "map", "value": {"type":"i64"}}]
+  ]
+}

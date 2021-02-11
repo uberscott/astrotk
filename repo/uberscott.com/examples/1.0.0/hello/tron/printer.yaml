@@ -1,0 +1,14 @@
+kind: printer 
+name: Printer 
+description: this is a simple interface for printing things!
+  
+messages:
+  create:
+    artifact:
+      path: 
+        path: schema/greeting.json
+  outbound:
+  - name: println
+    artifact:
+      bundle: mechtron.io:core:0.0.1
+      path: schema/stdout/println.json

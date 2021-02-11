@@ -136,12 +136,20 @@ impl Parser<TronConfig> for TronConfigParser
 }
 
 
+#[derive(Clone)]
 pub struct MechtronConfig {
     pub source: Artifact,
     pub wasm: Artifact,
-    pub tron_config: Artifact
+    pub tron: TronConfigRef
 }
 
+#[derive(Clone)]
+pub struct TronConfigRef
+{
+    pub artifact: Artifact
+}
+
+#[derive(Clone)]
 pub struct TronConfig{
     pub kind: Option<String>,
     pub name: String,
@@ -151,29 +159,34 @@ pub struct TronConfig{
     pub messages: Option<MessagesConfig>
 }
 
+#[derive(Clone)]
 pub struct MessagesConfig
 {
     pub create: Option<CreateMessageConfig>
 }
 
+#[derive(Clone)]
 pub struct ContentConfig
 {
     pub artifact: Artifact
 }
 
+#[derive(Clone)]
 pub struct CreateMessageConfig
 {
     pub artifact: Artifact
 }
 
-pub struct InMessageConfig
+#[derive(Clone)]
+pub struct InboundMessageConfig
 {
     pub name: String,
     pub phase: Option<String>,
     pub artifact: Vec<Artifact>
 }
 
-pub struct OutMessageConfig
+#[derive(Clone)]
+pub struct OutboundMessageConfig
 {
    pub name: String,
    pub artifact: Artifact
@@ -196,7 +209,7 @@ impl ArtifactCacher for TronConfig{
 
 impl ArtifactCacher for MechtronConfig {
     fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error>> {
-       configs.tron_config_keeper.cache(&self.tron_config);
+       configs.tron_config_keeper.cache(&self.tron.artifact);
        Ok(())
     }
 }
@@ -207,7 +220,7 @@ pub struct MechtronConfigYaml
 {
     name: String,
     wasm: ArtifactYaml,
-    tron_config: ArtifactYaml
+    tron: ArtifactYaml
 }
 
 impl MechtronConfigYaml {
@@ -223,12 +236,17 @@ impl MechtronConfigYaml {
         return Ok( MechtronConfig {
             source: artifact.clone(),
             wasm: self.wasm.to_artifact(default_bundle)?,
-            tron_config: self.tron_config.to_artifact(default_bundle)?,
+            tron: TronConfigRef{ artifact: self.tron.to_artifact(default_bundle)? },
         } )
     }
 }
 
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct TronConfigRefYaml
+{
+  artifact: ArtifactYaml
+}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct TronConfigYaml
@@ -276,6 +294,7 @@ pub struct ContentConfigYaml
 pub struct PortConfigYaml
 {
     name: String,
+    description: Option<String>,
     phase: Option<String>,
     artifact: ArtifactYaml
 }
@@ -326,8 +345,35 @@ impl TronConfigYaml {
 pub struct SimConfig{
     source: Artifact,
     name: String,
-    main: Artifact,
-    create_message: Artifact
+    description: Option<String>,
+    trons: Vec<SimTronConfig>
+}
+
+pub struct SimTronConfig
+{
+    name: Option<String>,
+    artifact: Artifact,
+    create: Option<SimCreateTronConfig>
+}
+
+impl ArtifactCacher for SimTronConfig{
+    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error+'_>> {
+        configs.tron_config_keeper.cache( &self.artifact )?;
+        if self.create.is_some()
+        {
+            configs.artifact_cache.cache( &self.create.as_ref().unwrap().data.artifact )?;
+        }
+        Ok(())
+    }
+}
+
+pub struct SimCreateTronConfig
+{
+    data: DataRef
+}
+
+pub struct DataRef{
+    artifact: Artifact
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -335,7 +381,28 @@ pub struct SimConfigYaml
 {
     name: String,
     main: ArtifactYaml,
-    create_message: ArtifactYaml
+    description: Option<String>,
+    trons: Vec<SimTronConfigYaml>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct SimTronConfigYaml
+{
+    name: Option<String>,
+    artifact: ArtifactYaml,
+    create: Option<CreateSimTronConfigYaml>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreateSimTronConfigYaml
+{
+    data: DataRefYaml
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct DataRefYaml
+{
+    artifact: ArtifactYaml
 }
 
 impl SimConfigYaml
@@ -351,19 +418,29 @@ impl SimConfigYaml
         Ok( SimConfig{
             source: artifact.clone(),
             name: self.name.clone(),
-            main: self.main.to_artifact(default_artifact)?,
-            create_message: self.create_message.to_artifact(default_artifact)?
+            description: self.description.clone(),
+            trons: self.trons.iter().map( |t| { SimTronConfig{
+                name: t.name.clone(),
+                artifact: t.artifact.to_artifact(&default_artifact)?,
+                create: match &t.create {
+                    None => Option::None,
+                    Some(c) => Option::Some( SimCreateTronConfig{
+                        data: DataRef{ artifact: c.data.artifact.to_artifact(&default_artifact)? }
+                    } )
+                }
+            }} ).collect(),
         } )
     }
 }
 
 impl ArtifactCacher for SimConfig {
     fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error>> {
-/*        let configs = (*configs).get_mut();
-        configs.buffer_factory_keeper.cache(&self.create_message);
-        configs.mechtron_config_keeper.cache(&self.main);
 
- */
+        for tron in self.trons
+        {
+            tron.cache( configs )?
+        }
+
         Ok(())
     }
 }

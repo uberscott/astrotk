@@ -1,0 +1,8 @@
+kind: stdout
+name: StdOut
+description: Print a single line to stdout
+messages:
+  inbound:
+  - name: println
+    artifact:
+      path: schema/stdout/println.json

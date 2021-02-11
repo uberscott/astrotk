@@ -27,6 +27,7 @@ use crate::message::{MessageIntake, MessageRouter};
 use crate::nucleus::NucleiStore;
 use crate::repository::FileSystemArtifactRepository;
 use crate::source::Source;
+use mechtron_common::id::{IdSeq, Id};
 
 lazy_static! {
   pub static ref SYS : System = System::new();
@@ -82,8 +83,7 @@ impl Local {
 
 pub struct Network
 {
-    nucleus_seq: AtomicI64,
-    sim_seq: AtomicI64,
+    pub id_seq: IdSeq
 }
 
 impl Network
@@ -91,17 +91,8 @@ impl Network
     fn new() -> Self
     {
         Network {
-            nucleus_seq: AtomicI64::new(0),
-            sim_seq: AtomicI64::new(0),
+            id_seq: IdSeq::new(0)
         }
-    }
-
-    pub fn next_nucleus_id(&self) -> i64 {
-       self.nucleus_seq.fetch_add(1,Ordering::Relaxed)
-    }
-
-    pub fn next_sim_id(&self) -> i64 {
-        self.sim_seq.fetch_add(1,Ordering::Relaxed)
     }
 }
 
@@ -142,7 +133,7 @@ impl MessageRouter for LocalMessageRouter
 
 struct Sources
 {
-    sources: RwLock<HashMap<i64,Arc<Source>>>
+    sources: RwLock<HashMap<Id,Arc<Source>>>
 }
 
 
@@ -155,7 +146,7 @@ impl Sources
         }
     }
 
-    pub fn add( &mut self, sim_id: i64 )->Result<(),Box<dyn Error + '_>>
+    pub fn add( &mut self, sim_id: Id )->Result<(),Box<dyn Error + '_>>
     {
         let mut sources = self.sources.write()?;
         if sources.contains_key(&sim_id)
@@ -168,7 +159,7 @@ impl Sources
         Ok(())
     }
 
-    pub fn get( &self, sim_id: i64 ) -> Result<Arc<Source>,Box<dyn Error+'_>>
+    pub fn get( &self, sim_id: Id ) -> Result<Arc<Source>,Box<dyn Error+'_>>
     {
         let sources = self.sources.read()?;
         if !sources.contains_key(&sim_id)

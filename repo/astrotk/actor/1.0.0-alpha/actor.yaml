@@ -1,7 +1,0 @@
-name: My First Actor
-wasm:
-  path: actor.wasm
-content: 
-  path: content.json
-create_message:
-  path: create.json
