@@ -146,28 +146,28 @@ impl Sources
         }
     }
 
-    pub fn add( &mut self, sim_id: Id )->Result<(),Box<dyn Error + '_>>
+    pub fn add( &mut self, sim_id: &Id )->Result<(),Box<dyn Error + '_>>
     {
         let mut sources = self.sources.write()?;
-        if sources.contains_key(&sim_id)
+        if sources.contains_key(sim_id)
         {
-           return Err(format!("sim id {} has already been added to the sources",sim_id).into());
+           return Err(format!("sim id {:?} has already been added to the sources",sim_id).into());
         }
 
-        sources.insert( sim_id, Arc::new(Source::new(sim_id)));
+        sources.insert( sim_id.clone(), Arc::new(Source::new(sim_id.clone())));
 
         Ok(())
     }
 
-    pub fn get( &self, sim_id: Id ) -> Result<Arc<Source>,Box<dyn Error+'_>>
+    pub fn get( &self, sim_id: &Id ) -> Result<Arc<Source>,Box<dyn Error+'_>>
     {
         let sources = self.sources.read()?;
-        if !sources.contains_key(&sim_id)
+        if !sources.contains_key(sim_id)
         {
-            return Err(format!("sim id {} is not present in the sources",sim_id).into());
+            return Err(format!("sim id {:?} is not present in the sources",sim_id).into());
         }
 
-        let source= sources.get(&sim_id).unwrap();
+        let source= sources.get(sim_id).unwrap();
         return Ok(source.clone());
     }
 }

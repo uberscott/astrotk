@@ -32,10 +32,24 @@ impl IdSeq {
 }
 
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
+pub enum NucleusKind
+{
+    Source,
+    Replica(Id)
+}
+
+#[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
+pub struct NucleusKey
+{
+    id: Id,
+    kind: NucleusKind
+}
+
+#[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
 pub struct TronKey
 {
-    nucleus_id: Id,
-    tron_id: Id
+    pub nucleus_id: Id,
+    pub tron_id: Id,
 }
 
 impl TronKey{

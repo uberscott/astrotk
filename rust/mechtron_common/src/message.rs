@@ -12,7 +12,7 @@ use uuid::Uuid;
 use std::sync::Arc;
 use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New};
 use std::sync::Mutex;
-use crate::id::{Id, IdSeq};
+use crate::id::{Id, IdSeq, TronKey, Revision};
 
 
 static MESSAGE_SCHEMA: &'static str = r#"{
@@ -20,16 +20,15 @@ static MESSAGE_SCHEMA: &'static str = r#"{
     "of":
     {"type": "table",
     "columns": [
-        ["uuid",   {"type": "string"}],
-        ["kind",   {"type": "i32"}],
-        ["from",    {"type": "table", "columns":[["nucleus",{"type":"i64"}],["tron",{"type":"i64"}],["cycle",{"type":"i64"}],["phase",{"type":"u8"}]]}],
-        ["to",      {"type": "table", "columns":[["nucleus",{"type":"i64"}],["tron",{"type":"i64"}],["cycle",{"type":"i64"}],["phase",{"type":"u8"}]]}],
-        ["delivery_moment", {"type": "enum", "choices": ["outer", "inner"], "default": "outer"}],
-        ["port",   {"type": "string"}],
+        ["id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],
+        ["kind",   {"type": "u8"}],
+        ["from",    {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}]]}],
+        ["to",      {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}],["phase",{"type":"u8"}]]},["inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],["port",   {"type": "string"}]],
+
         ["payload",   {"type": "bytes"}],
         ["payload_artifact",   {"type": "string"}],
         ["meta",   {"type": "map","value": { "type": "string" } }],
-        ["transaction",   {"type": "string"}]
+        ["transaction",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]
         ]
 }"#;
 
@@ -41,21 +40,20 @@ static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
     "columns": [
         ["kind",   {"type": "i32"}],
 
+        ["to_tron",  {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]]}],
+
         ["to_nucleus_lookup_name",      {"type": "string"}],
         ["to_tron_lookup_name",      {"type": "string"}],
-        ["to_nucleus_id",      {"type": "i64"}],
-        ["to_tron_id",      {"type": "i64"}],
         ["to_cycle_kind",      {"type": "i64"}],
         ["to_cycle",      {"type": "i64"}],
         ["to_phase",      {"type": "u8"}],
+        ["to_inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],
+        ["to_port",   {"type": "string"}],
 
-        ["delivery_moment", {"type": "enum", "choices": ["outer", "inner"], "default": "outer"}],
-
-        ["port",   {"type": "string"}],
         ["payload",   {"type": "bytes"}],
         ["payload_artifact",   {"type": "string"}],
         ["meta",   {"type": "map","value": { "type": "string" } }],
-        ["transaction",   {"type": "string"}]
+        ["transaction",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]
         ]
 }"#;
 
@@ -66,11 +64,24 @@ static ref MESSAGE_BUILDERS_FACTORY : NP_Factory<'static> = NP_Factory::new(MESS
 
 
 #[derive(Clone)]
-pub struct Address {
-    pub nucleus: i64,
-    pub tron: i64,
+pub struct To {
+    pub tron: TronKey,
+    pub port: String,
     pub cycle: Cycle,
     pub phase: u8,
+    pub inter_delivery_type: InterDeliveryType,
+}
+
+pub struct From {
+    pub tron: TronKey,
+    pub cycle: i64
+}
+
+
+
+impl To
+{
+
 }
 
 
@@ -82,25 +93,27 @@ pub enum Cycle{
 
 #[derive(Clone)]
 pub enum MessageKind{
-    Info,
+    Create,
+    Update,
     Content,
     Request,
     Response,
     Reject
 }
 
-fn message_kind_to_index(kind: &MessageKind ) -> i32
+fn message_kind_to_index(kind: &MessageKind ) -> u8
 {
     match kind {
-        MessageKind::Info =>0,
-        MessageKind::Content =>1,
-        MessageKind::Request =>2,
-        MessageKind::Response =>3,
-        MessageKind::Reject=>4
+        MessageKind::Create=>0,
+        MessageKind::Update=>1,
+        MessageKind::Content =>2,
+        MessageKind::Request =>3,
+        MessageKind::Response =>4,
+        MessageKind::Reject=>5
     }
 }
 
-fn index_to_message_kind( index: i32 ) -> Result<MessageKind,Box<dyn Error>>
+fn index_to_message_kind( index: u8 ) -> Result<MessageKind,Box<dyn Error>>
 {
     match index {
         0 => Ok(MessageKind::Info),
@@ -112,11 +125,13 @@ fn index_to_message_kind( index: i32 ) -> Result<MessageKind,Box<dyn Error>>
     }
 }
 
+
+// meaning the "between" delivery which can either be between cycles or phases
 #[derive(Clone)]
-pub enum DeliveryMoment
+pub enum InterDeliveryType
 {
-    Outer,
-    Inner
+    Cyclic,
+    Phasic
 }
 
 
@@ -125,17 +140,17 @@ pub enum DeliveryMoment
 pub struct MessageBuilder {
     pub kind: Option<MessageKind>,
     pub to_nucleus_lookup_name: Option<String>,
-    pub to_nucleus_id: Option<i64>,
+    pub to_nucleus_id: Option<Id>,
     pub to_tron_lookup_name: Option<String>,
-    pub to_tron_id: Option<i64>,
+    pub to_tron_id: Option<Id>,
     pub to_cycle_kind: Option<Cycle>,
     pub to_cycle: Option<i64>,
-    pub delivery_moment: DeliveryMoment,
-    pub port: Option<String>,
+    pub to_port: Option<String>,
+    pub to_inter_delivery_type: Option<InterDeliveryType>,
     pub payload: Option<NP_Buffer<NP_Memory_Owned>>,
     pub payload_artifact: Option<Artifact>,
     pub meta: Option<HashMap<String,String>>,
-    pub transaction: Option<String>
+    pub transaction: Option<Id>
 }
 
 impl  MessageBuilder {
@@ -149,8 +164,8 @@ impl  MessageBuilder {
             to_tron_id: None,
             to_cycle_kind: None,
             to_cycle: None,
-            delivery_moment: DeliveryMoment::Outer,
-            port: None,
+            to_port: None,
+            to_inter_delivery_type: None,
             payload: None,
             payload_artifact: None,
             meta: None,
@@ -178,10 +193,6 @@ impl  MessageBuilder {
         if self.to_cycle_kind.is_some() != self.to_cycle.is_some()
         {
             return Err("message builder to_cycle_kind OR to_cycle must be set (but not both)".into());
-        }
-        if self.port.is_none()
-        {
-            return Err("message builder port must be set".into());
         }
         if self.payload.is_none()
         {
@@ -232,7 +243,7 @@ impl  MessageBuilder {
         }
 
         if self.to_nucleus_id.is_some() {
-            buffer.set(&[&index, &"to_nucleus_id"], self.to_nucleus_id.unwrap())?;
+            buffer.set(&[&index, &"to_nucleus_id", &""], self.to_nucleus_id.unwrap())?;
         }
         if self.to_tron_lookup_name.is_some() {
             buffer.set(&[&index, &"to_tron_lookup_name"], self.to_tron_lookup_name.as_ref().unwrap().as_str())?;
@@ -242,12 +253,17 @@ impl  MessageBuilder {
             buffer.set(&[&index, &"to_tron_id"], self.to_tron_id.unwrap())?;
         }
 
-        buffer.set(&[&index, &"delivery_moment"], match &self.delivery_moment{
-            DeliveryMoment::Outer=>"outer",
-            DeliveryMoment::Inner=>"inner"
-        } )?;
+        buffer.set(&[&index, &"to_port"], self.to_port.unwrap())?;
 
-        buffer.set( &[&index,&"port"], self.port.as_ref().unwrap().as_str() )?;
+
+        if self.to_inter_delivery_type.is_some()
+        {
+            buffer.set(&[&index, &"to_inter_delivery_type"], match &self.to_inter_delivery_type.unwrap(){
+                InterDeliveryType::Cyclic=>"cyclic",
+                InterDeliveryType::Phasic=>"phasic",
+            } )?;
+        }
+
         buffer.set( &[&index,&"payload"], self.payload.as_ref().unwrap().read_bytes() )?;
         buffer.set( &[&index,&"payload_artifact"], self.payload_artifact.as_ref().unwrap().to() )?;
 
@@ -273,24 +289,20 @@ impl  MessageBuilder {
 pub struct Message {
     pub id: Id,
     pub kind: MessageKind,
-    pub from: Address,
-    pub to: Address,
-    pub delivery_moment: DeliveryMoment,
-    pub port: String,
+    pub from: From,
+    pub to: To,
     pub payload: Arc<NP_Buffer<NP_Memory_Owned>>,
     pub payload_artifact: Artifact,
     pub meta: HashMap<String,String>,
-    pub transaction: Option<String>
+    pub transaction: Option<Id>
 }
 
 
 impl Message {
     pub fn new(seq: & mut IdSeq,
                kind: MessageKind,
-               to: Address,
-               from: Address,
-               delivery_moment: DeliveryMoment,
-               port: String,
+               from: From,
+               to: To,
                payload: NP_Buffer<NP_Memory_Owned>,
                payload_artifact: Artifact,
                 ) -> Self
@@ -300,8 +312,6 @@ impl Message {
             kind: kind,
             from: from,
             to: to,
-            delivery_moment: delivery_moment,
-            port: port,
             payload: Arc::new(payload),
             payload_artifact: payload_artifact,
             meta: HashMap::new(),
@@ -329,30 +339,31 @@ impl Message {
     {
         let index = index.to_string();
         buffer.set( &[&index,&"kind"], message_kind_to_index(&self.kind) )?;
-        buffer.set(&[&index, &"from", &"tron"], self.from.tron)?;
-        buffer.set(&[&index, &"from", &"nucleus"], self.from.nucleus)?;
-        buffer.set(&[&index, &"from", &"phase"], self.from.phase)?;
-        match &self.from.cycle
-        {
-            Cycle::Some(c)=>buffer.set(&[&index, &"from", &"cycle"], c.clone())?,
-            Cycle::Next=> false
-        };
+        buffer.set(&[&index, &"from", &"nucleus_id",&"seq_id"],&self.from.tron.nucleus_id.seq_id)?;
+        buffer.set(&[&index, &"from", &"nucleus_id",&"id"],&self.from.tron.nucleus_id.id)?;
+        buffer.set(&[&index, &"from", &"tron_id",&"seq_id"],&self.from.tron.tron_id.seq_id)?;
+        buffer.set(&[&index, &"from", &"tron_id",&"id"],&self.from.tron.tron_id.id)?;
+        buffer.set(&[&index, &"from", &"cycle"], self.from.cycle.clone())?;
 
-        buffer.set( &[&index,&"to",&"tron"], self.to.tron )?;
-        buffer.set( &[&index,&"to",&"nucleus"], self.to.nucleus)?;
-        buffer.set(&[&index, &"to", &"phase"], self.from.phase)?;
-        match &self.from.cycle
+        buffer.set(&[&index, &"to", &"nucleus_id",&"seq_id"],&self.to.tron.nucleus_id.seq_id)?;
+        buffer.set(&[&index, &"to", &"nucleus_id",&"id"],&self.to.tron.nucleus_id.id)?;
+        buffer.set(&[&index, &"to", &"tron_id",&"seq_id"],&self.to.tron.tron_id.seq_id)?;
+        buffer.set(&[&index, &"to", &"tron_id",&"id"],&self.to.tron.tron_id.id)?;
+        buffer.set(&[&index, &"to", &"phase"], self.to.phase)?;
+        buffer.set(&[&index, &"to", &"port"], self.to.port.clone() )?;
+        buffer.set(&[&index, &"to", &"inter_delivery_type"], match &self.inter_delivery_type {
+            InterDeliveryType::Cyclic=>"cyclic",
+            InterDeliveryType::Phasic=>"phasic"
+        } )?;
+
+        match &self.to.cycle
         {
             Cycle::Some(c)=>buffer.set(&[&index, &"to", &"cycle"], c.clone())?,
             Cycle::Next=> false
         };
 
-        buffer.set(&[&index, &"delivery_moment"], match &self.delivery_moment{
-            DeliveryMoment::Outer=>"outer",
-            DeliveryMoment::Inner=>"inner"
-        } )?;
 
-        buffer.set( &[&index,&"port"], self.port.clone() )?;
+
         buffer.set( &[&index,&"payload"], self.payload.read_bytes() )?;
         buffer.set( &[&index,&"payload_artifact"], self.payload_artifact.to() )?;
 
@@ -389,31 +400,47 @@ impl Message {
         let meta= meta;
 
         let message = Message {
-            id: seq.next(),
-            kind: index_to_message_kind(Message::get::<i32,M>(&buffer, &[&index, &"kind"])?)?,
-            from:
-                    Address{ nucleus: Message::get::<i64,M>(&buffer, &[&index,&"from",&"nucleus"])?,
-                        tron: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron"])?,
-                        cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
-                            Some(cycle) => Cycle::Some(cycle),
-                            None => Cycle::Next
-                        },
-                        phase:Message::get::<u8,M>(&buffer, &[&index,&"from",&"phase"])?
-                    }
-            ,to: Address{ nucleus: Message::get::<i64,M>(&buffer, &[&index,&"to",&"nucleus"])?,
-                tron: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron"])?,
-                cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
-                    Some(cycle) => Cycle::Some(cycle),
-                    None => Cycle::Next
-                },
-                phase:Message::get::<u8,M>(&buffer, &[&index,&"to",&"phase"])?
+            id: Id{
+                seq_id: Message::get::<i64,M>(&buffer, &[&index,&"id",&"seq_id"])?,
+                id: Message::get::<i64,M>(&buffer, &[&index,&"id",&"id"])?
             },
-            delivery_moment: match Message::get::<String,M>(&buffer, &[&index,&"payload_artifact"])?.as_str() { "inner" => DeliveryMoment::Inner, _=>DeliveryMoment::Outer },
-            port: Message::get::<String,M>(&buffer,&[&index,&"port"])?,
-            payload: Arc::new(buffer_factories.create_buffer_from( &payload_artifact, payload )?),
+            kind: index_to_message_kind(Message::get::<u8,M>(&buffer, &[&index, &"kind"])?)?,
+            from:
+                    From{ tron: TronKey{ nucleus_id : Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"nucleus_id",&"seq_id"])?,
+                                                          id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"nucleus_id",&"id"])? },
+                                             tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"tron_id",&"seq_id"])?,
+                                                          id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"tron_id",&"id"])? }},
+                    cycle: Message::get::<i64,M>(&buffer, &[&index,&"from",&"cycle"])?
+
+                    } ,
+
+
+                to:To{ tron: TronKey{ nucleus_id : Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"nucleus_id",&"seq_id"])?,
+                    id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"nucleus_id",&"id"])? },
+                    tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"seq_id"])?,
+                        id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"id"])? }},
+                    cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
+                        Some(cycle) => Cycle::Some(cycle),
+                        None => Cycle::Next
+                    },
+                    phase:Message::get::<u8,M>(&buffer, &[&index,&"to",&"phase"])?,
+                    port:Message::get::<String,M>(&buffer, &[&index,&"to",&"port"])?,
+                    inter_delivery_type: match Message::get::<String,M>(&buffer, &[&index,&"to",&"inter_delivery_type"])?{
+                       &"cyclic"=>InterDeliveryType::Cyclic,
+                        &"phasic"=>InterDeliveryType::Phasic,
+                        _ => {}
+                    }
+                },
+
+            payload: Arc::new(buffer_factories.create_buffer_from(&payload_artifact, payload )?),
             payload_artifact: payload_artifact,
             meta: meta,
-            transaction: buffer.get::<String>(&[&index,&"transaction"] ).unwrap()
+            transaction: match buffer.get::<i64>( &[&index,&"transaction", &"seq_id"] )?{
+                None=>Option::None,
+                Some(seq_id)=>Some( Id{ seq_id:seq_id,
+                                              id: buffer.get::<i64>( &[&index,&"transaction", &"seq_id"] )?.unwrap()
+                 })
+            }
         };
         return Ok(message);
     }

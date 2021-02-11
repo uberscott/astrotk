@@ -720,6 +720,7 @@ dependencies = [
  "bytes",
  "lazy_static",
  "mechtron",
+ "mechtron_common",
  "no_proto",
  "semver",
  "wasmer",

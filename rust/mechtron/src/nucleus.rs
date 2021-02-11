@@ -49,7 +49,7 @@ impl Tron for NueTron {
         Ok(Box::new(NueTron {}))
     }
 
-    fn create(&self, context: &dyn CreateContext, content: &mut NP_Buffer<NP_Memory_Owned>, create_message: &Message) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+    fn create(&self, context: &dyn CreateContext, content: &mut NP_Buffer<NP_Memory_Owned>, create: &Message) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
         content.list_push(&[&"tron_ids"], context.id() );
         content.list_push(&[&"tron_names",&"neutron"], context.id() );
         Ok(Option::None)

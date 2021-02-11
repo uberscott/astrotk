@@ -38,14 +38,12 @@ impl Source
         return Ok(())
     }
 
-    pub fn revise( from: Revision, to: Revision )->Result<(),Box<dyn Error>>
+    pub fn revise( &mut self, from: Revision, to: Revision )->Result<(),Box<dyn Error>>
     {
         if from.cycle != to.cycle-1
         {
             return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
         }
-
-
 
         Ok(())
     }
