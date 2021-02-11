@@ -3,11 +3,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, PoisonError, RwLockWriteGuard, RwLockReadGuard};
 use std::error::Error;
 use no_proto::memory::NP_Memory_Owned;
-use mechtron_common::id::{RevisionKey, TronKey};
+use mechtron_common::id::{RevisionKey, TronKey, Revision, ContentKey};
+use mechtron_common::content::Content;
+
+
+
 
 pub struct ContentStore{
     history: RwLock<HashMap<TronKey,RwLock<ContentHistory>>>
 }
+
 
 impl ContentStore
 {
@@ -58,7 +63,7 @@ impl ContentIntake for ContentStore
 
 impl ContentRetrieval for ContentStore{
 
-    fn retrieve(&self, revision: &RevisionKey) -> Result<Content, Box<dyn Error+'_>> {
+    fn retrieve(&self, revision: &ContentKey) -> Result<Content, Box<dyn Error+'_>> {
         let history = self.history.read()?;
         if !history.contains_key(&revision.content_key )
         {
@@ -94,45 +99,17 @@ pub trait ContentRetrieval
 }
 
 
-
-
-#[derive(Clone)]
-pub struct Content<'buffer>
-{
-    revision: RevisionKey,
-    buffer: Arc<NP_Buffer<NP_Memory_Owned>>
-}
-
-impl <'buffer> Content<'buffer>
-{
-    fn new( revision: RevisionKey, buffer: NP_Buffer<NP_Memory_Owned> )->Self
-    {
-       Content{
-           revision:revision,
-           buffer:Arc::new(buffer)
-       }
-    }
-
-    fn from_arc( revision: RevisionKey, buffer: Arc<NP_Buffer<NP_Memory_Owned>> )->Self
-    {
-        Content{
-            revision:revision,
-            buffer:buffer
-        }
-    }
-}
-
 pub struct ContentHistory
 {
     key: TronKey,
-    buffers: HashMap<RevisionKey,Arc<NP_Buffer<NP_Memory_Owned>>>,
+    content: HashMap<ContentKey,Content>,
 }
 
 impl ContentHistory {
     fn new(key: TronKey) ->Self{
         ContentHistory{
             key: key,
-            buffers: HashMap::new()
+            content: HashMap::new()
         }
     }
 }
@@ -146,7 +123,7 @@ impl ContentIntake for ContentHistory
             return Err(format!("history content for revision {:?} already exists.", content.revision).into());
         }
 
-        self.buffers.insert( content.revision, content.buffer );
+        self.buffers.insert( content.revision, content.data);
 
         Ok(())
     }

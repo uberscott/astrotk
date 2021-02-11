@@ -50,7 +50,7 @@ impl MessageStore
         return Ok(());
     }
 
-    pub fn intake( &self )->Arc<dyn MessageIntake>
+    pub fn cyclic_intake(&self ) ->Arc<dyn MessageIntake>
     {
         return self.pipeline.clone();
     }

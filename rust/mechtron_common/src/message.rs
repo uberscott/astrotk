@@ -22,11 +22,11 @@ static MESSAGE_SCHEMA: &'static str = r#"{
     "columns": [
         ["id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],
         ["kind",   {"type": "u8"}],
-        ["from",    {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}]]}],
+        ["from",    {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}],["timestamp",{"type":"i64"}]]}],
         ["to",      {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}],["phase",{"type":"u8"}]]},["inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],["port",   {"type": "string"}]],
 
-        ["payload",   {"type": "bytes"}],
-        ["payload_artifact",   {"type": "string"}],
+        ["payloads",   {"type": "list", "of":{ "type":"table", "columns": [ ["buffer", {"type","bytes"}], ["artifact", {"type","string"}] ]  }}],
+
         ["meta",   {"type": "map","value": { "type": "string" } }],
         ["transaction",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]
         ]
@@ -50,8 +50,7 @@ static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
         ["to_inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],
         ["to_port",   {"type": "string"}],
 
-        ["payload",   {"type": "bytes"}],
-        ["payload_artifact",   {"type": "string"}],
+        ["payloads",   {"type": "list", "of":{ "type":"table", "columns": [ ["buffer", {"type","bytes"}], ["artifact", {"type","string"}] ]  }}],
         ["meta",   {"type": "map","value": { "type": "string" } }],
         ["transaction",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]
         ]
@@ -74,7 +73,8 @@ pub struct To {
 
 pub struct From {
     pub tron: TronKey,
-    pub cycle: i64
+    pub cycle: i64,
+    pub timestamp: i64
 }
 
 
@@ -116,11 +116,12 @@ fn message_kind_to_index(kind: &MessageKind ) -> u8
 fn index_to_message_kind( index: u8 ) -> Result<MessageKind,Box<dyn Error>>
 {
     match index {
-        0 => Ok(MessageKind::Info),
-        1 => Ok(MessageKind::Content),
-        2 => Ok(MessageKind::Request),
-        3 => Ok(MessageKind::Response),
-        4 => Ok(MessageKind::Reject),
+        0 => Ok(MessageKind::Create),
+        1 => Ok(MessageKind::Update),
+        2 => Ok(MessageKind::Content),
+        3 => Ok(MessageKind::Request),
+        4 => Ok(MessageKind::Response),
+        5 => Ok(MessageKind::Reject),
         _ => Err(format!("invalid index {}",index).into())
     }
 }
@@ -139,16 +140,16 @@ pub enum InterDeliveryType
 #[derive(Clone)]
 pub struct MessageBuilder {
     pub kind: Option<MessageKind>,
+    pub from: Option<From>,
     pub to_nucleus_lookup_name: Option<String>,
     pub to_nucleus_id: Option<Id>,
     pub to_tron_lookup_name: Option<String>,
     pub to_tron_id: Option<Id>,
     pub to_cycle_kind: Option<Cycle>,
-    pub to_cycle: Option<i64>,
+    pub to_phase: Option<u8>,
     pub to_port: Option<String>,
     pub to_inter_delivery_type: Option<InterDeliveryType>,
-    pub payload: Option<NP_Buffer<NP_Memory_Owned>>,
-    pub payload_artifact: Option<Artifact>,
+    pub payloads: Option<Vec<Payload>>,
     pub meta: Option<HashMap<String,String>>,
     pub transaction: Option<Id>
 }
@@ -158,18 +159,18 @@ impl  MessageBuilder {
     {
         MessageBuilder{
             kind: None,
+            from: None,
             to_nucleus_lookup_name: None,
             to_tron_lookup_name: None,
             to_nucleus_id: None,
             to_tron_id: None,
             to_cycle_kind: None,
-            to_cycle: None,
             to_port: None,
+            to_phase: None,
             to_inter_delivery_type: None,
-            payload: None,
-            payload_artifact: None,
+            payloads: None,
             meta: None,
-            transaction: None
+            transaction: None,
         }
     }
 
@@ -206,6 +207,47 @@ impl  MessageBuilder {
         Ok(())
     }
 
+    pub fn validate_build(&self) -> Result<(),Box<dyn Error>>
+    {
+        self.validate()?;
+
+        if self.to_nucleus_id.is_some()
+        {
+            return Err("message builder to_nucleus_id must be set before build".into());
+        }
+
+        if self.to_tron_id.is_some()
+        {
+            return Err("message builder to_tron_id must be set before build".into());
+        }
+
+        Ok(())
+    }
+
+    pub fn build(&self, seq: &mut IdSeq) -> Result<Message,Box<dyn Error>>
+    {
+        self.validate_build()?;
+        Ok(Message{
+            id: seq.next(),
+            kind: self.kind.unwrap(),
+            from: self.from.unwrap(),
+            to: To {
+                tron: TronKey { nucleus_id: self.to_nucleus_id.unwrap().clone(),
+                                tron_id: self.to_tron_id.unwrap().clone() },
+                port: self.to_port.unwrap().clone(),
+                cycle: self.to_cycle_kind.unwrap().clone(),
+                phase: self.to_phase.unwrap(),
+                inter_delivery_type: match &self.to_inter_delivery_type {
+                    Some(r)=>r.clone(),
+                    None=>Option::None
+                }
+            },
+            payloads: vec![],
+            meta: self.meta.clone(),
+            transaction: self.transaction.clone()
+        })
+    }
+
     pub fn message_builders_to_buffer( builders: Vec<MessageBuilder> )->Result<NP_Buffer<NP_Memory_Owned> ,Box<dyn Error>>
     {
         let mut buffer= MESSAGE_BUILDERS_FACTORY.new_buffer(Option::None);
@@ -235,6 +277,7 @@ impl  MessageBuilder {
 
     fn append_to_buffer_np_error( &self, buffer: &mut NP_Buffer<NP_Memory_Owned>, index: usize) ->Result<(),NP_Error>
     {
+
         let index = index.to_string();
         buffer.set(&[&index, &"kind"], message_kind_to_index(&self.kind.as_ref().unwrap()))?;
 
@@ -242,15 +285,18 @@ impl  MessageBuilder {
           buffer.set(&[&index, &"to_nucleus_lookup_name"], self.to_nucleus_lookup_name.as_ref().unwrap().as_str())?;
         }
 
-        if self.to_nucleus_id.is_some() {
-            buffer.set(&[&index, &"to_nucleus_id", &""], self.to_nucleus_id.unwrap())?;
-        }
         if self.to_tron_lookup_name.is_some() {
             buffer.set(&[&index, &"to_tron_lookup_name"], self.to_tron_lookup_name.as_ref().unwrap().as_str())?;
         }
 
+        if self.to_nucleus_id.is_some() {
+            buffer.set(&[&index, &"to_nucleus_id", &"seq_id"], self.to_nucleus_id.unwrap().seq_id)?;
+            buffer.set(&[&index, &"to_nucleus_id", &"id"], self.to_nucleus_id.unwrap().id)?;
+        }
+
         if self.to_tron_id.is_some() {
-            buffer.set(&[&index, &"to_tron_id"], self.to_tron_id.unwrap())?;
+            buffer.set(&[&index, &"to_tron_id", &"seq_id"], self.to_tron_id.unwrap().seq_id)?;
+            buffer.set(&[&index, &"to_tron_id", &"id"], self.to_tron_id.unwrap().id)?;
         }
 
         buffer.set(&[&index, &"to_port"], self.to_port.unwrap())?;
@@ -278,11 +324,18 @@ impl  MessageBuilder {
         if self.transaction.is_some()
         {
             let transaction = self.transaction.as_ref().unwrap();
-            buffer.set(&[&index,&"transaction"], transaction.clone() )?;
+            buffer.set(&[&index,&"transaction", &"seq_id"], transaction.seq_id )?;
+            buffer.set(&[&index,&"transaction", &"id"], transaction.id)?;
         }
 
         Ok(())
     }
+}
+
+#[derive(Clone)]
+pub struct Payload {
+    pub buffer: Arc<NP_Buffer<NP_Memory_Owned>>,
+    pub artifact: Artifact
 }
 
 #[derive(Clone)]
@@ -291,31 +344,50 @@ pub struct Message {
     pub kind: MessageKind,
     pub from: From,
     pub to: To,
-    pub payload: Arc<NP_Buffer<NP_Memory_Owned>>,
-    pub payload_artifact: Artifact,
-    pub meta: HashMap<String,String>,
-    pub transaction: Option<Id>
+    pub payloads: Vec<Payload>,
+    pub meta: Option<HashMap<String,String>>,
+    pub transaction: Option<Id>,
 }
 
 
 impl Message {
-    pub fn new(seq: & mut IdSeq,
+
+    pub fn single_payload(seq: & mut IdSeq,
+                 kind: MessageKind,
+                 from: From,
+                 to: To,
+                 payload: Payload ) -> Self
+    {
+        Message::multi_payload( seq, kind, from, to, vec!(payload) )
+    }
+
+    pub fn multi_payload(seq: & mut IdSeq,
+                 kind: MessageKind,
+                 from: From,
+                 to: To,
+                 payloads: Vec<Payload> ) -> Self
+    {
+        Message::longform( seq, kind, from, to, payloads, Option::None, Option::None )
+    }
+
+
+
+    pub fn longform(seq: & mut IdSeq,
                kind: MessageKind,
                from: From,
                to: To,
-               payload: NP_Buffer<NP_Memory_Owned>,
-               payload_artifact: Artifact,
-                ) -> Self
+               payloads: Vec<Payload>,
+               meta: Option<HashMap<String,String>>,
+               transaction: Option<Id> ) -> Self
     {
         Message{
             id: seq.next(),
             kind: kind,
             from: from,
             to: to,
-            payload: Arc::new(payload),
-            payload_artifact: payload_artifact,
-            meta: HashMap::new(),
-            transaction: Option::None
+            payloads: payloads,
+            meta: meta,
+            transaction: transaction
         }
     }
 
@@ -344,6 +416,7 @@ impl Message {
         buffer.set(&[&index, &"from", &"tron_id",&"seq_id"],&self.from.tron.tron_id.seq_id)?;
         buffer.set(&[&index, &"from", &"tron_id",&"id"],&self.from.tron.tron_id.id)?;
         buffer.set(&[&index, &"from", &"cycle"], self.from.cycle.clone())?;
+        buffer.set(&[&index, &"from", &"timestamp"], self.from.timestamp.clone())?;
 
         buffer.set(&[&index, &"to", &"nucleus_id",&"seq_id"],&self.to.tron.nucleus_id.seq_id)?;
         buffer.set(&[&index, &"to", &"nucleus_id",&"id"],&self.to.tron.nucleus_id.id)?;
@@ -381,7 +454,7 @@ impl Message {
         Ok(())
     }
 
-    pub fn from_buffer<M: NP_Memory + Clone + NP_Mem_New>(seq: & mut IdSeq, buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M>, index: usize ) -> Result<Self,Box<dyn Error>>
+    pub fn from_buffer<M: NP_Memory + Clone + NP_Mem_New>(buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M>, index: usize ) -> Result<Self,Box<dyn Error>>
     {
         let index = index.to_string();
         let payload_artifact = Message::get::<String,M>(&buffer, &[&index,&"payload_artifact"])?;
@@ -410,6 +483,7 @@ impl Message {
                                                           id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"nucleus_id",&"id"])? },
                                              tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"tron_id",&"seq_id"])?,
                                                           id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"tron_id",&"id"])? }},
+                    timestamp: Message::get::<i64,M>(&buffer, &[&index,&"from",&"timestamp"])?,
                     cycle: Message::get::<i64,M>(&buffer, &[&index,&"from",&"cycle"])?
 
                     } ,
@@ -432,9 +506,18 @@ impl Message {
                     }
                 },
 
-            payload: Arc::new(buffer_factories.create_buffer_from(&payload_artifact, payload )?),
-            payload_artifact: payload_artifact,
-            meta: meta,
+            payloads: { let length = buffer.get_length(&[] )?.unwrap();
+                        let mut rtn = vec!();
+                        for payload_index in 0..length {
+                            let artifact = Artifact::from(Message::get:: <String, M>( & buffer, &[ & index, &"payloads", &payload_index, &"artifact"])?.as_str())?;
+                            let bytes = Message::get:: <Vec<u8>, M>( & buffer, &[ & index, &"payloads", &payload_index, &"buffer"])?;
+                            let payload = Payload { buffer: Arc::new(buffer_factories.create_buffer_from(&artifact, bytes)?), artifact: artifact };
+                            rtn.push(payload);
+                        }
+                        rtn},
+
+
+            meta: Option::None,
             transaction: match buffer.get::<i64>( &[&index,&"transaction", &"seq_id"] )?{
                 None=>Option::None,
                 Some(seq_id)=>Some( Id{ seq_id:seq_id,
@@ -448,17 +531,17 @@ impl Message {
     pub fn messages_from_bytes(  seq: &mut IdSeq,buffer_factories: & dyn BufferFactories, bytes: &Bytes) -> Result<Vec<Self>,Box<dyn Error>>
     {
         let buffer = MESSAGES_FACTORY.open_buffer( bytes.to_vec() );
-        return Ok( Message::messages_from_buffer( seq, buffer_factories, &buffer)? );
+        return Ok( Message::messages_from_buffer( buffer_factories, &buffer)? );
     }
 
-    pub fn messages_from_buffer<M: NP_Memory + Clone + NP_Mem_New>( seq: &mut IdSeq, buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M> ) -> Result<Vec<Self>,Box<dyn Error>>
+    pub fn messages_from_buffer<M: NP_Memory + Clone + NP_Mem_New>( buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M> ) -> Result<Vec<Self>,Box<dyn Error>>
     {
-        let length = buffer.data_length();
+        let length = buffer.get_length(&[] )?.unwrap();
 
         let mut rtn = vec![];
         for index in 0..length
         {
-            rtn.push(Message::from_buffer(seq, buffer_factories, buffer, index )?);
+            rtn.push(Message::from_buffer( buffer_factories, buffer, index )?);
         }
 
         return Ok(rtn);

@@ -7,7 +7,8 @@ use no_proto::memory::NP_Memory_Owned;
 
 pub trait BufferFactories
 {
-    fn create_buffer(&self, artifact_file: &Artifact) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
-    fn create_buffer_from(&self, artifact_file: &Artifact, array: Vec<u8> ) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
-    fn get_buffer_factory(&self, artifact_file: &Artifact) ->Option<&'static NP_Factory<'static>>;
+    fn create_buffer(&self, artifact: &Artifact) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
+    fn create_buffer_from_array(&self, artifact: &Artifact, array: Vec<u8> ) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
+    fn create_buffer_from_buffer(&self, artifact: &Artifact, buffer: NP_Buffer<NP_Memory_Owned> ) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
+    fn get_buffer_factory(&self, artifact: &Artifact) ->Option<&'static NP_Factory<'static>>;
 }

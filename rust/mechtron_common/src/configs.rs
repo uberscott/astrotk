@@ -10,8 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactCacher, ArtifactRepository, ArtifactYaml};
 
+
+pub static CORE_BUNDLE: &'static str = "mechtron.io:core:0.0.1";
+static CORE_BUNDLE_FMT: &'static str = "mechtron.io:core:0.0.1:{}";
+
 pub struct Configs
 {
+    core_artifacts: HashMap<String,Artifact>,
     pub artifact_cache: Arc<dyn ArtifactCache+Sync+Send>,
     pub buffer_factory_keeper: Keeper<NP_Factory<'static>>,
     pub sim_config_keeper: Keeper<SimConfig>,
@@ -23,13 +28,32 @@ impl Configs{
 
     pub fn new(artifact_source:Arc<dyn ArtifactCache+Sync+Send>)->Self
     {
-        Configs{
+        let mut configs = Configs{
+            core_artifacts: HashMap::new(),
             artifact_cache: artifact_source.clone(),
             buffer_factory_keeper: Keeper::new(artifact_source.clone() , Box::new(NP_Buffer_Factory_Parser )),
             sim_config_keeper: Keeper::new(artifact_source.clone(), Box::new( SimConfigParser )),
             tron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( TronConfigParser )),
             mechtron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( MechtronConfigParser ))
+        };
+
+        configs.core_artifacts.insert("sim".to_string(), Artifact::from(format!(CORE_BUNDLE_FMT, "tron/sim.yaml").as_str())?);
+        configs.core_artifacts.insert("neutron".to_string(), Artifact::from(format!(CORE_BUNDLE_FMT, "tron/neutron.yaml").as_str())?);
+
+        return configs;
+    }
+
+    pub fn core_artifact( &self, id: &str ) -> Result<Artifact,Box<dyn Error>>
+    {
+        match self.core_artifacts.get(id) {
+            None => Err(format!("could not find core artifact {}",id).into()),
+            Some(artifact) =>Ok(artifact.clone())
         }
+    }
+
+    pub fn core_tron_config(&self, id: &str ) -> Result<Arc<TronConfig>,Box<dyn Error>>
+    {
+        Ok(self.tron_config_keeper.get(&self.core_artifact(id)?)?.clone())
     }
 }
 

@@ -19,7 +19,7 @@ use wasmer::{CompileError, Cranelift, JIT, Module, Store};
 
 use mechtron_common::artifact::{Artifact, ArtifactCacher};
 use mechtron_common::buffers::BufferFactories;
-use mechtron_common::configs::{Configs, Keeper, MechtronConfig, MechtronConfigYaml, Parser};
+use mechtron_common::configs::{Configs, Keeper, MechtronConfig, MechtronConfigYaml, Parser, SimConfig};
 use mechtron_common::message::Message;
 
 use crate::content::{ContentStore, TronKey};
@@ -146,16 +146,10 @@ impl Sources
         }
     }
 
-    pub fn add( &mut self, sim_id: &Id )->Result<(),Box<dyn Error + '_>>
+    pub fn launch( &mut self, sim_config: Arc<SimConfig> )->Result<(),Box<dyn Error + '_>>
     {
-        let mut sources = self.sources.write()?;
-        if sources.contains_key(sim_id)
-        {
-           return Err(format!("sim id {:?} has already been added to the sources",sim_id).into());
-        }
-
-        sources.insert( sim_id.clone(), Arc::new(Source::new(sim_id.clone())));
-
+        let mut source = Source::launch(sime_config)?;
+        sources.insert( source.id().clone(), Arc::new(source ));
         Ok(())
     }
 

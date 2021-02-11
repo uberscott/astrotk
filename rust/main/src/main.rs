@@ -9,8 +9,9 @@ fn main() -> Result<(),Box<dyn std::error::Error>>{
     let mut source = SYS.local.sources.get( &sim_id )?;
     source.add_nuclues(nucleus_id);
 
-    let create_neutron_message = Message::new();
-    source.messages.intake().intake(message);
+    let create_neutron_message = Message::new( &SYS.net.id_seq,
+                                                         );
+    source.messages.cyclic_intake().intake(message);
 
     Ok(())
 }

@@ -64,8 +64,8 @@ impl TronKey{
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
 pub struct ContentKey
 {
-    content_id: TronKey,
-    revision: Revision
+    pub content_id: TronKey,
+    pub revision: Revision
 }
 
 
