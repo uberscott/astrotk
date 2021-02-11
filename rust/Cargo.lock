@@ -513,9 +513,9 @@ checksum = "0debeb9fcf88823ea64d64e4a815ab1643f33127d995978e099942ce38f25238"
 
 [[package]]
 name = "no_proto"
-version = "0.9.0"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c954a4e9088ac791cb3c4a0676542c0e38517e4d67c243ec21f6729045f78832"
+checksum = "71105c79d4270c19fd494b7adcc7f9b478f10009fc09bc44713f949dd14083b8"
 
 [[package]]
 name = "num_cpus"

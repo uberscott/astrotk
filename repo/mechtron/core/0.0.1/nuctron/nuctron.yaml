@@ -1,0 +1,9 @@
+kind: nuctron
+name: NucTron
+content: 
+  artifact:
+    path: nuctron/content.json
+messages:
+  create:
+    artifact:
+      path: nuctron/create.json

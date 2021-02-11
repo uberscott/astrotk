@@ -14,7 +14,6 @@ use std::sync::atomic::{{AtomicUsize, Ordering}};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use no_proto::buffer::NP_Buffer;
-use no_proto::buffer_ro::NP_Buffer_RO;
 use no_proto::error::NP_Error;
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use wasmer::{Array, Function, FunctionType, ImportObject, imports, Instance, Module, Resolver, Val, ValType, Value, WasmerEnv, WasmPtr};

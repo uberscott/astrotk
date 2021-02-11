@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use no_proto::buffer::NP_Buffer;
-use no_proto::collection::table::NP_Table;
 use no_proto::error::NP_Error;
 use no_proto::NP_Factory;
 use no_proto::pointer::{NP_Scalar, NP_Value};
@@ -33,14 +32,9 @@ lazy_static! {
   pub static ref SYS : System = System::new();
 }
 
-pub fn sys()->&System
-{
-    return &SYS;
-}
-
 pub struct System {
-    local: Local,
-    net: Network,
+    pub local: Local,
+    pub net: Network,
 }
 
 impl System
@@ -52,14 +46,14 @@ impl System
         }
     }
 
-    pub fn local(&self)->&Local
+    pub fn local(&mut self)->&mut Local
     {
-        &self.local
+        &mut self.local
     }
 
-    pub fn net(&self)->&Network
+    pub fn net(&mut self)->&mut Network
     {
-        &self.net
+        &mut self.net
     }
 }
 
@@ -67,7 +61,8 @@ pub struct Local
 {
     pub wasm_store: Arc<Store>,
     pub configs: Configs,
-    pub wasm_module_keeper: Keeper<Module>
+    pub wasm_module_keeper: Keeper<Module>,
+    pub sources: Sources
 }
 
 impl Local {
@@ -80,6 +75,7 @@ impl Local {
             wasm_store: wasm_store.clone(),
             configs: Configs::new(repo.clone()),
             wasm_module_keeper: Keeper::new(repo.clone(), Box::new(WasmModuleParser { wasm_store: wasm_store.clone() })),
+            sources: Sources::new()
         }
     }
 }
@@ -137,20 +133,20 @@ impl LocalMessageRouter
     }
 }
 
-impl MessageRouter<'_> for LocalMessageRouter
+impl MessageRouter for LocalMessageRouter
 {
     fn send(&self, messages: Vec<Message>) {
         unimplemented!()
     }
 }
 
-struct Sources<'a>
+struct Sources
 {
-    sources: RwLock<HashMap<i64,Source<'a>>>
+    sources: RwLock<HashMap<i64,Arc<Source>>>
 }
 
 
-impl <'a> Sources<'a>
+impl Sources
 {
     pub fn new()->Self
     {
@@ -167,12 +163,12 @@ impl <'a> Sources<'a>
            return Err(format!("sim id {} has already been added to the sources",sim_id).into());
         }
 
-        sources.insert( sim_id, Source::new(sim_id));
+        sources.insert( sim_id, Arc::new(Source::new(sim_id)));
 
         Ok(())
     }
-    /*
-    pub fn get( &self, sim_id: i64 ) -> Result<&'a Source,Box<dyn Error+'_>>
+
+    pub fn get( &self, sim_id: i64 ) -> Result<Arc<Source>,Box<dyn Error+'_>>
     {
         let sources = self.sources.read()?;
         if !sources.contains_key(&sim_id)
@@ -180,10 +176,7 @@ impl <'a> Sources<'a>
             return Err(format!("sim id {} is not present in the sources",sim_id).into());
         }
 
-        let source:Option<&'a Source> = sources.get(&sim_id);
-        let source:&'a Source = source.unwrap();
-        return Ok(source);
+        let source= sources.get(&sim_id).unwrap();
+        return Ok(source.clone());
     }
-     */
-
 }

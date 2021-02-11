@@ -10,23 +10,23 @@ use std::sync::{RwLock, Arc, Mutex};
 use crate::content::TronKey;
 use std::error::Error;
 
-struct MessageFutures<'a>{
+struct MessageFutures{
     key: TronKey,
-    messages: HashMap<i64,RwLock<Vec<MessageDelivery<'a>>>>
+    messages: HashMap<i64,RwLock<Vec<MessageDelivery>>>
 }
 
-struct MessageDelivery<'a>
+struct MessageDelivery
 {
     received: i64,
-    message: Message<'a>
+    message: Message
 }
 
-pub struct MessageStore<'a>
+pub struct MessageStore
 {
-    futures: HashMap<TronKey,RwLock<MessageFutures<'a>>>
+    futures: HashMap<i64,RwLock<MessageFutures>>
 }
 
-impl <'a> MessageStore<'a>
+impl MessageStore
 {
     pub fn new()->Self
     {
@@ -35,19 +35,30 @@ impl <'a> MessageStore<'a>
         }
     }
 
+    pub fn create( &mut self, tron_id: i64 )->Result<(),Box<dyn Error>>
+    {
+        if self.futures.contains_key(&tron_id )
+        {
+            return Err(format!("MessageStore already contains tron_id {} ",tron_id).into());
+        }
+
+        self.futures.insert(tron_id,RwLock::new(MessageFutures::new()));
+
+        return Ok(());
+    }
 
 }
 
 
 
-pub trait MessageIntake<'a>
+pub trait MessageIntake
 {
-    fn intake(&mut self, message: Message<'a>) -> Result<(),Box<dyn Error>>;
+    fn intake(&mut self, message: Message) -> Result<(),Box<dyn Error>>;
 }
 
 
-pub trait MessageRouter<'a>
+pub trait MessageRouter
 {
-    fn send( &self, messages: Vec<Message<'a>> );
+    fn send( &self, messages: Vec<Message> );
 }
 

@@ -15,6 +15,7 @@ pub struct Configs
     pub artifact_cache: Arc<dyn ArtifactCache+Sync+Send>,
     pub buffer_factory_keeper: Keeper<NP_Factory<'static>>,
     pub sim_config_keeper: Keeper<SimConfig>,
+    pub tron_config_keeper: Keeper<TronConfig>,
     pub mechtron_config_keeper: Keeper<MechtronConfig>,
 }
 
@@ -26,6 +27,7 @@ impl Configs{
             artifact_cache: artifact_source.clone(),
             buffer_factory_keeper: Keeper::new(artifact_source.clone() , Box::new(NP_Buffer_Factory_Parser )),
             sim_config_keeper: Keeper::new(artifact_source.clone(), Box::new( SimConfigParser )),
+            tron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( TronConfigParser )),
             mechtron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( MechtronConfigParser ))
         }
     }
@@ -95,7 +97,7 @@ impl <'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser
         let result = NP_Factory::new(str);
         match result {
             Ok(rtn) => Ok(rtn),
-            Err(e) => Err(format!("could not parse np_factory from artifact: {} error is: {}",artifact.to(),e.message).into())
+            Err(e) => Err(format!("could not parse np_factory from artifact: {}",artifact.to()).into())
         }
     }
 }
@@ -122,35 +124,80 @@ impl Parser<MechtronConfig> for MechtronConfigParser
     }
 }
 
+struct TronConfigParser;
+
+impl Parser<TronConfig> for TronConfigParser
+{
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<TronConfig, Box<dyn Error>> {
+        let tron_config_yaml = TronConfigYaml::from_yaml(str)?;
+        let tron_config = tron_config_yaml.to_config(artifact)?;
+        Ok(tron_config)
+    }
+}
+
 
 pub struct MechtronConfig {
     pub source: Artifact,
     pub wasm: Artifact,
-    pub name: String,
-    pub content: Artifact,
-    pub create_message: Artifact,
+    pub tron_config: Artifact
 }
 
-impl MechtronConfig {
-    pub fn message_artifact_files(&self) ->Vec<Artifact>
-    {
-        let mut rtn: Vec<Artifact> =Vec::new();
-        rtn.push( self.content.clone() );
-        rtn.push( self.create_message.clone() );
-        return rtn;
+pub struct TronConfig{
+    pub kind: Option<String>,
+    pub name: String,
+    pub nucleus_lookup_name: Option<String>,
+    pub source: Artifact,
+    pub content: Option<ContentConfig>,
+    pub messages: Option<MessagesConfig>
+}
+
+pub struct MessagesConfig
+{
+    pub create: Option<CreateMessageConfig>
+}
+
+pub struct ContentConfig
+{
+    pub artifact: Artifact
+}
+
+pub struct CreateMessageConfig
+{
+    pub artifact: Artifact
+}
+
+pub struct InMessageConfig
+{
+    pub name: String,
+    pub phase: Option<String>,
+    pub artifact: Vec<Artifact>
+}
+
+pub struct OutMessageConfig
+{
+   pub name: String,
+   pub artifact: Artifact
+}
+
+impl ArtifactCacher for TronConfig{
+    fn cache(&self, configs: &mut Configs ) -> Result<(), Box<dyn Error>> {
+
+        if self.content.is_some() {
+            configs.buffer_factory_keeper.cache( &self.content.as_ref().unwrap().artifact );
+        }
+
+        if self.messages.is_some() && self.messages.as_ref().unwrap().create.is_some(){
+            configs.buffer_factory_keeper.cache( &self.messages.as_ref().unwrap().create.as_ref().unwrap().artifact );
+        }
+
+       Ok(())
     }
 }
 
 impl ArtifactCacher for MechtronConfig {
-    fn cache(&self, _: &mut Arc<Cell<Configs>>) -> Result<(), Box<dyn Error>> {
-        {
-/*            let configs = (*configs).get_mut();
-            configs.buffer_factory_keeper.cache(&self.content);
-            configs.buffer_factory_keeper.cache(&self.create_message);
-
- */
-            Ok(())
-        }
+    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error>> {
+       configs.tron_config_keeper.cache(&self.tron_config);
+       Ok(())
     }
 }
 
@@ -159,9 +206,8 @@ impl ArtifactCacher for MechtronConfig {
 pub struct MechtronConfigYaml
 {
     name: String,
-    content: ArtifactYaml,
     wasm: ArtifactYaml,
-    create_message: ArtifactYaml
+    tron_config: ArtifactYaml
 }
 
 impl MechtronConfigYaml {
@@ -171,15 +217,107 @@ impl MechtronConfigYaml {
         Ok(serde_yaml::from_str(string )?)
     }
 
-    pub fn to_config(&self, artifact_file: &Artifact) -> Result<MechtronConfig,Box<dyn Error>>
+    pub fn to_config(&self, artifact: &Artifact) -> Result<MechtronConfig,Box<dyn Error>>
     {
-        let default_artifact = &artifact_file.bundle.clone();
+        let default_bundle = &artifact.bundle.clone();
         return Ok( MechtronConfig {
-            source: artifact_file.clone(),
+            source: artifact.clone(),
+            wasm: self.wasm.to_artifact(default_bundle)?,
+            tron_config: self.tron_config.to_artifact(default_bundle)?,
+        } )
+    }
+}
+
+
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct TronConfigYaml
+{
+    kind: Option<String>,
+    name: String,
+    nucleus_lookup_name: Option<String>,
+    content: Option<ContentConfigYaml>,
+    messages: Option<MessagesConfigYaml>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct MessagesConfigYaml
+{
+    create: Option<CreateConfigYaml>,
+    inbound: Option<InboundConfigYaml>,
+    outbound: Option<Vec<OutMessageConfigYaml>>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct InboundConfigYaml
+{
+    ports: Vec<PortConfigYaml>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct OutboundConfigYaml
+{
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreateConfigYaml
+{
+  artifact: ArtifactYaml
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct ContentConfigYaml
+{
+    artifact: ArtifactYaml
+}
+
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct PortConfigYaml
+{
+    name: String,
+    phase: Option<String>,
+    artifact: ArtifactYaml
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct OutMessageConfigYaml
+{
+    name: String,
+    artifact: ArtifactYaml
+}
+
+impl TronConfigYaml {
+
+    pub fn from_yaml(string:&str) -> Result<Self,Box<dyn Error>>
+    {
+        Ok(serde_yaml::from_str(string )?)
+    }
+
+    pub fn to_config(&self, artifact: &Artifact) -> Result<TronConfig,Box<dyn Error>>
+    {
+        let default_bundle = &artifact.bundle.clone();
+
+
+
+
+        return Ok( TronConfig{
+            kind: self.kind.clone(),
+            source: artifact.clone(),
             name: self.name.clone(),
-            content: self.content.to_artifact_file(default_artifact)?,
-            wasm: self.wasm.to_artifact_file(default_artifact)?,
-            create_message: self.create_message.to_artifact_file(default_artifact)?
+
+            messages: match &self.messages{
+            None=>Option::None,
+            Some(messages)=>Option::Some( MessagesConfig{
+            create: match &messages.create {
+                None=>Option::None,
+                Some(create)=>Option::Some(CreateMessageConfig{artifact:create.artifact.to_artifact(default_bundle)?})
+            }})},
+            content: match &self.content{
+                Some(content)=>Option::Some( ContentConfig{ artifact: content.artifact.to_artifact(default_bundle)?} ),
+                None=>Option::None,
+            },
+            nucleus_lookup_name: None
         } )
     }
 }
@@ -213,14 +351,14 @@ impl SimConfigYaml
         Ok( SimConfig{
             source: artifact.clone(),
             name: self.name.clone(),
-            main: self.main.to_artifact_file(default_artifact)?,
-            create_message: self.create_message.to_artifact_file(default_artifact)?
+            main: self.main.to_artifact(default_artifact)?,
+            create_message: self.create_message.to_artifact(default_artifact)?
         } )
     }
 }
 
 impl ArtifactCacher for SimConfig {
-    fn cache(&self, configs: &mut Arc<Cell<Configs>>) -> Result<(), Box<dyn Error>> {
+    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error>> {
 /*        let configs = (*configs).get_mut();
         configs.buffer_factory_keeper.cache(&self.create_message);
         configs.mechtron_config_keeper.cache(&self.main);

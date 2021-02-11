@@ -2,12 +2,13 @@ use no_proto::buffer::NP_Buffer;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, PoisonError, RwLockWriteGuard, RwLockReadGuard};
 use std::error::Error;
+use no_proto::memory::NP_Memory_Owned;
 
-pub struct ContentStore<'buffer>{
-    history: RwLock<HashMap<TronKey,RwLock<ContentHistory<'buffer>>>>
+pub struct ContentStore{
+    history: RwLock<HashMap<TronKey,RwLock<ContentHistory>>>
 }
 
-impl <'buffer> ContentStore<'buffer>
+impl ContentStore
 {
    pub fn new() -> Self{
        ContentStore{
@@ -30,9 +31,9 @@ impl <'buffer> ContentStore<'buffer>
    }
 }
 
-impl <'buffer> ContentIntake<'buffer> for ContentStore<'buffer>
+impl ContentIntake for ContentStore
 {
-    fn intake(&mut self,content: Content<'buffer>) -> Result<(), Box<dyn Error+'_>> {
+    fn intake(&mut self,content: Content) -> Result<(), Box<dyn Error+'_>> {
         let history = self.history.read()?;
         if !history.contains_key(&content.revision.content_key )
         {
@@ -54,9 +55,9 @@ impl <'buffer> ContentIntake<'buffer> for ContentStore<'buffer>
     }
 }
 
-impl <'buffer> ContentRetrieval<'buffer> for ContentStore<'buffer>{
+impl ContentRetrieval for ContentStore{
 
-    fn retrieve(&self, revision: &RevisionKey) -> Result<Content<'buffer>, Box<dyn Error+'_>> {
+    fn retrieve(&self, revision: &RevisionKey) -> Result<Content, Box<dyn Error+'_>> {
         let history = self.history.read()?;
         if !history.contains_key(&revision.content_key )
         {
@@ -81,14 +82,14 @@ impl <'buffer> ContentRetrieval<'buffer> for ContentStore<'buffer>{
     }
 }
 
-pub trait ContentIntake<'buffer>
+pub trait ContentIntake
 {
-    fn intake( &mut self, content: Content<'buffer> )->Result<(),Box<dyn Error+'_>>;
+    fn intake( &mut self, content: Content )->Result<(),Box<dyn Error+'_>>;
 }
 
-pub trait ContentRetrieval<'buffer>
+pub trait ContentRetrieval
 {
-    fn retrieve( &self, revision: &RevisionKey  )->Result<Content<'buffer>,Box<dyn Error+'_>>;
+    fn retrieve( &self, revision: &RevisionKey  )->Result<Content,Box<dyn Error+'_>>;
 }
 
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
@@ -117,12 +118,12 @@ pub struct RevisionKey
 pub struct Content<'buffer>
 {
     revision: RevisionKey,
-    buffer: Arc<NP_Buffer<'buffer>>
+    buffer: Arc<NP_Buffer<NP_Memory_Owned>>
 }
 
 impl <'buffer> Content<'buffer>
 {
-    fn new( revision: RevisionKey, buffer: NP_Buffer<'buffer> )->Self
+    fn new( revision: RevisionKey, buffer: NP_Buffer<NP_Memory_Owned> )->Self
     {
        Content{
            revision:revision,
@@ -130,7 +131,7 @@ impl <'buffer> Content<'buffer>
        }
     }
 
-    fn from_arc( revision: RevisionKey, buffer: Arc<NP_Buffer<'buffer>> )->Self
+    fn from_arc( revision: RevisionKey, buffer: Arc<NP_Buffer<NP_Memory_Owned>> )->Self
     {
         Content{
             revision:revision,
@@ -139,13 +140,13 @@ impl <'buffer> Content<'buffer>
     }
 }
 
-pub struct ContentHistory<'buffer>
+pub struct ContentHistory
 {
     key: TronKey,
-    buffers: HashMap<RevisionKey,Arc<NP_Buffer<'buffer>>>,
+    buffers: HashMap<RevisionKey,Arc<NP_Buffer<NP_Memory_Owned>>>,
 }
 
-impl <'buffer> ContentHistory<'buffer> {
+impl ContentHistory {
     fn new(key: TronKey) ->Self{
         ContentHistory{
             key: key,
@@ -154,9 +155,9 @@ impl <'buffer> ContentHistory<'buffer> {
     }
 }
 
-impl <'buffer> ContentIntake<'buffer> for ContentHistory<'buffer>
+impl ContentIntake for ContentHistory
 {
-    fn intake(&mut self, content: Content<'buffer>) -> Result<(), Box<dyn Error>> {
+    fn intake(&mut self, content: Content) -> Result<(), Box<dyn Error>> {
 
         if self.buffers.contains_key(&content.revision)
         {
@@ -169,8 +170,8 @@ impl <'buffer> ContentIntake<'buffer> for ContentHistory<'buffer>
     }
 }
 
-impl <'buffer> ContentRetrieval<'buffer> for ContentHistory<'buffer> {
-    fn retrieve(&self, revision: &RevisionKey) -> Result<Content<'buffer>, Box<dyn Error>> {
+impl  ContentRetrieval for ContentHistory {
+    fn retrieve(&self, revision: &RevisionKey) -> Result<Content, Box<dyn Error>> {
         if !self.buffers.contains_key(revision)
         {
             return Err(format!("history does not have content for revision {:?}.", revision).into());

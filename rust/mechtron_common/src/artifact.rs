@@ -84,12 +84,12 @@ pub struct ArtifactYaml {
 }
 
 impl ArtifactYaml {
-    pub fn to_artifact_file(&self, default_artifact: &ArtifactBundle) -> Result<Artifact,Box<dyn Error>>
+    pub fn to_artifact(&self, default_bundle: &ArtifactBundle) -> Result<Artifact,Box<dyn Error>>
     {
         let artifact = self.bundle.clone();
         return Ok( Artifact {
             bundle: match artifact {
-                None => default_artifact.clone(),
+                None => default_bundle.clone(),
                 Some(artifact) => ArtifactBundle::parse(artifact.as_str() )?
             },
             path: self.path.clone()
@@ -114,5 +114,5 @@ pub trait ArtifactCache: Send + Sync
 
 pub trait ArtifactCacher
 {
-    fn cache(&self, configs: &mut Arc<Cell<Configs>>) -> Result<(), Box<dyn Error + '_>>;
+    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error + '_>>;
 }
