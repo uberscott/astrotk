@@ -7,6 +7,17 @@ pub struct Id
     pub id: i64
 }
 
+impl Id
+{
+    pub fn new( seq_id: i64, id: i64 )->Self
+    {
+        Id{
+            seq_id: seq_id,
+            id: id
+        }
+    }
+}
+
 pub struct IdSeq
 {
    seq_id: i64,
@@ -22,6 +33,11 @@ impl IdSeq {
         }
     }
 
+    pub fn seq_id(&self)->i64
+    {
+        self.seq_id
+    }
+
     pub fn next(&mut self)->Id
     {
         Id{
@@ -29,6 +45,8 @@ impl IdSeq {
             id: self.seq.fetch_add(1,Ordering::Relaxed )
         }
     }
+
+
 }
 
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
@@ -64,7 +82,7 @@ impl TronKey{
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
 pub struct ContentKey
 {
-    pub content_id: TronKey,
+    pub tron_id: TronKey,
     pub revision: Revision
 }
 

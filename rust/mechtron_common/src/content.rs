@@ -5,21 +5,10 @@ use no_proto::memory::{NP_Memory_Owned, NP_Memory_Ref};
 use crate::artifact::Artifact;
 use no_proto::NP_Factory;
 use crate::buffers::BufferFactories;
-use crate::configs::Keeper;
+use crate::configs::{Keeper, Configs};
 use no_proto::error::NP_Error;
 use std::error::Error;
-
-static CONTENT_META_SCHEMA: &'static str = r#"{
-    "type": "table",
-    "columns": [
-               ["creation_timestamp", {"type":"i64"}],
-               ["creation_cycle",     {"type":"i64"}]
-               ]
-}"#;
-
-lazy_static! {
-  pub static ref CONTENT_META_FACTORY: NP_Factory<'static> = NP_Factory::new(CONTENT_META_SCHEMA).unwrap();
-}
+use crate::message::Payload;
 
 
 #[derive(Clone)]
@@ -32,10 +21,10 @@ pub struct Content
 
 impl Content
 {
-    pub fn new(  buffer_factories: &Keeper<NP_Factory<'static>>, artifact: Artifact )->Self
+    pub fn new(  configs: &Configs, artifact: Artifact )->Self
     {
-        let data = buffer_factories.get(&artifact).unwrap().new_buffer(Option::None);
-        let meta= CONTENT_META_FACTORY.new_buffer(Option::None);
+        let data = configs.buffer_factory_keeper.get(&artifact).unwrap().new_buffer(Option::None);
+        let meta=configs.core_buffer_factory("schema/content/meta")?.new_buffer(Option::None);
         Content{
             artifact: artifact,
             meta:meta,
@@ -52,15 +41,15 @@ impl Content
         }
     }
 
-    pub fn read_only( &self, buffer_factories: &Keeper<NP_Factory>) -> Result<ReadOnlyContent<'_>,Box<dyn Error>>
+    pub fn read_only( &self, configs: &Configs ) -> Result<ReadOnlyContent<'_>,Box<dyn Error>>
     {
-        let ro_meta = CONTENT_META_FACTORY.open_buffer_ref(self.meta.read_bytes());
-        let data_factory = buffer_factories.get(&self.artifact)?;
+        let ro_meta =configs.core_buffer_factory("schema/content/meta")?.open_buffer_ref(self.meta.read_bytes());
+        let data_factory = configs.buffer_factory_keeper.get(&self.artifact)?;
         let ro_data = data_factory.open_buffer_ref(self.data.read_bytes() );
         Ok(ReadOnlyContent{
             artifact: self.artifact.clone(),
-            meta: ro_meta,
-            data: ro_data
+            meta: Arc::new(ro_meta),
+            data: Arc::new(ro_data)
         })
     }
 
@@ -80,12 +69,32 @@ impl Content
         Ok(())
     }
 
+    // terrible that I have to clone the buffers here... i wish there was a way to do this in read only buffers
+    pub fn payloads(&self, configs: &Configs )->Vec<Payload>
+    {
+        let rtn : Vec<Payload> = vec![
+            Payload{
+                buffer: Arc::new(self.meta.clone() ),
+                artifact: configs.core_artifact("schema/content/meta")?
+            },
+            Payload{
+                buffer: Arc::new(self.data.clone() ),
+                artifact: self.artifact.clone()
+            }
+        ];
+
+        return rtn;
+    }
 }
 
-struct ReadOnlyContent<'buffers>
+pub struct ReadOnlyContent<'buffers>
 {
     pub artifact: Artifact,
-    pub meta: NP_Buffer<NP_Memory_Ref<'buffers>>,
-    pub data: NP_Buffer<NP_Memory_Ref<'buffers>>
+    pub meta: Arc<NP_Buffer<NP_Memory_Ref<'buffers>>>,
+    pub data: Arc<NP_Buffer<NP_Memory_Ref<'buffers>>>
 }
 
+impl <'buffers> ReadOnlyContent<'buffers>
+{
+
+}

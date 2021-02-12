@@ -37,8 +37,12 @@ impl Configs{
             mechtron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( MechtronConfigParser ))
         };
 
-        configs.core_artifacts.insert("sim".to_string(), Artifact::from(format!(CORE_BUNDLE_FMT, "tron/sim.yaml").as_str())?);
-        configs.core_artifacts.insert("neutron".to_string(), Artifact::from(format!(CORE_BUNDLE_FMT, "tron/neutron.yaml").as_str())?);
+        let version = "1.0.0";
+        configs.core_artifacts.insert("tron/sim".to_string(), Artifact::from(format!("mechtron.io:core:{}:{}", version,"tron/sim.yaml").as_str())?);
+        configs.core_artifacts.insert("tron/neutron".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"tron/neutron.yaml").as_str())?);
+        configs.core_artifacts.insert("schema/empty".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"schema/empty.json").as_str())?);
+        configs.core_artifacts.insert("schema/content/meta".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"schema/tron/content-meta.json").as_str())?);
+        configs.core_artifacts.insert("schema/create/meta".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"schema/tron/create-meta.json").as_str())?);
 
         return configs;
     }
@@ -54,6 +58,11 @@ impl Configs{
     pub fn core_tron_config(&self, id: &str ) -> Result<Arc<TronConfig>,Box<dyn Error>>
     {
         Ok(self.tron_config_keeper.get(&self.core_artifact(id)?)?.clone())
+    }
+
+    pub fn core_buffer_factory(&self, id: &str ) -> Result<Arc<NP_Factory<'static>>,Box<dyn Error>>
+    {
+        Ok(self.buffer_factory_keeper.get(&self.core_artifact(id)?)?.clone())
     }
 }
 
@@ -175,7 +184,7 @@ pub struct TronConfigRef
 
 #[derive(Clone)]
 pub struct TronConfig{
-    pub kind: Option<String>,
+    pub kind: String,
     pub name: String,
     pub nucleus_lookup_name: Option<String>,
     pub source: Artifact,

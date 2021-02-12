@@ -46,6 +46,7 @@ static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
         ["to_tron_lookup_name",      {"type": "string"}],
         ["to_cycle_kind",      {"type": "i64"}],
         ["to_cycle",      {"type": "i64"}],
+        ["to_phase_name",      {"type": "string"}],
         ["to_phase",      {"type": "u8"}],
         ["to_inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],
         ["to_port",   {"type": "string"}],
@@ -71,6 +72,7 @@ pub struct To {
     pub inter_delivery_type: InterDeliveryType,
 }
 
+#[derive(Clone)]
 pub struct From {
     pub tron: TronKey,
     pub cycle: i64,
@@ -81,13 +83,46 @@ pub struct From {
 
 impl To
 {
+    pub fn basic( tron: TronKey, port: String ) -> Self
+    {
+        To{
+            tron:tron,
+            port: port,
+            cycle: Cycle::Next,
+            phase: 0,
+            inter_delivery_type: InterDeliveryType::Cyclic
+        }
+    }
+
+    pub fn phasic( tron: TronKey, port: String, phase: u8 ) -> Self
+    {
+        To{
+            tron:tron,
+            port: port,
+            cycle: Cycle::Next,
+            phase: phase,
+            inter_delivery_type: InterDeliveryType::Cyclic
+        }
+    }
+
+    pub fn inter_phasic( tron: TronKey, port: String, phase: u8 ) -> Self
+    {
+        To{
+            tron:tron,
+            port: port,
+            cycle: Cycle::Present,
+            phase: phase,
+            inter_delivery_type: InterDeliveryType::Phasic
+        }
+    }
 
 }
 
 
 #[derive(Clone)]
 pub enum Cycle{
-    Some(i64),
+    Future(i64),
+    Present,
     Next
 }
 
@@ -147,6 +182,7 @@ pub struct MessageBuilder {
     pub to_tron_id: Option<Id>,
     pub to_cycle_kind: Option<Cycle>,
     pub to_phase: Option<u8>,
+    pub to_phase_name: Option<String>,
     pub to_port: Option<String>,
     pub to_inter_delivery_type: Option<InterDeliveryType>,
     pub payloads: Option<Vec<Payload>>,
@@ -167,6 +203,7 @@ impl  MessageBuilder {
             to_cycle_kind: None,
             to_port: None,
             to_phase: None,
+            to_phase_name: None,
             to_inter_delivery_type: None,
             payloads: None,
             meta: None,
@@ -179,6 +216,11 @@ impl  MessageBuilder {
         if self.kind.is_none()
         {
             return Err("message builder kind must be set".into());
+        }
+
+        if self.to_phase_name.is_some() && self.to_phase.is_some()
+        {
+            return Err("to_phase_name and to_phase cannot both be set".into());
         }
 
         if self.to_nucleus_lookup_name.is_some() != self.to_nucleus_id.is_some()
@@ -431,7 +473,7 @@ impl Message {
 
         match &self.to.cycle
         {
-            Cycle::Some(c)=>buffer.set(&[&index, &"to", &"cycle"], c.clone())?,
+            Cycle::Future(c)=>buffer.set(&[&index, &"to", &"cycle"], c.clone())?,
             Cycle::Next=> false
         };
 
@@ -494,7 +536,7 @@ impl Message {
                     tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"seq_id"])?,
                         id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"id"])? }},
                     cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
-                        Some(cycle) => Cycle::Some(cycle),
+                        Some(cycle) => Cycle::Future(cycle),
                         None => Cycle::Next
                     },
                     phase:Message::get::<u8,M>(&buffer, &[&index,&"to",&"phase"])?,

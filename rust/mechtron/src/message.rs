@@ -22,17 +22,17 @@ struct MessageDelivery
     message: Message
 }
 
-pub struct MessageStore
+pub struct MessagingStructure
 {
     chambers: HashMap<TronKey,RwLock<MessageChamber>>,
     pipeline: Arc<MessagePipeline>
 }
 
-impl MessageStore
+impl MessagingStructure
 {
     pub fn new()->Self
     {
-        MessageStore{
+        MessagingStructure {
             chambers: HashMap::new(),
             pipeline: Arc::new(MessagePipeline::new() )
         }

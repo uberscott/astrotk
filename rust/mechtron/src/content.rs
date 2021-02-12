@@ -4,44 +4,40 @@ use std::sync::{Arc, RwLock, PoisonError, RwLockWriteGuard, RwLockReadGuard};
 use std::error::Error;
 use no_proto::memory::NP_Memory_Owned;
 use mechtron_common::id::{RevisionKey, TronKey, Revision, ContentKey};
-use mechtron_common::content::Content;
+use mechtron_common::content::{Content, ReadOnlyContent};
+use mechtron_common::configs::Configs;
 
 
-
-
-pub struct ContentStore{
+pub struct ContentStructure {
     history: RwLock<HashMap<TronKey,RwLock<ContentHistory>>>
 }
 
 
-impl ContentStore
+impl ContentStructure
 {
    pub fn new() -> Self{
-       ContentStore{
+       ContentStructure {
            history: RwLock::new(HashMap::new())
        }
    }
 
-   pub fn create(&mut self, key: &TronKey) ->Result<(),Box<dyn Error+'_>>
+   fn get(&self, key:&ContentKey) -> Result<&Content,Box<dyn Error>>
    {
-       let mut map = self.history.write()?;
-       if map.contains_key(key )
+       let history = self.history.read()?;
+       if !history.contains_key(&revision.content_key )
        {
-           return Err(format!("content history for key {:?} has already been created for this store",key).into());
+           return Err(format!("content history for key {:?} is not managed by this store",revision.content_key).into());
        }
-
-       let history = RwLock::new(ContentHistory::new(key.clone() ) );
-       map.insert(key.clone(), history );
-
-       Ok(())
+       let history = history.get( &key.tron_id ).unwrap().read()?;
+       return history.get(key);
    }
 }
 
-impl ContentIntake for ContentStore
+impl ContentIntake for ContentStructure
 {
-    fn intake(&mut self,content: Content) -> Result<(), Box<dyn Error+'_>> {
+    fn intake(&mut self,content: Content, key: ContentKey) -> Result<(), Box<dyn Error+'_>> {
         let history = self.history.read()?;
-        if !history.contains_key(&content.revision.content_key )
+        if !history.contains_key(&key.content_id )
         {
             return Err(format!("content history for key {:?} is not managed by this store",content.revision.content_key).into());
         }
@@ -61,48 +57,41 @@ impl ContentIntake for ContentStore
     }
 }
 
-impl ContentRetrieval for ContentStore{
+impl ContentRetrieval for ContentStructure {
 
-    fn retrieve(&self, revision: &ContentKey) -> Result<Content, Box<dyn Error+'_>> {
-        let history = self.history.read()?;
-        if !history.contains_key(&revision.content_key )
-        {
-            return Err(format!("content history for key {:?} is not managed by this store",revision.content_key).into());
-        }
+    fn read_only(&self, key: &ContentKey, configs: &Configs ) -> Result<ReadOnlyContent, Box<dyn Error>> {
+        let rtn = self.get(key)?.read_only(configs)?;
+        Ok(rtn)
+    }
 
-        let history = history.get(&revision.content_key).unwrap();
-        let result = history.read();
-        match result{
-            Ok(_) => {}
-            Err(_) => return Err("could not acquire read lock for ContentRetrieval".into())
-        }
-        let guard = result.unwrap();
+    fn copy(&self, revision: &ContentKey) -> Result<Content, Box<dyn Error+'_>> {
 
-        let result = guard.retrieve(revision);
-        match result{
-            Ok(_) => {}
-            Err(_) => return Err(format!("could not acquire retrieve revision: {:?}",revision).into())
-        }
-        let content = result.unwrap();
-        Ok(content)
+        let rtn = self.get(key)?;
+        Ok(rtn.clone())
     }
 }
 
 pub trait ContentIntake
 {
-    fn intake( &mut self, content: Content )->Result<(),Box<dyn Error+'_>>;
+    fn intake( &mut self, content: Content, key: ContentKey )->Result<(),Box<dyn Error+'_>>;
+}
+
+pub trait ContentAccess
+{
+    fn get( &self, key: &ContentKey )->Result<ReadOnlyContent,Box<dyn Error+'_>>;
 }
 
 pub trait ContentRetrieval
 {
-    fn retrieve( &self, revision: &RevisionKey  )->Result<Content,Box<dyn Error+'_>>;
+    fn read_only( &self, key: &ContentKey, configs: &Configs )->Result<ReadOnlyContent,Box<dyn Error+'_>>;
+    fn copy( &self, key: &ContentKey )->Result<Content,Box<dyn Error+'_>>;
 }
 
 
 pub struct ContentHistory
 {
     key: TronKey,
-    content: HashMap<ContentKey,Content>,
+    content: HashMap<i64,Content>
 }
 
 impl ContentHistory {
@@ -112,33 +101,22 @@ impl ContentHistory {
             content: HashMap::new()
         }
     }
+
+    fn get(&self, key: &ContentKey )->Result<&Content,Box<dyn Error>>
+    {
+        match self.content.get(&key.revision.cycle )
+        {
+            None => Err(format!("could not find history for cycle {}", key.revision.cycle ).into()),
+            Some(content) => Ok(content)
+        }
+    }
 }
 
 impl ContentIntake for ContentHistory
 {
-    fn intake(&mut self, content: Content) -> Result<(), Box<dyn Error>> {
-
-        if self.buffers.contains_key(&content.revision)
-        {
-            return Err(format!("history content for revision {:?} already exists.", content.revision).into());
-        }
-
-        self.buffers.insert( content.revision, content.data);
-
-        Ok(())
+    fn intake(&mut self, content: Content,  key:ContentKey ) -> Result<(), Box<dyn Error>> {
+       self.content.insert(key.revision.cycle.clone(),content );
+       Ok(())
     }
 }
 
-impl  ContentRetrieval for ContentHistory {
-    fn retrieve(&self, revision: &RevisionKey) -> Result<Content, Box<dyn Error>> {
-        if !self.buffers.contains_key(revision)
-        {
-            return Err(format!("history does not have content for revision {:?}.", revision).into());
-        }
-
-        let buffer= self.buffers.get( revision ).unwrap();
-
-        let content= Content::from_arc(revision.clone(), buffer.clone());
-        Ok(content)
-    }
-}
