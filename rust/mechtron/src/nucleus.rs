@@ -5,7 +5,7 @@ use no_proto::memory::NP_Memory_Owned;
 
 use mechtron_common::artifact::{Artifact, ArtifactCacher};
 use mechtron_common::buffers::{get, set};
-use mechtron_common::configs::{Configs, SimConfig};
+use mechtron_common::configs::{Configs, SimConfig, TronConfig};
 use mechtron_common::content::{Content, ReadOnlyContent};
 use mechtron_common::id::{ContentKey, Id};
 use mechtron_common::id::Revision;
@@ -14,21 +14,21 @@ use mechtron_common::message::{Cycle, InterDeliveryType, Message, MessageKind, P
 use mechtron_common::revision::Revision;
 
 use crate::app::SYS;
-use crate::content::{Content, ContentIntake, ContentRetrieval, InterCyclicContentStructure, IntraCyclicContentStructure};
-use crate::message::{MessageIntake, MessagingStructure};
+use crate::content::{Content, ContentIntake, ContentRetrieval, NucleusContentStructure, NucleusIntraCyclicContentStructure, NucleusPhasicContentStructure};
+use crate::message::{MessageIntake, MessagingStructure, NucleusMessagingStructure, IntakeContext, MessageRouter, NucleusPhasicMessagingStructure};
 use crate::nucleus::{NeuTron, NucleiStore};
 use crate::tron::{Context, CreatePayloadsBuilder, init_tron, init_tron_of_kind, Neutron, Tron, TronShell};
 
 pub struct Nucleus
 {
-    pub id : Id,
-    pub sim_id : Id,
-    pub content: InterCyclicContentStructure,
-    pub messaging: MessagingStructure,
-    pub head: Revision,
+    id : Id,
+    sim_id : Id,
+    content: NucleusContentStructure,
+    messaging: NucleusMessagingStructure,
+    head: Revision,
 }
 
-pub fn timestamp()->i64
+fn timestamp()->i64
 {
     let timestamp = since_the_epoch.as_secs() * 1000 +
         since_the_epoch.subsec_nanos() as u64 / 1_000_000;
@@ -43,7 +43,7 @@ impl Nucleus
         let mut nucleus = Nucleus {
             id: SYS.net.id_seq.next(),
             sim_id: sim_id,
-            content: InterCyclicContentStructure::new(),
+            content: NucleusContentStructure::new(),
             messaging: MessagingStructure::new(),
             head: Revision { cycle: 0 }
         };
@@ -109,6 +109,11 @@ impl Nucleus
         Ok(nucleus_id.clone())
     }
 
+    pub fn intake( &mut self, message: Message )
+    {
+       self.messaging.intake(messge, self );
+    }
+
     pub fn revise( &mut self, from: Revision, to: Revision )->Result<(),Box<dyn Error>>
     {
         if from.cycle != to.cycle - 1
@@ -122,38 +127,109 @@ impl Nucleus
             phase: "dunno".to_string()
         };
 
-        let nucleus_update = NucleusUpdate::init(self.id, context);
-        nucleus_update.content.intake(content, content_key)?;
-        nucleus_update.messaging.intake(message)?;
-        nucleus_update.update()?;
+        let mut nucleus_cycle = NucleusCycle::init(self.id.clone(), context);
+
+        for message in self.messaging.query(&to.cycle)?
+        {
+            nucleus_cycle.intake_message(message)?;
+        }
+
+        for (key,content) in self.content.query(&revision)?
+        {
+            nucleus_cycle.intake_content(key,content)?;
+        }
+
+        nucleus_cycle.step()?;
 
         Ok(())
     }
 }
 
-struct NucleusUpdate
+impl IntakeContext for Nucleus
 {
-    id: Id,
-    content: IntraCyclicContentStructure,
-    context: RevisionContext,
+    fn head(&self) -> i64 {
+        self.head.cycle
+    }
+
+    fn phase(&self) -> u8 {
+        -1
+    }
 }
 
-impl NucleusUpdate
+struct NucleusCycle
+{
+    id: Id,
+    content:  NucleusPhasicContentStructure,
+    messaging: NucleusPhasicMessagingStructure,
+    context: RevisionContext,
+    phase: u8
+}
+
+impl NucleusCycle
 {
     fn init(id: Id, context: RevisionContext, ) -> Self
     {
-        NucleusUpdate {
+        NucleusCycle {
             id: id,
-            content: IntraCyclicContentStructure::new(revision),
-            context: context
+            content: NucleusPhasicContentStructure::new(),
+            messaging: NucleusPhasicMessagingStructure::new(),
+            context: context,
+            phase: 0
         }
+    }
+
+    fn intake_message( &mut self, message: Arc<Message> )->Result<(),Box<dyn Error>>
+    {
+        self.messaging.intake(message)?;
+        Ok(())
+    }
+
+    fn intake_content( &mut self, key: TronKey, content: &ReadOnlyContent )->Result<(),Box<dyn Error>>
+    {
+        self.content.intake(key,content)?;
+        Ok(())
+    }
+
+    fn step(&mut self)
+    {
+        let phase:u8 = 0;
+        match self.messaging.remove(&phase)?
+        {
+            None => {}
+            Some(messages) => {
+                for message in messages
+                {
+                    process(message)?;
+                }
+            }
+        }
+    }
+
+    fn tron( &mut self, key: &TronKey )->Result<(Arc<TronConfig>,&mut Content,TronShell,Context),Box<dyn Error>>
+    {
+        let mut content  = self.content.get(key)?;
+        let artifact = content.get_artifact()?;
+        let tron_config = SYS.local.configs.tron_config_keeper.get(&artifact)?;
+        let tron_shell = TronShell::new(init_tron(&tron_config)? )?;
+
+        let context = Context {
+            sim_id: self.sim_id.clone(),
+            id: key.clone(),
+            revision: Revision { cycle: self.context.cycle },
+            tron_config: tron_config.clone(),
+            timestamp: self.context.timestamp.clone(),
+        };
+
+
+        Ok( (tron_config, content, tron_shell,context))
     }
 
 
     fn process(&mut self, message: &Message) -> Result<(), Box<dyn Error>>
     {
         match message.kind {
-            MessageKind::Create => self.process_create( message),
+            MessageKind::Create => self.process_create(message),
+            MessageKind::Update=> self.process_update(message),
             _ => Err("not implemented yet".into())
         }
     }
@@ -166,9 +242,9 @@ impl NucleusUpdate
             Err(format!("not a valid neutron id: {}", message.to.tron.tron_id.id.clone()).into())
         }
 
-        let content_key = ContentKey { tron_id: message.to.tron.clone(), revision: Revision { cycle: context.cycle } };
+        let neutron_content_key = ContentKey { tron_id: message.to.tron.clone(), revision: Revision { cycle: context.cycle } };
 
-        let content = self.content.copy(&content_key)?;
+        let mut neutron_content = self.content.get(&neutron_content_key.tron_id)?;
 
         let context = Context {
             sim_id: self.sim_id.clone(),
@@ -178,14 +254,67 @@ impl NucleusUpdate
             timestamp: self.context.timestamp.clone(),
         };
 
-
-
-        let neutron = Neutron {};
-        neutron.create_tron(&context, message);
+        let neutron = Neutron{};
+        neutron.create_tron(&context, neutron_content , message);
 
         Ok(())
     }
+
+    fn process_update(&mut self, message: &Message )->Result<(),Box<dyn Error>>
+    {
+        let content_key = ContentKey { tron_id: message.to.tron.clone(), revision: Revision { cycle: context.cycle } };
+        let (config,content,tron,context ) = self.tron(&message.to.tron )?;
+    }
 }
+
+impl MessageRouter for NucleusCycle{
+    fn send(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
+
+        if message.to.tron.nucleus_id != self.id
+        {
+            SYS.router.send(message);
+            return Ok(());
+        }
+
+        match message.to.cycle
+        {
+            Cycle::Exact(cycle) => {
+                if self.context.revision.cycle != cycle
+                {
+                    SYS.router.send(message);
+                    return Ok(());
+                }
+            }
+            Cycle::Present => {}
+            Cycle::Next => {
+                SYS.router.send(message);
+                return Ok(());
+            }
+        }
+
+        match &message.to.inter_delivery_type
+        {
+            InterDeliveryType::Cyclic => {
+                SYS.router.send(message);
+                return Ok(());
+            }
+            InterDeliveryType::Phasic => {
+                if message.to.phase >= self.phase
+                {
+                    SYS.router.send(message);
+                    return Ok(());
+                }
+                else {
+                    self.intake(message);
+                    return Ok(());
+                }
+            }
+        }
+    }
+}
+
+
+
 
 
 struct RevisionContext

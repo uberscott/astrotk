@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::NP_Factory;
 use no_proto::error::NP_Error;
-use crate::buffers::BufferFactories;
+use crate::buffers::{BufferFactories, Buffer, RO_Buffer};
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use bytes::Bytes;
 use std::error::Error;
 use uuid::Uuid;
 use std::sync::Arc;
-use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New};
+use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New, NP_Memory_Ref};
 use std::sync::Mutex;
 use crate::id::{Id, IdSeq, TronKey, Revision};
 
@@ -377,7 +377,7 @@ impl  MessageBuilder {
 
 #[derive(Clone)]
 pub struct PayloadBuilder {
-    pub buffer: Arc<NP_Buffer<NP_Memory_Owned>>,
+    pub buffer: Buffer,
     pub artifact: Artifact
 }
 
@@ -386,7 +386,7 @@ impl PayloadBuilder
     pub fn build(&self)->Result<Payload,Box<dyn Error>>
     {
         Ok(Payload {
-            buffer: Arc::new(self.buffer.finish()),
+            buffer: self.buffer.clone(),
             artifact: self.artifact.clone()
         })
     }
@@ -395,7 +395,7 @@ impl PayloadBuilder
 
 #[derive(Clone)]
 pub struct Payload {
-    pub buffer: Arc<NP_Finished_Buffer<NP_Memory_Owned>>,
+    pub buffer: RO_Buffer,
     pub artifact: Artifact
 }
 
@@ -679,4 +679,5 @@ mod tests {
 }
 
  */
+
 

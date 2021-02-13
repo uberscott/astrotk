@@ -19,7 +19,7 @@ use crate::nucleus::NeuTron;
 
 pub trait Tron
 {
-    fn init(context: Context) -> Result<Box<Self>, Box<dyn Error>> where Self: Sized;
+    fn init() -> Result<Box<Self>, Box<dyn Error>> where Self: Sized;
 
     fn create(&self,
               context: &Context,
@@ -167,6 +167,24 @@ impl TronShell
                   content: &mut Content,
                   create: &Message) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
         let mut builders = self.tron.create(context, content, create)?;
+
+        return self.handle_builders(builders)
+    }
+
+    pub fn update(&self, context: &Context, content: &mut Content, inbound_messages: Vec<&Message>) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+        unimplemented!()
+    }
+
+    pub fn receive( &mut self, context: &Context, content:&mut Content, message: &Message ) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+    {
+       let func =  self.tron.port( &"blah" )?;
+       let builders= func(context,content,message)?;
+
+       return self.handle_builders(builders)
+    }
+
+    fn handle_builders( builders: Option<Vec<MessageBuilder>> )->Result<Option<Vec<Message>>,Box<dyn Error>>
+    {
         match builders {
             None => Ok(Option::None),
             Some(builders) =>
@@ -174,10 +192,6 @@ impl TronShell
                     builder.from = Option::Some(from(context));
                 }).collect())
         }
-    }
-
-    pub fn update(&self, context: &Context, content: &mut Content, inbound_messages: Vec<&Message>) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
-        unimplemented!()
     }
 }
 
@@ -254,6 +268,8 @@ impl NeutronContentInterface
 }
 
 impl Neutron {
+
+
     pub fn valid_neutron_id( id: Id )->bool{
         return id.id == 0;
     }
@@ -290,7 +306,7 @@ impl Neutron {
         tron_content.meta.set(&[&"creation_timestamp"], context.timestamp);
         tron_content.meta.set(&[&"creation_cycle"], context.revision.cycle);
 
-        let tron = init_tron(&tron_config, context)?;
+        let tron = init_tron(&tron_config)?;
         let tron = TronShell::new(tron);
         let tron_context = Context {
             sim_id: context.sim_id.clone(),
@@ -307,7 +323,7 @@ impl Neutron {
 }
 
 impl Tron for Neutron {
-    fn init(context: Context) -> Result<Box<Self>, Box<dyn Error>> where Self: Sized {
+    fn init() -> Result<Box<Self>, Box<dyn Error>> where Self: Sized {
         Ok(Box::new(Neutron {}))
     }
 
@@ -430,11 +446,11 @@ impl Tron for StdOut
     }
 }
 
-pub fn init_tron(config: &TronConfig, context: &Context) -> Result<Box<dyn Tron>, Box<dyn Error>>
+pub fn init_tron(config: &TronConfig) -> Result<Box<dyn Tron>, Box<dyn Error>>
 {
     let rtn = match config.kind.as_str() {
-        "sim" => SimTron.init(context),
-        "neutron" => NeuTron.init(context),
+        "neutron" => Neutron.init(),
+        "sim" => SimTron.init(),
         _ => return Err(format!("we don't have a tron of kind {}", kind).into())
     };
 
