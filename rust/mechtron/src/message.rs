@@ -221,3 +221,35 @@ impl NucleusPhasicMessagingStructure
     }
 
 }
+
+
+pub struct OutboundMessaging
+{
+    queue: Vec<Message>
+}
+
+impl OutboundMessaging{
+    pub fn new()->Self
+    {
+        OutboundMessaging{
+            queue: vec!()
+        }
+    }
+
+    pub fn drain(&mut self)->Vec<Message>
+    {
+        let mut rtn = vec!();
+
+        while let Some(message) = self.queue.pop()
+        {
+            rtn.push(message)
+        }
+
+        return rtn;
+    }
+
+    pub fn push( &mut self, message: Message )
+    {
+        self.queue.push(message);
+    }
+}

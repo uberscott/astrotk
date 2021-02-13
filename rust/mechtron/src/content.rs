@@ -113,4 +113,16 @@ impl NucleusPhasicContentStructure
         self.store.get_mut(key).ok_or("could not find content".into() )
     }
 
+    pub fn drain(&mut self, revision: &Revision )->Vec<(ContentKey,Content)>
+    {
+        let mut rtn = vec!();
+
+        for key in self.store.keys(){
+            let content = self.store.remove(key).unwrap();
+            rtn.push( (ContentKey{tron_id: key.clone(),revision:revision.clone()},content) );
+        }
+
+        return rtn;
+    }
+
 }

@@ -15,7 +15,7 @@ use mechtron_common::revision::Revision;
 
 use crate::app::SYS;
 use crate::content::{Content, ContentIntake, ContentRetrieval, NucleusContentStructure, NucleusIntraCyclicContentStructure, NucleusPhasicContentStructure};
-use crate::message::{MessageIntake, MessagingStructure, NucleusMessagingStructure, IntakeContext, MessageRouter, NucleusPhasicMessagingStructure};
+use crate::message::{MessageIntake, MessagingStructure, NucleusMessagingStructure, IntakeContext, MessageRouter, NucleusPhasicMessagingStructure, OutboundMessaging};
 use crate::nucleus::{NeuTron, NucleiStore};
 use crate::tron::{Context, CreatePayloadsBuilder, init_tron, init_tron_of_kind, Neutron, Tron, TronShell};
 
@@ -25,7 +25,7 @@ pub struct Nucleus
     sim_id : Id,
     content: NucleusContentStructure,
     messaging: NucleusMessagingStructure,
-    head: Revision,
+    head: Revision
 }
 
 fn timestamp()->i64
@@ -141,6 +141,19 @@ impl Nucleus
 
         nucleus_cycle.step()?;
 
+        let (contents, messages) = nucleus_cycle.commit();
+
+        self.head = to;
+
+        for (key, content) in contents
+        {
+            self.content.intake(content,key)?;
+        }
+
+        for message in messages{
+            SYS.router.send(message);
+        }
+
         Ok(())
     }
 }
@@ -161,6 +174,7 @@ struct NucleusCycle
     id: Id,
     content:  NucleusPhasicContentStructure,
     messaging: NucleusPhasicMessagingStructure,
+    outbound: OutboundMessaging,
     context: RevisionContext,
     phase: u8
 }
@@ -173,26 +187,27 @@ impl NucleusCycle
             id: id,
             content: NucleusPhasicContentStructure::new(),
             messaging: NucleusPhasicMessagingStructure::new(),
+            outbound: OutboundMessaging::new(),
             context: context,
             phase: 0
         }
     }
 
-    fn intake_message( &mut self, message: Arc<Message> )->Result<(),Box<dyn Error>>
+    fn intake_message(&mut self, message: Arc<Message>) -> Result<(), Box<dyn Error>>
     {
         self.messaging.intake(message)?;
         Ok(())
     }
 
-    fn intake_content( &mut self, key: TronKey, content: &ReadOnlyContent )->Result<(),Box<dyn Error>>
+    fn intake_content(&mut self, key: TronKey, content: &ReadOnlyContent) -> Result<(), Box<dyn Error>>
     {
-        self.content.intake(key,content)?;
+        self.content.intake(key, content)?;
         Ok(())
     }
 
     fn step(&mut self)
     {
-        let phase:u8 = 0;
+        let phase: u8 = 0;
         match self.messaging.remove(&phase)?
         {
             None => {}
@@ -203,6 +218,11 @@ impl NucleusCycle
                 }
             }
         }
+    }
+
+    fn commit(&mut self)->(Vec<(ContentKey,Content)>,Vec<Message>)
+    {
+        (self.content.drain(self.context.revision()),self.outbound.drain())
     }
 
     fn tron( &mut self, key: &TronKey )->Result<(Arc<TronConfig>,&mut Content,TronShell,Context),Box<dyn Error>>
@@ -272,7 +292,7 @@ impl MessageRouter for NucleusCycle{
 
         if message.to.tron.nucleus_id != self.id
         {
-            SYS.router.send(message);
+            self.outbound.push(message);
             return Ok(());
         }
 
@@ -281,13 +301,13 @@ impl MessageRouter for NucleusCycle{
             Cycle::Exact(cycle) => {
                 if self.context.revision.cycle != cycle
                 {
-                    SYS.router.send(message);
+                    self.outbound.push(message);
                     return Ok(());
                 }
             }
             Cycle::Present => {}
             Cycle::Next => {
-                SYS.router.send(message);
+                self.outbound.push(message);
                 return Ok(());
             }
         }
@@ -295,13 +315,13 @@ impl MessageRouter for NucleusCycle{
         match &message.to.inter_delivery_type
         {
             InterDeliveryType::Cyclic => {
-                SYS.router.send(message);
+                self.outbound.push(message);
                 return Ok(());
             }
             InterDeliveryType::Phasic => {
                 if message.to.phase >= self.phase
                 {
-                    SYS.router.send(message);
+                    self.outbound.push(message);
                     return Ok(());
                 }
                 else {

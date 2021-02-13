@@ -10,14 +10,9 @@
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/app.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/app.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron/src/content.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/content.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/message.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/nucleus.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/tron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/tron.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/content.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/content.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -232,7 +227,7 @@
       <workItem from="1611449259284" duration="11813000" />
       <workItem from="1612292567155" duration="326000" />
       <workItem from="1612355973641" duration="1185000" />
-      <workItem from="1612499400927" duration="298513000" />
+      <workItem from="1612499400927" duration="300190000" />
     </task>
     <servers />
   </component>
