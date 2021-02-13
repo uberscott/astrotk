@@ -1,7 +1,7 @@
 
 use crate::artifact::Artifact;
 use std::collections::HashMap;
-use no_proto::buffer::NP_Buffer;
+use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::NP_Factory;
 use no_proto::error::NP_Error;
 use crate::buffers::BufferFactories;
@@ -121,7 +121,7 @@ impl To
 
 #[derive(Clone)]
 pub enum Cycle{
-    Future(i64),
+    Exact(i64),
     Present,
     Next
 }
@@ -374,9 +374,28 @@ impl  MessageBuilder {
     }
 }
 
+
+#[derive(Clone)]
+pub struct PayloadBuilder {
+    pub buffer: Arc<NP_Buffer<NP_Memory_Owned>>,
+    pub artifact: Artifact
+}
+
+impl PayloadBuilder
+{
+    pub fn build(&self)->Result<Payload,Box<dyn Error>>
+    {
+        Ok(Payload {
+            buffer: Arc::new(self.buffer.finish()),
+            artifact: self.artifact.clone()
+        })
+    }
+}
+
+
 #[derive(Clone)]
 pub struct Payload {
-    pub buffer: Arc<NP_Buffer<NP_Memory_Owned>>,
+    pub buffer: Arc<NP_Finished_Buffer<NP_Memory_Owned>>,
     pub artifact: Artifact
 }
 
@@ -473,7 +492,7 @@ impl Message {
 
         match &self.to.cycle
         {
-            Cycle::Future(c)=>buffer.set(&[&index, &"to", &"cycle"], c.clone())?,
+            Cycle::Exact(c)=>buffer.set(&[&index, &"to", &"cycle"], c.clone())?,
             Cycle::Next=> false
         };
 
@@ -536,7 +555,7 @@ impl Message {
                     tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"seq_id"])?,
                         id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"id"])? }},
                     cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
-                        Some(cycle) => Cycle::Future(cycle),
+                        Some(cycle) => Cycle::Exact(cycle),
                         None => Cycle::Next
                     },
                     phase:Message::get::<u8,M>(&buffer, &[&index,&"to",&"phase"])?,

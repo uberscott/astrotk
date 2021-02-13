@@ -1,125 +1,220 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::Instant;
-
-use mechtron_common::message::{Cycle, To};
-use mechtron_common::message::Message;
-
-use mechtron_common::revision::Revision;
-use std::sync::{RwLock, Arc, Mutex};
-use crate::content::TronKey;
+use std::sync::{RwLock, Arc};
+use mechtron_common::id::{Id, Revision, TronKey};
+use mechtron_common::message::{Message, Cycle};
 use std::error::Error;
-use mechtron_common::id::{ContentKey, TronKey, Revision, DeliveryMomentKey};
+use std::time::Instant;
+use std::collections::hash_map::RandomState;
 
-struct MessageChamber {
-    key: TronKey,
-    messages: HashMap<DeliveryMomentKey,RwLock<Vec<MessageDelivery>>>
+use crate::app::SYS;
+
+
+pub trait MessageRouter
+{
+    fn send( message: Message) ->Result<(),Box<dyn Error>>;
+}
+
+pub struct GlobalMessageRouter
+{
+
+}
+
+impl MessageRouter for GlobalMessageRouter
+{
+    fn send(message: Message) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+}
+
+struct LocalMessageRouter
+{
+}
+
+impl MessageRouter for LocalMessageRouter
+{
+    fn send(message: Message) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+}
+
+
+pub struct InterCyclicMessagingStructure
+{
+    store: RwLock<HashMap<Id, NucleusCyclicMessagingStructure>>
 }
 
 struct MessageDelivery
 {
     received: Instant,
-    message: Message
+    cycle: i64,
+    message: Arc<Message>
 }
 
-pub struct MessagingStructure
+impl MessageDelivery {
+    fn new( message: Message, context: &dyn IntakeContext )->Self
+    {
+        MessageDelivery{
+            received: Instant::now(),
+            cycle: context.head(),
+            message: Arc::new(message)
+        }
+    }
+}
+
+trait IntakeContext
 {
-    chambers: HashMap<TronKey,RwLock<MessageChamber>>,
-    pipeline: Arc<MessagePipeline>
+    fn head()->i64;
+    fn phase()->u8;
 }
 
-impl MessagingStructure
+impl InterCyclicMessagingStructure
+{
+    pub fn intake( &mut self, message: Message, context: &dyn IntakeContext )->Result<(),Box<dyn Error>>
+    {
+        let delivery = MessageDelivery::new(message,context);
+        let mut store = self.store.write()?;
+        if !store.contains_key(&delivery.message.to.tron.nucleus_id )
+        {
+            store.insert( delivery.message.to.tron.nucleus_id.clone(), HashMap::new() );
+        }
+        let mut nucleus= store.get(&delivery.message.to.tron.nucleus_id ).unwrap();
+
+        nucleus.intake(delivery,context)?;
+
+        Ok(())
+    }
+
+    pub fn query( &self, nucleus_id: Id, cycle: i64 )->Result<Vec<Arc<Message>>,Box<dyn Error>>
+    {
+        let store = self.store.read()?;
+
+
+        let nucleus = store.get(&nucleus_id );
+        match nucleus{
+            None => Ok(vec!()),
+            Some(nucleus) => Ok(nucleus.query(cycle)?)
+        }
+    }
+
+}
+
+struct NucleusCyclicMessagingStructure
+{
+    store: HashMap<i64,HashMap<TronKey, TronMessagingChamber>>
+}
+
+impl NucleusCyclicMessagingStructure
+{
+   pub fn new()->Self
+   {
+       NucleusCyclicMessagingStructure {
+           store: HashMap::new()
+       }
+   }
+
+   pub fn intake( &mut self, delivery: MessageDelivery, context: &dyn IntakeContext )->Result<(),Box<dyn Error>>
+   {
+      let desired_cycle = match delivery.message.to.cycle{
+          Cycle::Exact(cycle) => {
+              cycle
+          }
+          Cycle::Present => {
+              // Nucleus intake is InterCyclic therefore cannot accept present cycles
+              contex.head()+1
+          }
+          Cycle::Next => {
+              contex.head()+1
+          }
+      };
+      // at some point we must determine if the nucleus policy allows for message deliveries to this
+      // nucleus after x number of cycles and then send a rejection message if needed
+
+       if !self.store.contains_key(&desired_cycle){
+           self.store.insert(desired_cycle.clone(), HashMap::new() );
+       }
+
+       let store = self.store.get(&desired_cycle ).unwrap();
+
+       if !store.contains_key(&delivery.message.to.tron )
+       {
+           store.inserts(delivery.message.to.tron.clone(), TronMessagingChamber::new() )
+       }
+
+       let mut chamber = store.get(&delivery.message.to.tron).unwrap();
+       chamber.intake(delivery)?;
+
+       Ok(())
+   }
+
+    pub fn query( &self, cycle: i64 )->Result<Vec<Arc<Message>>,Box<dyn Error>>
+    {
+        match self.store.get(&cycle )
+        {
+            None => Ok(vec!()),
+            Some(chambers) => {
+                let mut rtn = vec!();
+                for chamber in chambers.values(){
+                    rtn.append(&mut chamber.messages() );
+                }
+                Ok(rtn)
+            }
+        }
+    }
+}
+
+struct TronMessagingChamber
+{
+    deliveries: Vec<MessageDelivery>
+}
+
+impl TronMessagingChamber
 {
     pub fn new()->Self
     {
-        MessagingStructure {
-            chambers: HashMap::new(),
-            pipeline: Arc::new(MessagePipeline::new() )
+        TronMessagingChamber {
+            deliveries: vec!()
         }
     }
 
-    pub fn create( &mut self, tron_id: TronKey )->Result<(),Box<dyn Error>>
+    pub fn messages(&self)->Vec<Arc<Message>>
     {
-        if self.chambers.contains_key(&tron_id )
-        {
-            return Err(format!("MessageStore already contains tron_id {:?} ",tron_id).into());
-        }
-
-        self.chambers.insert(tron_id, RwLock::new(MessageChamber::new()));
-
-        return Ok(());
+        self.deliveries.iter().map( |d| { d.message.clone() } ).collect()
     }
 
-    pub fn cyclic_intake(&self ) ->Arc<dyn MessageIntake>
+    pub fn intake( &mut self, delivery: MessageDelivery )->Result<(),Box<dyn Error>>
     {
-        return self.pipeline.clone();
-    }
-
-    pub fn flood(&mut self)
-    {
-        let messages = self.pipeline.flood();
-    }
-}
-
-
-pub struct MessagePipeline
-{
-    pipeline: Mutex<Vec<MessageDelivery>>
-}
-
-impl MessageIntake for MessagePipeline{
-
-    fn intake(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
-        let mut pipeline = self.pipeline.lock()?;
-        let delivery = MessageDelivery{
-            received: Instant::now(),
-            message: message
-        };
-        pipeline.push(delivery );
+        self.deliveries.push(delivery);
         Ok(())
     }
 }
 
-impl MessagePipeline{
+struct NucleusPhasicMessagingStructure
+{
+    store: HashMap<u8,Vec<Message>>
+}
 
-    pub fn new()->Self{
-       MessagePipeline{
-           pipeline: Mutex::new(vec!() )
-       }
-    }
 
-    pub fn flood(&mut self)->Vec<MessageDelivery>
+struct PhasicMessagingRouter
+{
+
+}
+
+impl PhasicMessageRouter
+{
+
+}
+
+impl NucleusPhasicMessagingStructure
+{
+    pub fn intake( &mut self, message: Message, context: &IntakeContext ) -> Result<(),Box<dyn Error>>
     {
-        let mut pipeline = self.pipeline.lock()?;
-        let mut rtn = vec!();
-        while let Some(delivery)= pipeline.pop()
-        {
-            rtn.push(delivery );
-        }
-        return rtn;
-    }
-}
+       if !self.store.contains_key(&message.to.phase )
+       {
+           self.store.insert(message.to.phase.clone(), vec!() );
+       }
+       let mut messages = self.store.get( &message.to.phase ).unwrap();
+       messages.push( message );
 
-pub trait MessageIntake
-{
-    fn intake(&mut self, message: Message) -> Result<(),Box<dyn Error>>;
-}
-
-
-pub trait MessageRouter
-{
-    fn send( &self, messages: Vec<Message> );
-}
-
-
-struct IntraCyclicMessagingStructure
-{
-    hash: HashMap<To,Message>
-}
-
-impl MessageIntake for IntraCyclicMessagingStructure
-{
-    fn intake(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
-
+       Ok(())
     }
 }

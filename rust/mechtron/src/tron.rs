@@ -62,7 +62,7 @@ impl Context {
 
     pub fn get_content(&self, key: &ContentKey) -> Result<ReadOnlyContent, Box<dyn Error>>
     {
-        let source = SYS.local.sources.get(&self.sim_id)?;
+        let source = SYS.local.nuclei.get(&self.sim_id)?;
         if key.revision.cycle >= self.revision.cycle
         {
             return Err(format!("tron {:?} attempted to read the content of tron {:?} in a present or future cycle, which is not allowed", self.id, key.content_id).into());

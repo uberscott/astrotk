@@ -23,11 +23,11 @@ use mechtron_common::configs::{Configs, Keeper, MechtronConfig, MechtronConfigYa
 use mechtron_common::message::Message;
 
 use crate::content::{InterCyclicContentStructure, TronKey};
-use crate::message::{MessageIntake, MessageRouter};
-use crate::nucleus::NucleiStore;
+use crate::nucleus::{NucleiStore, Nucleus};
 use crate::repository::FileSystemArtifactRepository;
-use crate::source::Source;
+use crate::source::Nucleus;
 use mechtron_common::id::{IdSeq, Id};
+use crate::message::GlobalMessageRouter;
 
 lazy_static! {
   pub static ref SYS : System = System::new();
@@ -36,6 +36,7 @@ lazy_static! {
 pub struct System {
     pub local: Local,
     pub net: Network,
+    pub router: GlobalMessageRouter
 }
 
 impl System
@@ -43,7 +44,9 @@ impl System
     fn new() -> Self {
         System {
             local: Local::new(),
-            net: Network::new()
+            net: Network::new(),
+            router: GlobalMessageRouter{}
+
         }
     }
 
@@ -63,7 +66,7 @@ pub struct Local
     pub wasm_store: Arc<Store>,
     pub configs: Configs,
     pub wasm_module_keeper: Keeper<Module>,
-    pub sources: Sources
+    pub nuclei: Nuclei
 }
 
 impl Local {
@@ -76,7 +79,7 @@ impl Local {
             wasm_store: wasm_store.clone(),
             configs: Configs::new(repo.clone()),
             wasm_module_keeper: Keeper::new(repo.clone(), Box::new(WasmModuleParser { wasm_store: wasm_store.clone() })),
-            sources: Sources::new()
+            nuclei: Nuclei::new()
         }
     }
 }
@@ -114,54 +117,38 @@ impl Parser<Module> for WasmModuleParser
 }
 
 
-struct LocalMessageRouter
-{}
 
-impl LocalMessageRouter
-{
-    pub fn new() -> Self {
-        LocalMessageRouter {}
-    }
-}
 
-impl MessageRouter for LocalMessageRouter
+struct Nuclei
 {
-    fn send(&self, messages: Vec<Message>) {
-        unimplemented!()
-    }
-}
-
-struct Sources
-{
-    sources: RwLock<HashMap<Id,Arc<Source>>>
+    sources: RwLock<HashMap<Id,Arc<Nucleus>>>
 }
 
 
-impl Sources
+impl Nuclei
 {
     pub fn new()->Self
     {
-        Sources{
+        Nuclei {
             sources: RwLock::new(HashMap::new() )
         }
     }
 
-    pub fn launch( &mut self, sim_config: Arc<SimConfig> )->Result<(),Box<dyn Error + '_>>
-    {
-        let mut source = Source::launch(sime_config)?;
-        sources.insert( source.id().clone(), Arc::new(source ));
-        Ok(())
-    }
-
-    pub fn get( &self, sim_id: &Id ) -> Result<Arc<Source>,Box<dyn Error+'_>>
+    pub fn get(&self, nucleus_id: &Id ) -> Result<Arc<Nucleus>,Box<dyn Error+'_>>
     {
         let sources = self.sources.read()?;
-        if !sources.contains_key(sim_id)
+        if !sources.contains_key(nucleus_id)
         {
-            return Err(format!("sim id {:?} is not present in the sources",sim_id).into());
+            return Err(format!("nucleus id {:?} is not present in the local nuclei", nucleus_id).into());
         }
 
-        let source= sources.get(sim_id).unwrap();
-        return Ok(source.clone());
+        let nucleus= sources.get(nucleus_id).unwrap();
+        return Ok(nucleus.clone());
+    }
+
+    pub fn add( &mut self, nucleus: Nucleus  )
+    {
+        let mut sources = self.sources.write()?;
+        sources.insert(nucleus.id.clone(), Arc::new(nucleus));
     }
 }
