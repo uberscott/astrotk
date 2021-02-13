@@ -1,0 +1,6 @@
+{"type": "table",
+ "columns": 
+  [
+  ["sim_config_artifact", {"type": "string"}]
+  ]
+}

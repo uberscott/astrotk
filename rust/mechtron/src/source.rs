@@ -1,25 +1,38 @@
-use crate::content::{ContentStructure, ContentIntake, Content};
-use crate::nucleus::{NucleiStore, NeuTron};
-use crate::message::{MessagingStructure, MessageIntake};
 use std::error::Error;
-use crate::app::SYS;
-use mechtron_common::revision::Revision;
-use mechtron_common::id::{Id, ContentKey};
-use mechtron_common::id::TronKey;
-use mechtron_common::id::Revision;
-use mechtron_common::configs::SimConfig;
-use mechtron_common::artifact::{ArtifactCacher, Artifact};
 use std::sync::Arc;
-use crate::tron::{Context, Tron, init_tron_of_kind, TronShell};
-use mechtron_common::message::{Message, MessageKind, To, Cycle, InterDeliveryType, Payload};
-use mechtron_common::content::Content;
+
+use no_proto::memory::NP_Memory_Owned;
+
+use mechtron_common::artifact::{Artifact, ArtifactCacher};
+use mechtron_common::buffers::{get, set};
+use mechtron_common::configs::{Configs, SimConfig};
+use mechtron_common::content::{Content, ReadOnlyContent};
+use mechtron_common::id::{ContentKey, Id};
+use mechtron_common::id::Revision;
+use mechtron_common::id::TronKey;
+use mechtron_common::message::{Cycle, InterDeliveryType, Message, MessageKind, Payload, To};
+use mechtron_common::revision::Revision;
+
+use crate::app::SYS;
+use crate::content::{Content, ContentIntake, ContentRetrieval, InterCyclicContentStructure, IntraCyclicContentStructure};
+use crate::message::{MessageIntake, MessagingStructure};
+use crate::nucleus::{NeuTron, NucleiStore};
+use crate::tron::{Context, CreatePayloadsBuilder, init_tron, init_tron_of_kind, Neutron, Tron, TronShell};
 
 pub struct Source
 {
     sim_id: Id,
-    pub content: ContentStructure,
+    pub content: InterCyclicContentStructure,
     pub messaging: MessagingStructure,
-    pub head: Revision
+    pub head: Revision,
+}
+
+pub fn timestamp()->i64
+{
+    let timestamp = since_the_epoch.as_secs() * 1000 +
+        since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+
+    return timestamp;
 }
 
 impl Source
@@ -31,26 +44,25 @@ impl Source
 
         let mut source = Source {
             sim_id: sim_id,
-            content: ContentStructure::new(),
+            content: InterCyclicContentStructure::new(),
             messaging: MessagingStructure::new(),
             head: Revision { cycle: 0 }
         };
 
-        source.bootstrap();
+        source.bootstrap(sim_config);
 
         Ok(source)
     }
 
-    fn bootstrap( &mut self ) -> Result<(),Box<dyn Error>>
+    fn bootstrap(&mut self, sim_config: Arc<SimConfig>) -> Result<(), Box<dyn Error>>
     {
-        let timestamp= since_the_epoch.as_secs() * 1000 +
-            since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let timestamp = timestamp();
 
         let nucleus_id = SYS.net.id_seq.next();
         self.add_nuclues(nucleus_id.clone());
 
-        let neutron_config= SYS.local.configs.core_tron_config("tron/neutron")?;
-        let neutron_key = TronKey::new(nucleus_id: nucleus_id.clone(), Id::new( SYS.net.id_seq().clone(), 0 ));
+        let neutron_config = SYS.local.configs.core_tron_config("tron/neutron")?;
+        let neutron_key = TronKey::new(nucleus_id: nucleus_id.clone(), Id::new(SYS.net.id_seq().clone(), 0));
 
         let context = Context {
             sim_id: sim_id.clone(),
@@ -58,25 +70,22 @@ impl Source
             revision: self.head.clone(),
             tron_config: neutron_config.clone(),
             timestamp: timestamp.clone(),
-            phase: 0
         };
 
         // first we create a neutron for the simulation nucleus
-        let neutron_create_artifact = neutron_config.messages.unwrap().create.unwrap().artifact;
-        let neutron_create_buffer_factory = SYS.local.configs.buffer_factory_keeper.get(&neutron_create_artifact)?;
-        let neutron_create_buffer = neutron_create_buffer_factory.new_buffer(Option::None)?;
-        let create= Message::single_payload( &mut SYS.net.id_seq,
-                                               MesssageKind::Create,
-                                               mechtron_common::message::From{ tron: context.id.clone(), cycle: 0, timestamp },
-                                               To{
-                                                   tron: context.id.clone(),
-                                                   port: "create".to_string(),
-                                                   cycle: Cycle::Next,
-                                                   phase: 0,
-                                                   inter_delivery_type: InterDeliveryType::Cyclic
-                                               },
-                                               Payload{ buffer: Arc::new(neutron_create_buffer),
-                                                   artifact: sim_artifact.clone()});
+        let mut neutron_create_payload_builder = CreatePayloadsBuilder::new(&SYS.local.configs, &neutron_config)?;
+
+        let create = Message::multi_payload(&mut SYS.net.id_seq,
+                                            MesssageKind::Create,
+                                            mechtron_common::message::From { tron: context.id.clone(), cycle: 0, timestamp },
+                                            To {
+                                                tron: context.id.clone(),
+                                                port: "create".to_string(),
+                                                cycle: Cycle::Next,
+                                                phase: 0,
+                                                inter_delivery_type: InterDeliveryType::Cyclic,
+                                            },
+                                            CreatePayloadsBuilder::payloads(&SYS.local.configs, neutron_create_payload_builder));
 
 
         let neutron_content_artifact = neutron_config.content.unwrap().artifact;
@@ -87,29 +96,27 @@ impl Source
 
         let content_key = ContentKey {
             tron_id: context.id,
-            revision: revision
+            revision: revision,
         };
 
-        self.content.intake(content,content_key)?;
+        self.content.intake(content, content_key)?;
 
         // now we send a request to the neutron to create the simtron
 
         let simtron_config = SYS.local.configs.core_tron_config("trons/sim")?;
+        let mut sim_create_payload_builder = CreatePayloadsBuilder::new(&SYS.local.configs, &simtron_config)?;
+        sim_create_payload_builder.set_lookup_name("simtron");
+        set(&mut sim_create_payload_builder.constructor, &[&"sim_config_artifact"], sim_config.source.to())?;
 
-        let sim_create_artifact = sim_config.messages.unwrap().create.unwrap().artifact;
-        let sim_create_buffer_factory = SYS.local.configs.buffer_factory_keeper.get(&sim_create_artifact)?;
-        let sim_create_buffer = sim_create_buffer_factory.new_buffer(Option::None );
 
-
-        let message = Message::single_payload( &mut SYS.net.id_seq,
-                     MesssageKind::Create,
-                     mechtron_common::message::From{ tron: context.id.clone(), cycle: 0, timestamp },
-                         To::basic(
-                              neutron_key.clone(),
-                              "create-simtron".to_string(),
-                         ),
-                         Payload{ buffer: Arc::new(sim_create_buffer),
-                          artifact: sim_artifact.clone()});
+        let message = Message::multi_payload(&mut SYS.net.id_seq,
+                                             MesssageKind::Create,
+                                             mechtron_common::message::From { tron: context.id.clone(), cycle: 0, timestamp },
+                                             To::basic(
+                                                 neutron_key.clone(),
+                                                 "create".to_string(),
+                                             ),
+                                             CreatePayloadsBuilder::payloads(&SYS.local.configs, sim_create_payload_builder));
 
 
         self.messaging.cyclic_intake().intake(message)?;
@@ -131,11 +138,123 @@ impl Source
 
     pub fn revise( &mut self, from: Revision, to: Revision )->Result<(),Box<dyn Error>>
     {
-        if from.cycle != to.cycle-1
+        if from.cycle != to.cycle - 1
         {
             return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
         }
 
+        let context = RevisionContext{
+            revision: to.clone(),
+            timestamp: timestamp(),
+            phase: "dunno".to_string()
+        };
+
+        let mut nuclei = vec!();
+        for nucleus_id in self.content.query_nuclei(&to)?
+        {
+            nuclei.push(Nucleus::init(nucleus_id.clone(), context.clone()));
+        }
+
+        for mut nucleus in nuclei{
+            for (content,content_key) in self.content.query_nucleus_content(nucleus_id, &to, &SYS.local.configs )?
+            {
+                nucleus.content.intake(content,content_key)?;
+            }
+            for message in self.messaging.query_messages(nucleus_id, &SYS.local.configs )?
+            {
+                nucleus.messaging.intake(message)?;
+            }
+            nucleus.update()?;
+        }
+
+
+
+
         Ok(())
+    }
+}
+
+struct Nucleus
+{
+    id: Id,
+    content: IntraCyclicContentStructure,
+    context: RevisionContext,
+}
+
+impl Nucleus
+{
+    fn init(id: Id, context: RevisionContext, ) -> Self
+    {
+        Nucleus {
+            id: id,
+            content: IntraCyclicContentStructure::new(revision),
+            context: context
+        }
+    }
+
+
+    fn process(&mut self, message: &Message) -> Result<(), Box<dyn Error>>
+    {
+        match message.kind {
+            MessageKind::Create => self.process_create( message),
+            _ => Err("not implemented yet".into())
+        }
+    }
+
+    fn process_create(&mut self, message: &Message) -> Result<(), Box<dyn Error>>
+    {
+        // ensure this is addressed to a neutron
+        if !Neutron::valid_neutron_id(message.to.tron.tron_id.clone())
+        {
+            Err(format!("not a valid neutron id: {}", message.to.tron.tron_id.id.clone()).into())
+        }
+
+        let content_key = ContentKey { tron_id: message.to.tron.clone(), revision: Revision { cycle: context.cycle } };
+
+        let content = self.content.copy(&content_key)?;
+
+        let context = Context {
+            sim_id: self.sim_id.clone(),
+            id: message.to.tron.clone(),
+            revision: Revision { cycle: self.context.cycle },
+            tron_config: neutron_config.clone(),
+            timestamp: self.context.timestamp.clone(),
+        };
+
+
+
+        let neutron = Neutron {};
+        neutron.create_tron(&context, message);
+
+        Ok(())
+    }
+}
+
+
+struct RevisionContext
+{
+    revision: Revision,
+    timestamp: i64,
+    phase: String,
+}
+
+impl RevisionContext
+{
+    pub fn configs(&self) -> &Configs
+    {
+        &SYS.local.configs
+    }
+
+    pub fn revision(&self) -> &Revision {
+        &self.revision
+    }
+
+    pub fn timestamp(&self) -> i64
+    {
+        self.timestamp
+    }
+
+    pub fn phase(&self) -> &str {
+        self.phase.as_str()
     }
 }

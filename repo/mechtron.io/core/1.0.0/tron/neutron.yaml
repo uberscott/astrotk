@@ -1,6 +1,6 @@
-kind: nuctron
-name: NucTron
+kind: neutron
+name: Neutron
 content: 
   artifact:
-    path: schema/nuctron/content.json
+    path: schema/neutron/content.json
      

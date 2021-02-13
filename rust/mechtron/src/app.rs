@@ -22,7 +22,7 @@ use mechtron_common::buffers::BufferFactories;
 use mechtron_common::configs::{Configs, Keeper, MechtronConfig, MechtronConfigYaml, Parser, SimConfig};
 use mechtron_common::message::Message;
 
-use crate::content::{ContentStructure, TronKey};
+use crate::content::{InterCyclicContentStructure, TronKey};
 use crate::message::{MessageIntake, MessageRouter};
 use crate::nucleus::NucleiStore;
 use crate::repository::FileSystemArtifactRepository;

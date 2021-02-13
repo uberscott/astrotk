@@ -376,17 +376,17 @@ impl TronConfigYaml {
 
 
 pub struct SimConfig{
-    source: Artifact,
-    name: String,
-    description: Option<String>,
-    trons: Vec<SimTronConfig>
+    pub source: Artifact,
+    pub name: String,
+    pub description: Option<String>,
+    pub trons: Vec<SimTronConfig>
 }
 
 pub struct SimTronConfig
 {
-    name: Option<String>,
-    artifact: Artifact,
-    create: Option<SimCreateTronConfig>
+    pub name: Option<String>,
+    pub artifact: Artifact,
+    pub create: Option<SimCreateTronConfig>
 }
 
 impl ArtifactCacher for SimTronConfig{

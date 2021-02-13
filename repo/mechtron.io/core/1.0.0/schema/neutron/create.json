@@ -1,0 +1,6 @@
+{"type": "table",
+ "columns": 
+  [
+  ["nucleus_lookup_name", {"type": "string"}]
+  ]
+}

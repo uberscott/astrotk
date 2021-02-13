@@ -1,5 +1,5 @@
 use crate::id::ContentKey;
-use no_proto::buffer::NP_Buffer;
+use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use std::sync::Arc;
 use no_proto::memory::{NP_Memory_Owned, NP_Memory_Ref};
 use crate::artifact::Artifact;
@@ -41,15 +41,12 @@ impl Content
         }
     }
 
-    pub fn read_only( &self, configs: &Configs ) -> Result<ReadOnlyContent<'_>,Box<dyn Error>>
+    pub fn read_only( &self ) -> Result<ReadOnlyContent,Box<dyn Error>>
     {
-        let ro_meta =configs.core_buffer_factory("schema/content/meta")?.open_buffer_ref(self.meta.read_bytes());
-        let data_factory = configs.buffer_factory_keeper.get(&self.artifact)?;
-        let ro_data = data_factory.open_buffer_ref(self.data.read_bytes() );
         Ok(ReadOnlyContent{
             artifact: self.artifact.clone(),
-            meta: Arc::new(ro_meta),
-            data: Arc::new(ro_data)
+            meta: self.meta.finish(),
+            data: self.data.finish()
         })
     }
 
@@ -87,14 +84,22 @@ impl Content
     }
 }
 
-pub struct ReadOnlyContent<'buffers>
+
+pub struct ReadOnlyContent
 {
     pub artifact: Artifact,
-    pub meta: Arc<NP_Buffer<NP_Memory_Ref<'buffers>>>,
-    pub data: Arc<NP_Buffer<NP_Memory_Ref<'buffers>>>
+    pub meta: NP_Finished_Buffer<NP_Memory_Owned>,
+    pub data: NP_Finished_Buffer<NP_Memory_Owned>,
 }
 
-impl <'buffers> ReadOnlyContent<'buffers>
+impl ReadOnlyContent
 {
-
+    pub fn copy( &self )->Result<Content,Box<dyn Error>>
+    {
+        Ok(Content {
+            meta: configs.core_buffer_factory("schema/content/meta")?.open_buffer(self.meta.bytes()),
+            data: configs.buffer_factory_keeper.get(&self.artifact)?.open_buffer(self.data.bytes()),
+            artifact: self.artifact.clone()
+        })
+    }
 }

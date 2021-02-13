@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 
-use mechtron_common::message::Cycle;
+use mechtron_common::message::{Cycle, To};
 use mechtron_common::message::Message;
 
 use mechtron_common::revision::Revision;
@@ -111,3 +111,15 @@ pub trait MessageRouter
     fn send( &self, messages: Vec<Message> );
 }
 
+
+struct IntraCyclicMessagingStructure
+{
+    hash: HashMap<To,Message>
+}
+
+impl MessageIntake for IntraCyclicMessagingStructure
+{
+    fn intake(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
+
+    }
+}
