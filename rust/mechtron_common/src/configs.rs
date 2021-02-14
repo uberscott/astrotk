@@ -7,16 +7,26 @@ use std::sync::{Arc, RwLock};
 
 use no_proto::NP_Factory;
 use serde::{Deserialize, Serialize};
+use semver::Version;
 
-use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactCacher, ArtifactRepository, ArtifactYaml};
+use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository, ArtifactYaml};
 
 
-pub static CORE_BUNDLE: &'static str = "mechtron.io:core:0.0.1";
-static CORE_BUNDLE_FMT: &'static str = "mechtron.io:core:0.0.1:{}";
+
+lazy_static! {
+pub static ref CORE: ArtifactBundle = ArtifactBundle
+    {
+        group: "mechtron.io".to_string(),
+        id: "core".to_string(),
+        version: Version::new( 1, 0, 0 )
+    };
+
+pub static ref CORE_CONTENT_META: Artifact = CORE.path(&"schema/content/meta.json");
+}
+
 
 pub struct Configs
 {
-    core_artifacts: HashMap<String,Artifact>,
     pub artifact_cache: Arc<dyn ArtifactCache+Sync+Send>,
     pub buffer_factory_keeper: Keeper<NP_Factory<'static>>,
     pub sim_config_keeper: Keeper<SimConfig>,
@@ -29,7 +39,6 @@ impl Configs{
     pub fn new(artifact_source:Arc<dyn ArtifactCache+Sync+Send>)->Self
     {
         let mut configs = Configs{
-            core_artifacts: HashMap::new(),
             artifact_cache: artifact_source.clone(),
             buffer_factory_keeper: Keeper::new(artifact_source.clone() , Box::new(NP_Buffer_Factory_Parser )),
             sim_config_keeper: Keeper::new(artifact_source.clone(), Box::new( SimConfigParser )),
@@ -37,33 +46,11 @@ impl Configs{
             mechtron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( MechtronConfigParser ))
         };
 
-        let version = "1.0.0";
-        configs.core_artifacts.insert("tron/sim".to_string(), Artifact::from(format!("mechtron.io:core:{}:{}", version,"tron/sim.yaml").as_str())?);
-        configs.core_artifacts.insert("tron/neutron".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"tron/neutron.yaml").as_str())?);
-        configs.core_artifacts.insert("schema/empty".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"schema/empty.json").as_str())?);
-        configs.core_artifacts.insert("schema/content/meta".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"schema/tron/content-meta.json").as_str())?);
-        configs.core_artifacts.insert("schema/create/meta".to_string(), Artifact::from(format!( "mechtron.io:core:{}:{}", version,"schema/tron/create-meta.json").as_str())?);
 
         return configs;
     }
 
-    pub fn core_artifact( &self, id: &str ) -> Result<Artifact,Box<dyn Error>>
-    {
-        match self.core_artifacts.get(id) {
-            None => Err(format!("could not find core artifact {}",id).into()),
-            Some(artifact) =>Ok(artifact.clone())
-        }
-    }
 
-    pub fn core_tron_config(&self, id: &str ) -> Result<Arc<TronConfig>,Box<dyn Error>>
-    {
-        Ok(self.tron_config_keeper.get(&self.core_artifact(id)?)?.clone())
-    }
-
-    pub fn core_buffer_factory(&self, id: &str ) -> Result<Arc<NP_Factory<'static>>,Box<dyn Error>>
-    {
-        Ok(self.buffer_factory_keeper.get(&self.core_artifact(id)?)?.clone())
-    }
 }
 
 
@@ -225,28 +212,6 @@ pub struct OutboundMessageConfig
    pub artifact: Artifact
 }
 
-impl ArtifactCacher for TronConfig{
-    fn cache(&self, configs: &mut Configs ) -> Result<(), Box<dyn Error>> {
-
-        if self.content.is_some() {
-            configs.buffer_factory_keeper.cache( &self.content.as_ref().unwrap().artifact );
-        }
-
-        if self.messages.is_some() && self.messages.as_ref().unwrap().create.is_some(){
-            configs.buffer_factory_keeper.cache( &self.messages.as_ref().unwrap().create.as_ref().unwrap().artifact );
-        }
-
-       Ok(())
-    }
-}
-
-impl ArtifactCacher for MechtronConfig {
-    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error>> {
-       configs.tron_config_keeper.cache(&self.tron.artifact);
-       Ok(())
-    }
-}
-
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MechtronConfigYaml
@@ -284,7 +249,7 @@ pub struct TronConfigRefYaml
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct TronConfigYaml
 {
-    kind: Option<String>,
+    kind: String,
     name: String,
     nucleus_lookup_name: Option<String>,
     content: Option<ContentConfigYaml>,
@@ -389,16 +354,6 @@ pub struct SimTronConfig
     pub create: Option<SimCreateTronConfig>
 }
 
-impl ArtifactCacher for SimTronConfig{
-    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error+'_>> {
-        configs.tron_config_keeper.cache( &self.artifact )?;
-        if self.create.is_some()
-        {
-            configs.artifact_cache.cache( &self.create.as_ref().unwrap().data.artifact )?;
-        }
-        Ok(())
-    }
-}
 
 pub struct SimCreateTronConfig
 {
@@ -447,34 +402,32 @@ impl SimConfigYaml
 
     pub fn to_config(&self, artifact: &Artifact ) -> Result<SimConfig,Box<dyn Error>>
     {
-        let default_artifact = &artifact.bundle.clone();
         Ok( SimConfig{
             source: artifact.clone(),
             name: self.name.clone(),
             description: self.description.clone(),
-            trons: self.trons.iter().map( |t| { SimTronConfig{
-                name: t.name.clone(),
-                artifact: t.artifact.to_artifact(&default_artifact)?,
-                create: match &t.create {
-                    None => Option::None,
-                    Some(c) => Option::Some( SimCreateTronConfig{
-                        data: DataRef{ artifact: c.data.artifact.to_artifact(&default_artifact)? }
-                    } )
-                }
-            }} ).collect(),
+            trons: self.to_trons(artifact)?
         } )
     }
-}
 
-impl ArtifactCacher for SimConfig {
-    fn cache(&self, configs: &mut Configs) -> Result<(), Box<dyn Error>> {
-
-        for tron in self.trons
-        {
-            tron.cache( configs )?
+    fn to_trons( &self, artifact: &Artifact )->Result<Vec<SimTronConfig>,Box<dyn Error>>
+    {
+       let default_bundle = &artifact.bundle;
+       let mut rtn = vec!();
+        for t in &self.trons {
+            rtn.push(SimTronConfig {
+                name: t.name.clone(),
+                artifact: t.artifact.to_artifact(&default_bundle )?,
+                create: match &t.create {
+                    None => Option::None,
+                    Some(c) => Option::Some(SimCreateTronConfig {
+                        data: DataRef { artifact: c.data.artifact.to_artifact(&default_bundle)? }
+                    })
+                }
+            });
         }
-
-        Ok(())
+       return Ok(rtn);
     }
 }
+
 

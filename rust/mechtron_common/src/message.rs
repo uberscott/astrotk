@@ -4,15 +4,15 @@ use std::collections::HashMap;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::NP_Factory;
 use no_proto::error::NP_Error;
-use crate::buffers::{BufferFactories, Buffer, RO_Buffer};
+use crate::buffers::{BufferFactories, Buffer, RO_Buffer, Path};
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use bytes::Bytes;
 use std::error::Error;
 use uuid::Uuid;
 use std::sync::Arc;
-use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New, NP_Memory_Ref};
-use std::sync::Mutex;
-use crate::id::{Id, IdSeq, TronKey, Revision};
+use crate::id::{Id, IdSeq, TronKey, Revision, DeliveryMomentKey};
+use crate::configs::Configs;
+use no_proto::memory::NP_Memory_Owned;
 
 
 static MESSAGE_SCHEMA: &'static str = r#"{
@@ -58,8 +58,8 @@ static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
 }"#;
 
 lazy_static! {
-static ref MESSAGES_FACTORY : NP_Factory<'static> = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
-static ref MESSAGE_BUILDERS_FACTORY : NP_Factory<'static> = NP_Factory::new(MESSAGE_BUILDERS_SCHEMA).unwrap();
+static ref MESSAGES_FACTORY : NP_Factory<'static> = NP_Factory::new_json(MESSAGE_SCHEMA).unwrap();
+static ref MESSAGE_BUILDERS_FACTORY : NP_Factory<'static> = NP_Factory::new_json(MESSAGE_BUILDERS_SCHEMA).unwrap();
 }
 
 
@@ -77,6 +77,20 @@ pub struct From {
     pub tron: TronKey,
     pub cycle: i64,
     pub timestamp: i64
+}
+
+impl From
+{
+    pub fn append( &self, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
+    {
+        Ok(())
+    }
+
+    pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
+    {
+        unimplemented!()
+    }
+
 }
 
 
@@ -114,6 +128,66 @@ impl To
             phase: phase,
             inter_delivery_type: InterDeliveryType::Phasic
         }
+    }
+
+    pub fn append( &self, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
+    {
+        self.tron.append(&path.push(path!("tron")), buffer )?;
+        buffer.set(&path.with(path!("port")), self.port.clone() )?;
+        //buffer.set(vec!["port".to_string()], self.port.clone() )?;
+
+        match self.cycle{
+            Cycle::Exact(cycle) => {
+                buffer.set(&path.with(path!("cycle")), cycle.clone() )?;
+            }
+            Cycle::Present => {}
+            Cycle::Next => {}
+        }
+
+        buffer.set(&path.with(path!("phase")), self.phase.clone() )?;
+
+        match self.inter_delivery_type{
+            InterDeliveryType::Cyclic =>
+                {
+                    buffer.set(&path.with(path!("delivery_moment")), "cyclic" )?;
+                }
+            InterDeliveryType::Phasic => {
+                buffer.set(&path.with(path!("delivery_moment")), "phasic" )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
+    {
+        let tron = TronKey::from( &path.push(path!("tron")),buffer )?;
+        let port = buffer.get::<String>( &path.with(path!["port"]))?;
+        let cycle = match buffer.is_set::<i64>( &path.with(path!("cycle")))?
+        {
+            true => {
+                Cycle::Exact(buffer.get::<i64>( &path.with(path!("cycle")))?)
+            }
+            false => {
+                Cycle::Next
+            }
+        };
+
+        let phase = buffer.get::<u8>(&path.with(path!["phase"]))?;
+        let delivery_moment = match buffer.get::<&str>(&path.with(path!("delivery_moment")))?
+        {
+            "cyclic" => InterDeliveryType::Cyclic,
+            "phasic" => InterDeliveryType::Phasic,
+            _ => return Err("encountered unknown delivery_moment".into())
+        };
+
+        Ok(To{
+            tron: tron,
+            port: port,
+            cycle: cycle,
+            phase: phase,
+            inter_delivery_type: delivery_moment
+        })
     }
 
 }
@@ -233,17 +307,13 @@ impl  MessageBuilder {
             return Err("message builder to_tron_lookup_name OR to_tron_id must be set (but not both)".into());
         }
 
-        if self.to_cycle_kind.is_some() != self.to_cycle.is_some()
+        if self.to_cycle_kind.is_none()
         {
             return Err("message builder to_cycle_kind OR to_cycle must be set (but not both)".into());
         }
-        if self.payload.is_none()
+        if self.payloads.is_none()
         {
             return Err("message builder payload must be set".into());
-        }
-        if self.payload_artifact.is_none()
-        {
-            return Err("message builder payload_artifact must be set".into());
         }
 
         Ok(())
@@ -271,17 +341,17 @@ impl  MessageBuilder {
         self.validate_build()?;
         Ok(Message{
             id: seq.next(),
-            kind: self.kind.unwrap(),
-            from: self.from.unwrap(),
+            kind: self.kind.clone().unwrap(),
+            from: self.from.clone().unwrap(),
             to: To {
-                tron: TronKey { nucleus_id: self.to_nucleus_id.unwrap().clone(),
-                                tron_id: self.to_tron_id.unwrap().clone() },
-                port: self.to_port.unwrap().clone(),
-                cycle: self.to_cycle_kind.unwrap().clone(),
-                phase: self.to_phase.unwrap(),
+                tron: TronKey { nucleus: self.to_nucleus_id.clone().unwrap(),
+                                tron: self.to_tron_id.clone().unwrap() },
+                port: self.to_port.clone().unwrap(),
+                cycle: self.to_cycle_kind.clone().unwrap(),
+                phase: self.to_phase.clone().unwrap(),
                 inter_delivery_type: match &self.to_inter_delivery_type {
                     Some(r)=>r.clone(),
-                    None=>Option::None
+                    None=>InterDeliveryType::Cyclic
                 }
             },
             payloads: vec![],
@@ -321,54 +391,8 @@ impl  MessageBuilder {
     {
 
         let index = index.to_string();
-        buffer.set(&[&index, &"kind"], message_kind_to_index(&self.kind.as_ref().unwrap()))?;
+//        buffer.set(&[&index, &"kind"], message_kind_to_index(&self.kind.as_ref().unwrap()))?;
 
-        if self.to_nucleus_lookup_name.is_some() {
-          buffer.set(&[&index, &"to_nucleus_lookup_name"], self.to_nucleus_lookup_name.as_ref().unwrap().as_str())?;
-        }
-
-        if self.to_tron_lookup_name.is_some() {
-            buffer.set(&[&index, &"to_tron_lookup_name"], self.to_tron_lookup_name.as_ref().unwrap().as_str())?;
-        }
-
-        if self.to_nucleus_id.is_some() {
-            buffer.set(&[&index, &"to_nucleus_id", &"seq_id"], self.to_nucleus_id.unwrap().seq_id)?;
-            buffer.set(&[&index, &"to_nucleus_id", &"id"], self.to_nucleus_id.unwrap().id)?;
-        }
-
-        if self.to_tron_id.is_some() {
-            buffer.set(&[&index, &"to_tron_id", &"seq_id"], self.to_tron_id.unwrap().seq_id)?;
-            buffer.set(&[&index, &"to_tron_id", &"id"], self.to_tron_id.unwrap().id)?;
-        }
-
-        buffer.set(&[&index, &"to_port"], self.to_port.unwrap())?;
-
-
-        if self.to_inter_delivery_type.is_some()
-        {
-            buffer.set(&[&index, &"to_inter_delivery_type"], match &self.to_inter_delivery_type.unwrap(){
-                InterDeliveryType::Cyclic=>"cyclic",
-                InterDeliveryType::Phasic=>"phasic",
-            } )?;
-        }
-
-        buffer.set( &[&index,&"payload"], self.payload.as_ref().unwrap().read_bytes() )?;
-        buffer.set( &[&index,&"payload_artifact"], self.payload_artifact.as_ref().unwrap().to() )?;
-
-        if self.meta.is_some()
-        {
-            for k in self.meta.as_ref().unwrap().keys()
-            {
-                buffer.set(&[&index, &"meta", k], self.meta.as_ref().unwrap().get(k).as_ref().unwrap().to_string())?;
-            }
-        }
-
-        if self.transaction.is_some()
-        {
-            let transaction = self.transaction.as_ref().unwrap();
-            buffer.set(&[&index,&"transaction", &"seq_id"], transaction.seq_id )?;
-            buffer.set(&[&index,&"transaction", &"id"], transaction.id)?;
-        }
 
         Ok(())
     }
@@ -383,14 +407,15 @@ pub struct PayloadBuilder {
 
 impl PayloadBuilder
 {
-    pub fn build(&self)->Result<Payload,Box<dyn Error>>
+    pub fn build(builder:PayloadBuilder)->Payload
     {
-        Ok(Payload {
-            buffer: self.buffer.clone(),
-            artifact: self.artifact.clone()
-        })
+        Payload{
+            artifact: builder.artifact,
+            buffer: Buffer::read_only(builder.buffer)
+        }
     }
 }
+
 
 
 #[derive(Clone)]
@@ -452,174 +477,70 @@ impl Message {
         }
     }
 
-    pub fn messages_to_buffer<'message,'buffer> ( messages: &[&'message Message] )->Result<NP_Buffer<NP_Memory_Owned> ,Box<dyn Error>>
+    pub fn calc_bytes(&self)->usize
     {
-        let mut buffer= MESSAGES_FACTORY.new_buffer(Option::None);
-        let mut index = 0;
-        for m in messages
+        let mut size= 0;
+        for payload in &self.payloads
         {
-            let result = m.append_to_buffer(&mut buffer,index);
-            match result{
-                Ok(_)=>{},
-                Err(_)=>return Err("error when append_to_buffer".into())
-            }
-            index=index+1;
+            size = size+ payload.buffer.size();
         }
-        return Ok(buffer);
+        return size;
     }
 
-    pub fn append_to_buffer<M: NP_Memory + Clone + NP_Mem_New>(&self, buffer: &mut NP_Buffer<M>, index: usize ) -> Result<(),Box<NP_Error>>
+    pub fn to_bytes(&mut self) -> Result<Vec<u8>,Box<dyn Error>>
     {
-        let index = index.to_string();
-        buffer.set( &[&index,&"kind"], message_kind_to_index(&self.kind) )?;
-        buffer.set(&[&index, &"from", &"nucleus_id",&"seq_id"],&self.from.tron.nucleus_id.seq_id)?;
-        buffer.set(&[&index, &"from", &"nucleus_id",&"id"],&self.from.tron.nucleus_id.id)?;
-        buffer.set(&[&index, &"from", &"tron_id",&"seq_id"],&self.from.tron.tron_id.seq_id)?;
-        buffer.set(&[&index, &"from", &"tron_id",&"id"],&self.from.tron.tron_id.id)?;
-        buffer.set(&[&index, &"from", &"cycle"], self.from.cycle.clone())?;
-        buffer.set(&[&index, &"from", &"timestamp"], self.from.timestamp.clone())?;
+        let mut buffer= Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(self.calc_bytes())));
+        buffer.set(&path!("kind"), message_kind_to_index(&self.kind) )?;
 
-        buffer.set(&[&index, &"to", &"nucleus_id",&"seq_id"],&self.to.tron.nucleus_id.seq_id)?;
-        buffer.set(&[&index, &"to", &"nucleus_id",&"id"],&self.to.tron.nucleus_id.id)?;
-        buffer.set(&[&index, &"to", &"tron_id",&"seq_id"],&self.to.tron.tron_id.seq_id)?;
-        buffer.set(&[&index, &"to", &"tron_id",&"id"],&self.to.tron.tron_id.id)?;
-        buffer.set(&[&index, &"to", &"phase"], self.to.phase)?;
-        buffer.set(&[&index, &"to", &"port"], self.to.port.clone() )?;
-        buffer.set(&[&index, &"to", &"inter_delivery_type"], match &self.inter_delivery_type {
-            InterDeliveryType::Cyclic=>"cyclic",
-            InterDeliveryType::Phasic=>"phasic"
-        } )?;
+
+        let path = Path::new(path!("from"));
+        self.from.append(&path,&mut buffer)?;
+
+        let path = Path::new(path!("to"));
+        self.to.append(&path,&mut buffer)?;
 
         match &self.to.cycle
         {
-            Cycle::Exact(c)=>buffer.set(&[&index, &"to", &"cycle"], c.clone())?,
-            Cycle::Next=> false
+            Cycle::Exact(c)=>buffer.set(&path!(&"to", &"cycle"), c.clone())?,
+            _ => false
         };
 
-
-
-        buffer.set( &[&index,&"payload"], self.payload.read_bytes() )?;
-        buffer.set( &[&index,&"payload_artifact"], self.payload_artifact.to() )?;
-
-        for k in self.meta.keys()
+        let mut payload_index = 0;
+        for payload in &self.payloads
         {
-            buffer.set( &[&index,&"meta",k], self.meta.get(k).unwrap().to_string())?;
+            buffer.set(&path!("payloads", payload_index.to_string(), "buffer" ), payload.buffer.read_bytes() )?;
+            buffer.set(&path!(&"payloads", &payload_index.to_string(), "artifact"), payload.artifact.to() )?;
+            payload_index = payload_index+1;
+        }
+
+        if self.meta.is_some() {
+            let meta = self.meta.clone().unwrap();
+            for k in meta.keys()
+            {
+                buffer.set(&path!(&"meta",&k.as_str()), meta.get(k).unwrap().to_string())?;
+            }
         }
 
         if self.transaction.is_some()
         {
-            let transaction = self.transaction.as_ref().unwrap();
-            buffer.set(&[&index,&"transaction"], transaction.clone() )?;
+            let transaction = &self.transaction.clone().unwrap();
+            transaction.append(&Path::new(path!("transaction")),&mut buffer);
         }
 
-        Ok(())
+        buffer.compact()?;
+
+        Ok((Buffer::bytes(buffer)))
     }
 
-    pub fn from_buffer<M: NP_Memory + Clone + NP_Mem_New>(buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M>, index: usize ) -> Result<Self,Box<dyn Error>>
+    /*
+    pub fn from( configs: &Configs, bytes: Vec<u8> ) -> Result<Self,Box<dyn Error>>
     {
-        let index = index.to_string();
-        let payload_artifact = Message::get::<String,M>(&buffer, &[&index,&"payload_artifact"])?;
-        let payload_artifact = Artifact::from(&payload_artifact)?;
-        let payload = Message::get::<Vec<u8>,M>(&buffer, &[&index,&"payload"])?;
-
-        let mut meta: HashMap<String,String> = HashMap::new();
-        if buffer.get_collection( &[&index,&"meta"]).unwrap().is_some()
-        {
-            for item in buffer.get_collection(&[&index, &"meta"]).unwrap().unwrap()
-            {
-                meta.insert(item.key.to_string(), item.get::<String>().unwrap().unwrap());
-            }
-        }
-
-        let meta= meta;
-
-        let message = Message {
-            id: Id{
-                seq_id: Message::get::<i64,M>(&buffer, &[&index,&"id",&"seq_id"])?,
-                id: Message::get::<i64,M>(&buffer, &[&index,&"id",&"id"])?
-            },
-            kind: index_to_message_kind(Message::get::<u8,M>(&buffer, &[&index, &"kind"])?)?,
-            from:
-                    From{ tron: TronKey{ nucleus_id : Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"nucleus_id",&"seq_id"])?,
-                                                          id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"nucleus_id",&"id"])? },
-                                             tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"tron_id",&"seq_id"])?,
-                                                          id: Message::get::<i64,M>(&buffer, &[&index,&"from",&"tron",&"tron_id",&"id"])? }},
-                    timestamp: Message::get::<i64,M>(&buffer, &[&index,&"from",&"timestamp"])?,
-                    cycle: Message::get::<i64,M>(&buffer, &[&index,&"from",&"cycle"])?
-
-                    } ,
 
 
-                to:To{ tron: TronKey{ nucleus_id : Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"nucleus_id",&"seq_id"])?,
-                    id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"nucleus_id",&"id"])? },
-                    tron_id: Id{ seq_id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"seq_id"])?,
-                        id: Message::get::<i64,M>(&buffer, &[&index,&"to",&"tron",&"tron_id",&"id"])? }},
-                    cycle: match buffer.get::<i64>(&[&index,&"to",&"cycle"]).unwrap() {
-                        Some(cycle) => Cycle::Exact(cycle),
-                        None => Cycle::Next
-                    },
-                    phase:Message::get::<u8,M>(&buffer, &[&index,&"to",&"phase"])?,
-                    port:Message::get::<String,M>(&buffer, &[&index,&"to",&"port"])?,
-                    inter_delivery_type: match Message::get::<String,M>(&buffer, &[&index,&"to",&"inter_delivery_type"])?{
-                       &"cyclic"=>InterDeliveryType::Cyclic,
-                        &"phasic"=>InterDeliveryType::Phasic,
-                        _ => {}
-                    }
-                },
-
-            payloads: { let length = buffer.get_length(&[] )?.unwrap();
-                        let mut rtn = vec!();
-                        for payload_index in 0..length {
-                            let artifact = Artifact::from(Message::get:: <String, M>( & buffer, &[ & index, &"payloads", &payload_index, &"artifact"])?.as_str())?;
-                            let bytes = Message::get:: <Vec<u8>, M>( & buffer, &[ & index, &"payloads", &payload_index, &"buffer"])?;
-                            let payload = Payload { buffer: Arc::new(buffer_factories.create_buffer_from(&artifact, bytes)?), artifact: artifact };
-                            rtn.push(payload);
-                        }
-                        rtn},
-
-
-            meta: Option::None,
-            transaction: match buffer.get::<i64>( &[&index,&"transaction", &"seq_id"] )?{
-                None=>Option::None,
-                Some(seq_id)=>Some( Id{ seq_id:seq_id,
-                                              id: buffer.get::<i64>( &[&index,&"transaction", &"seq_id"] )?.unwrap()
-                 })
-            }
-        };
         return Ok(message);
     }
 
-    pub fn messages_from_bytes(  seq: &mut IdSeq,buffer_factories: & dyn BufferFactories, bytes: &Bytes) -> Result<Vec<Self>,Box<dyn Error>>
-    {
-        let buffer = MESSAGES_FACTORY.open_buffer( bytes.to_vec() );
-        return Ok( Message::messages_from_buffer( buffer_factories, &buffer)? );
-    }
-
-    pub fn messages_from_buffer<M: NP_Memory + Clone + NP_Mem_New>( buffer_factories: & dyn BufferFactories, buffer: &NP_Buffer<M> ) -> Result<Vec<Self>,Box<dyn Error>>
-    {
-        let length = buffer.get_length(&[] )?.unwrap();
-
-        let mut rtn = vec![];
-        for index in 0..length
-        {
-            rtn.push(Message::from_buffer( buffer_factories, buffer, index )?);
-        }
-
-        return Ok(rtn);
-    }
-
-    pub fn get<'get, X: 'get,M: NP_Memory + Clone + NP_Mem_New>(buffer:&'get NP_Buffer<M>, path: &[&str]) -> Result<X, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
-       match buffer.get::<X>(path)
-       {
-          Ok(option)=>{
-              match option{
-                  Some(rtn)=>Ok(rtn),
-                  None=>Err(format!("expected a value for {}", path[path.len()-1] ).into())
-              }
-          },
-          Err(e)=>Err(format!("could not get {}",cat(path)).into())
-       }
-    }
+     */
 
 
 }

@@ -37,6 +37,14 @@ impl ArtifactBundle {
         let rtn = rtn;
         return rtn;
     }
+
+    pub fn path(&self, string: &str)->Artifact
+    {
+        Artifact{
+            bundle: self.clone(),
+            path: string.to_string()
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash,Debug,Clone)]

@@ -10,9 +10,12 @@
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/content.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/content.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/message.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/configs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/content.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/content.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/id.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/id.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -69,7 +72,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Run">
+  <component name="RunManager" selected="Cargo.Test buffers::tests">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -96,9 +99,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_config --lib message" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+    <configuration name="Test buffers::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -111,9 +114,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package rust --bin rust message::tests" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
+    <configuration name="Test buffers::tests::check_how_lists_work2" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_how_lists_work2 -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -126,9 +129,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests::check_schema" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package rust --bin rust message::tests::check_schema -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
+    <configuration name="Test buffers::tests::check_nested_example" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_nested_example -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -141,9 +144,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests::create_message (1)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package astrotk_config --lib message::tests::create_message -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
+    <configuration name="Test buffers::tests::check_path" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_path -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -156,9 +159,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests::create_message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package rust --bin rust message::tests::create_message -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/astrotk_wasm" />
+    <configuration name="Test buffers::tests::check_ro_buffer" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_ro_buffer -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -188,20 +191,20 @@
     </configuration>
     <list>
       <item itemvalue="Cargo.Run" />
-      <item itemvalue="Cargo.Test message" />
-      <item itemvalue="Cargo.Test message::tests" />
-      <item itemvalue="Cargo.Test message::tests::check_schema" />
-      <item itemvalue="Cargo.Test message::tests::create_message" />
-      <item itemvalue="Cargo.Test message::tests::create_message (1)" />
       <item itemvalue="Cargo.Test" />
+      <item itemvalue="Cargo.Test buffers::tests::check_how_lists_work2" />
+      <item itemvalue="Cargo.Test buffers::tests::check_nested_example" />
+      <item itemvalue="Cargo.Test buffers::tests::check_path" />
+      <item itemvalue="Cargo.Test buffers::tests::check_ro_buffer" />
+      <item itemvalue="Cargo.Test buffers::tests" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test message" />
-        <item itemvalue="Cargo.Test message::tests::create_message (1)" />
-        <item itemvalue="Cargo.Test message::tests::create_message" />
-        <item itemvalue="Cargo.Test message::tests::check_schema" />
-        <item itemvalue="Cargo.Test message::tests" />
+        <item itemvalue="Cargo.Test buffers::tests" />
+        <item itemvalue="Cargo.Test buffers::tests::check_ro_buffer" />
+        <item itemvalue="Cargo.Test buffers::tests::check_path" />
+        <item itemvalue="Cargo.Test buffers::tests::check_nested_example" />
+        <item itemvalue="Cargo.Test buffers::tests::check_how_lists_work2" />
       </list>
     </recent_temporary>
   </component>
@@ -227,7 +230,7 @@
       <workItem from="1611449259284" duration="11813000" />
       <workItem from="1612292567155" duration="326000" />
       <workItem from="1612355973641" duration="1185000" />
-      <workItem from="1612499400927" duration="300190000" />
+      <workItem from="1612499400927" duration="324210000" />
     </task>
     <servers />
   </component>
