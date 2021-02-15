@@ -61,15 +61,8 @@ struct({fields: {
     phase: u8(),
     delivery: enum({choices: ["Cyclic", "Phasic"], default: "Cyclic"})
   }}),
-  payloads: list( of: struct({fields:{
-    bytes: bytes()
-    artifact: string()
-    }})),
-  meta: map( value: string() ),
-  transaction: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }})
+  payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) })
+
 }})
 
 
@@ -92,7 +85,7 @@ pub struct To {
     pub port: String,
     pub cycle: Cycle,
     pub phase: u8,
-    pub inter_delivery_type: InterDeliveryType,
+    pub delivery: DeliveryMoment,
 }
 
 #[derive(PartialEq,Eq,Clone,Debug)]
@@ -133,7 +126,7 @@ impl To
             port: port,
             cycle: Cycle::Next,
             phase: 0,
-            inter_delivery_type: InterDeliveryType::Cyclic
+            delivery: DeliveryMoment::Cyclic
         }
     }
 
@@ -144,7 +137,7 @@ impl To
             port: port,
             cycle: Cycle::Next,
             phase: phase,
-            inter_delivery_type: InterDeliveryType::Cyclic
+            delivery: DeliveryMoment::Cyclic
         }
     }
 
@@ -155,7 +148,7 @@ impl To
             port: port,
             cycle: Cycle::Present,
             phase: phase,
-            inter_delivery_type: InterDeliveryType::Phasic
+            delivery: DeliveryMoment::Phasic
         }
     }
 
@@ -163,7 +156,6 @@ impl To
     {
         self.tron.append(&path.push(path!("tron")), buffer )?;
         buffer.set(&path.with(path!("port")), self.port.clone() )?;
-        //buffer.set(vec!["port".to_string()], self.port.clone() )?;
 
         match self.cycle{
             Cycle::Exact(cycle) => {
@@ -175,12 +167,12 @@ impl To
 
         buffer.set(&path.with(path!("phase")), self.phase.clone() )?;
 
-        match self.inter_delivery_type{
-            InterDeliveryType::Cyclic =>
+        match self.delivery {
+            DeliveryMoment::Cyclic =>
                 {
                     buffer.set(&path.with(path!("delivery")), NP_Enum::Some("Cyclic".to_string()) )?;
                 }
-            InterDeliveryType::Phasic => {
+            DeliveryMoment::Phasic => {
                 buffer.set(&path.with(path!("delivery")), NP_Enum::Some("Phasic".to_string()) )?;
             }
         }
@@ -203,11 +195,15 @@ impl To
         };
 
         let phase = buffer.get::<u8>(&path.with(path!["phase"]))?;
-        let delivery = match buffer.get::<&str>(&path.with(path!("delivery")))?
+        let delivery = match buffer.get::<NP_Enum>(&path.with(path!("delivery")))?
         {
-            "cyclic" => InterDeliveryType::Cyclic,
-            "phasic" => InterDeliveryType::Phasic,
-            _ => return Err("encountered unknown delivery".into())
+            NP_Enum::None => return Err("unkown delivery type".into()),
+            NP_Enum::Some(delivery) => match delivery.as_str()
+            {
+                "Cyclic"=>DeliveryMoment::Cyclic,
+                "Phasic"=>DeliveryMoment::Phasic,
+                _ => return Err("unknown delivery type".into())
+            }
         };
 
         Ok(To{
@@ -215,7 +211,7 @@ impl To
             port: port,
             cycle: cycle,
             phase: phase,
-            inter_delivery_type: delivery
+            delivery: delivery
         })
     }
 
@@ -293,7 +289,7 @@ fn string_to_message_kind( str: &str ) -> Result<MessageKind,Box<dyn Error>>
 
 // meaning the "between" delivery which can either be between cycles or phases
 #[derive(PartialEq,Eq,Clone,Debug)]
-pub enum InterDeliveryType
+pub enum DeliveryMoment
 {
     Cyclic,
     Phasic
@@ -313,7 +309,7 @@ pub struct MessageBuilder {
     pub to_phase: Option<u8>,
     pub to_phase_name: Option<String>,
     pub to_port: Option<String>,
-    pub to_inter_delivery_type: Option<InterDeliveryType>,
+    pub to_inter_delivery_type: Option<DeliveryMoment>,
     pub payloads: Option<Vec<Payload>>,
     pub meta: Option<HashMap<String,String>>,
     pub transaction: Option<Id>
@@ -404,9 +400,9 @@ impl  MessageBuilder {
                 port: self.to_port.clone().unwrap(),
                 cycle: self.to_cycle_kind.clone().unwrap(),
                 phase: self.to_phase.clone().unwrap(),
-                inter_delivery_type: match &self.to_inter_delivery_type {
+                delivery: match &self.to_inter_delivery_type {
                     Some(r)=>r.clone(),
-                    None=>InterDeliveryType::Cyclic
+                    None=> DeliveryMoment::Cyclic
                 }
             },
             payloads: vec![],
@@ -484,6 +480,7 @@ impl Payload
     {
         buffer.set::<Vec<u8>>( &path.with(path!["bytes"]), self.buffer.read_bytes().to_vec()  )?;
         buffer.set( &path.with(path!["artifact"]), self.artifact.to() )?;
+
         Ok(())
     }
 
@@ -515,7 +512,39 @@ pub struct Message {
 }
 
 
+
 impl Message {
+
+    pub fn equals( &self, message: &Message )->bool
+    {
+
+        if    !(self.id.eq(&message.id) &&
+               self.from.eq(&message.from)  &&
+               self.to .eq(&message.to) &&
+               self.payloads.len() == message.payloads.len())
+        {
+            return false;
+        }
+
+        for p in 0..self.payloads.len()
+        {
+            let payload1 = &self.payloads[p];
+            let payload2 = &message.payloads[p];
+
+            if payload1.artifact != payload2.artifact
+            {
+                return false;
+            }
+
+            if payload1.buffer.read_bytes() != payload2.buffer.read_bytes()
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
 
     pub fn single_payload(seq: & mut IdSeq,
                  kind: MessageKind,
@@ -569,24 +598,18 @@ impl Message {
     pub fn to_bytes(&mut self) -> Result<Vec<u8>,Box<dyn Error>>
     {
         let mut buffer= Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(self.calc_bytes())));
+        let path = Path::new(path!());
+        self.id.append(&path.push(path!["id"]), &mut buffer )?;
         buffer.set(&path!("kind"), NP_Enum::new(message_kind_to_string(&self.kind) ))?;
 
-        let path = Path::new(path!("from"));
-        self.from.append(&path,&mut buffer)?;
+        self.from.append(&path.push(path!["from"]),&mut buffer)?;
 
-        let path = Path::new(path!("to"));
-        self.to.append(&path,&mut buffer)?;
-
-        match &self.to.cycle
-        {
-            Cycle::Exact(c)=>buffer.set(&path!(&"to", &"cycle"), c.clone())?,
-            _ => ()
-        };
+        self.to.append(&path.push(path!["to"]),&mut buffer)?;
 
         let mut payload_index = 0;
         for payload in &self.payloads
         {
-            let path = Path::new( path!["payloads",payload_index.to_string()] );
+            let path = path.push( path!("payloads",payload_index.to_string()));
             payload.append(&path,&mut buffer)?;
             payload_index = payload_index+1;
         }
@@ -605,7 +628,8 @@ impl Message {
             transaction.append(&Path::new(path!("transaction")),&mut buffer);
         }
 
-        buffer.compact()?;
+// for some reason compacting is breaking!
+//        buffer.compact()?;
 
         Ok((Buffer::bytes(buffer)))
     }
@@ -627,7 +651,7 @@ impl Message {
         let mut payloads = vec!();
         for payload_index in 0..payload_count
         {
-            let path = Path::new(path![payload_index.to_string()]);
+            let path = Path::new(path!["payloads",payload_index.to_string()]);
             payloads.push( Payload::from(&path,&buffer,buffer_factories)?);
         }
 
@@ -662,7 +686,7 @@ fn cat( path: &[&str])->String
 #[cfg(test)]
 mod tests {
     use no_proto::NP_Factory;
-    use crate::message::{MESSAGE_SCHEMA, MESSAGE_BUILDERS_SCHEMA, Message, PayloadBuilder, Payload, MessageKind, To, From, Cycle, InterDeliveryType, ID};
+    use crate::message::{MESSAGE_SCHEMA, MESSAGE_BUILDERS_SCHEMA, Message, PayloadBuilder, Payload, MessageKind, To, From, Cycle, DeliveryMoment, ID};
     use crate::id::{IdSeq, TronKey, Id};
     use crate::buffers::{Buffer, BufferFactories, Path};
     use crate::artifact::Artifact;
@@ -750,12 +774,15 @@ mod tests {
 
     #[test]
     fn test_serialize_message() {
-        let np_factory= NP_Factory::new( MESSAGE_SCHEMA).unwrap();
+        let artifact = Artifact::from("mechtron.io:core:1.0.0:schema/empty.schema").unwrap();
+        let factories = BufferFactoriesImpl{};
+        let np_factory= factories.get( &artifact ).unwrap();
         let np_buffer = np_factory.new_buffer(Option::None);
-        let buffer = Buffer::new(np_buffer);
+        let mut buffer = Buffer::new(np_buffer);
+        buffer.set( &path!("0"), "hello");
         let payload = Payload{
             buffer: Buffer::read_only(buffer),
-            artifact: Artifact::from("mectrhon.io:core:1.0.0:schema/empty.schema").unwrap()
+            artifact: artifact.clone()
         };
         let mut seq = IdSeq::new(0);
 
@@ -768,9 +795,9 @@ mod tests {
         let to = To {
             tron: TronKey { nucleus: seq.next(), tron: seq.next() },
             port: "someport".to_string(),
-            cycle: Cycle::Present,
+            cycle: Cycle::Exact(32),
             phase: 0,
-            inter_delivery_type: InterDeliveryType::Cyclic
+            delivery: DeliveryMoment::Cyclic
         };
 
         let mut message = Message::single_payload( &mut seq,
@@ -779,9 +806,10 @@ mod tests {
 
         let bytes = message.to_bytes().unwrap();
 
-        let factories = BufferFactoriesImpl{};
 
-        Message::from_bytes(bytes,&factories ).unwrap();
+        let new_message = Message::from_bytes(bytes,&factories ).unwrap();
+
+        assert!(message.equals(&new_message));
     }
 
 

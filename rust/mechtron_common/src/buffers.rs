@@ -87,7 +87,6 @@ impl Buffer
 
         let path  = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
-println!("setting {:?}",path);
         match self.np_buffer.set::<X>(path, value)
         {
             Ok(option)=>{
@@ -175,7 +174,6 @@ impl RO_Buffer
     pub fn get<'get, X: 'get>( &'get self, path: &Vec<String>) -> Result<X, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
         let path  = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
-println!("getting {:?}",path);
         match self.np_buffer.get::<X>(path)
         {
             Ok(option)=>{
@@ -221,6 +219,11 @@ pub struct Path
 
 impl Path
 {
+    pub fn segments( &self )->&Vec<String>
+    {
+        &self.segments
+    }
+
     pub fn new( segments: Vec<String> )->Self
     {
         Path{
@@ -240,10 +243,11 @@ impl Path
 
     pub fn with( & self, more: Vec<String> )->Vec<String>
     {
-        let mut segment = self.segments.clone();
+        let mut rtn = self.segments.clone();
         let mut more = more;
-        segment.append(&mut more);
-        return segment;
+
+        rtn.append(&mut more);
+        return rtn;
     }
 
 
@@ -354,10 +358,8 @@ mod tests {
     #[test]
     fn check_how_lists_work2() {
 
-        let factory: NP_Factory = NP_Factory::new(r#"struct({fields:{paylods:list( {of: struct({fields:{ name: string() }}) })}})"#).unwrap();
+        let factory: NP_Factory = NP_Factory::new(r#"struct({fields:{payloads:list( {of: struct({fields:{ name: string() }}) })}})"#).unwrap();
         let mut buffer = factory.new_buffer(Option::None);
-
-        //assert!(buffer.set(&["payloads","3","name"], "hi".as_bytes() ).unwrap());
         assert!(buffer.set(&["payloads","3","name"], "phil" ).unwrap());
     }
 
@@ -393,7 +395,7 @@ mod tests {
         let mut new_buffer = factory.new_buffer(None);
 // third item in the top level list -> key "alpha" of map at 3rd element -> 9th element of list at "alpha" key
 //
-        new_buffer.set(&["3", "alpha", "9"], "look at all this nesting madness").unwrap();
+        new_buffer.set(&["somelist","3", "alpha", "9"], "look at all this nesting madness").unwrap();
 
 // get the same item we just set
         let message = new_buffer.get::<&str>(&["somelist", "3", "alpha", "9"]).unwrap();
