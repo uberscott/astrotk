@@ -6,7 +6,7 @@ pub mod app;
 pub mod wasm;
 pub mod scheduler;
 pub mod message;
-pub mod repository;
+pub mod artifact;
 pub mod content;
 pub mod source;
 pub mod nucleus;

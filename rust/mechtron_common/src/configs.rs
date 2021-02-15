@@ -13,16 +13,7 @@ use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepositor
 
 
 
-lazy_static! {
-pub static ref CORE: ArtifactBundle = ArtifactBundle
-    {
-        group: "mechtron.io".to_string(),
-        id: "core".to_string(),
-        version: Version::new( 1, 0, 0 )
-    };
 
-pub static ref CORE_CONTENT_META: Artifact = CORE.path(&"schema/content/meta.json");
-}
 
 
 pub struct Configs
@@ -45,7 +36,6 @@ impl Configs{
             tron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( TronConfigParser )),
             mechtron_config_keeper: Keeper::new(artifact_source.clone(), Box::new( MechtronConfigParser ))
         };
-
 
         return configs;
     }

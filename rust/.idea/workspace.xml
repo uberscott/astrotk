@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
   <component name="CargoProjects">
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/astrotk/Cargo.toml" />
@@ -9,12 +12,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/mechtron/src/configs.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_common/src/core.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/empty.json" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/empty.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/app.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/app.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/repository.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/tron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/tron.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_common/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/configs.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_common/src/content.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/content.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_common/src/id.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/id.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_common/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -58,8 +68,11 @@
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
+    <property name="auto.test.manager.delay" value="10000" />
+    <property name="com.intellij.openapi.externalSystem.service.settings.ExternalSystemGroupConfigurable" value="SELECTIVE" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/mechtron_wasm/src" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
+    <property name="settings.editor.selected.configurable" value="build.tools" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -72,14 +85,16 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test buffers::tests">
-    <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
+  <component name="RunManager" selected="Cargo.Test buffers::tests::check_nested_example2">
+    <configuration default="true" type="ArquillianTestNG" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
           <option name="containerStateName" value="" />
         </value>
       </option>
-      <option name="TEST_OBJECT" value="class" />
+      <option name="TEST_OBJECT" value="CLASS" />
+      <properties />
+      <listeners />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
@@ -99,8 +114,23 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test buffers::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_common --lib buffers::tests" />
+    <configuration name="Test buffers::tests::check_bytes" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_bytes -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test buffers::tests::check_how_lists_work1" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_how_lists_work1 -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -129,8 +159,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test buffers::tests::check_nested_example" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_nested_example -- --exact" />
+    <configuration name="Test buffers::tests::check_nested_example2" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_nested_example2 -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -144,23 +174,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test buffers::tests::check_path" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_path -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test buffers::tests::check_ro_buffer" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_common --lib buffers::tests::check_ro_buffer -- --exact" />
+    <configuration name="Test message::tests::test_serialize_message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_common --lib message::tests::test_serialize_message -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_common" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -192,19 +207,19 @@
     <list>
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
+      <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
+      <item itemvalue="Cargo.Test buffers::tests::check_bytes" />
+      <item itemvalue="Cargo.Test buffers::tests::check_how_lists_work1" />
       <item itemvalue="Cargo.Test buffers::tests::check_how_lists_work2" />
-      <item itemvalue="Cargo.Test buffers::tests::check_nested_example" />
-      <item itemvalue="Cargo.Test buffers::tests::check_path" />
-      <item itemvalue="Cargo.Test buffers::tests::check_ro_buffer" />
-      <item itemvalue="Cargo.Test buffers::tests" />
+      <item itemvalue="Cargo.Test buffers::tests::check_nested_example2" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test buffers::tests" />
-        <item itemvalue="Cargo.Test buffers::tests::check_ro_buffer" />
-        <item itemvalue="Cargo.Test buffers::tests::check_path" />
-        <item itemvalue="Cargo.Test buffers::tests::check_nested_example" />
+        <item itemvalue="Cargo.Test buffers::tests::check_nested_example2" />
         <item itemvalue="Cargo.Test buffers::tests::check_how_lists_work2" />
+        <item itemvalue="Cargo.Test buffers::tests::check_how_lists_work1" />
+        <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
+        <item itemvalue="Cargo.Test buffers::tests::check_bytes" />
       </list>
     </recent_temporary>
   </component>
@@ -230,7 +245,8 @@
       <workItem from="1611449259284" duration="11813000" />
       <workItem from="1612292567155" duration="326000" />
       <workItem from="1612355973641" duration="1185000" />
-      <workItem from="1612499400927" duration="324210000" />
+      <workItem from="1612499400927" duration="331309000" />
+      <workItem from="1613323831808" duration="18198000" />
     </task>
     <servers />
   </component>

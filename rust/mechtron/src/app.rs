@@ -24,7 +24,7 @@ use mechtron_common::message::Message;
 
 use crate::content::{NucleusContentStructure, TronKey};
 use crate::nucleus::{NucleiStore, Nucleus};
-use crate::repository::FileSystemArtifactRepository;
+use crate::artifact::FileSystemArtifactRepository;
 use crate::source::Nucleus;
 use mechtron_common::id::{IdSeq, Id};
 use crate::message::GlobalMessageRouter;

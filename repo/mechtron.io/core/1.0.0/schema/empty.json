@@ -1,7 +1,1 @@
-{"type": "table",
- "columns": 
-  [
-  ["ids", {"type": "list", "of": {"type":"i64"}}],
-  ["names", {"type": "map", "value": {"type":"i64"}}]
-  ]
-}
+{}

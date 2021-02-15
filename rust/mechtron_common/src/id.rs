@@ -21,8 +21,10 @@ impl Id
 
     pub fn append( &self, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
     {
-        buffer.set( &path.with(path!["seq_id"]), self.seq_id )?;
-        buffer.set( &path.with(path!["id"]), self.id)?;
+println!("{:?}",path);
+        buffer.set::<i64>( &path.with(path!["seq_id"]), self.seq_id )?;
+        buffer.set::<i64>( &path.with(path!["id"]), self.id)?;
+println!("ids set at {:?}",path);
         Ok(())
     }
 

@@ -6,8 +6,7 @@ use crate::artifact::Artifact;
 use no_proto::NP_Factory;
 use crate::buffers::{BufferFactories, Buffer, RO_Buffer};
 use crate::configs::{Keeper, Configs};
-use crate::configs::CORE;
-use crate::configs::CORE_CONTENT_META;
+use crate::core::*;
 use no_proto::error::NP_Error;
 use std::error::Error;
 use crate::message::Payload;
@@ -61,15 +60,15 @@ impl Content
 
 impl ContentMeta for Content
 {
-    fn set_artifact(&mut self, artifact: &Artifact) -> Result<bool, Box<dyn Error>> {
+    fn set_artifact(&mut self, artifact: &Artifact) -> Result<(), Box<dyn Error>> {
         Ok(self.meta.set(&path!["artifact"], artifact.to() )?)
     }
 
-    fn set_creation_timestamp(&mut self, value: i64) -> Result<bool, Box<dyn Error>> {
+    fn set_creation_timestamp(&mut self, value: i64) -> Result<(), Box<dyn Error>> {
         Ok(self.meta.set(&path!["creation_timestamp"], value  )?)
     }
 
-    fn set_creation_cycle(&mut self, value: i64) -> Result<bool, Box<dyn Error>> {
+    fn set_creation_cycle(&mut self, value: i64) -> Result<(), Box<dyn Error>> {
         Ok(self.meta.set(&path!["creation_cycle"], value  )?)
     }
 }
@@ -165,8 +164,8 @@ trait ReadOnlyContentMeta
 
 trait ContentMeta: ReadOnlyContentMeta
 {
-    fn set_artifact(&mut self,artifact:&Artifact)->Result<bool,Box<dyn Error>>;
-    fn set_creation_timestamp(&mut self,value:i64)->Result<bool,Box<dyn Error>>;
-    fn set_creation_cycle(&mut self,value: i64)->Result<bool,Box<dyn Error>>;
+    fn set_artifact(&mut self,artifact:&Artifact)->Result<(),Box<dyn Error>>;
+    fn set_creation_timestamp(&mut self,value:i64)->Result<(),Box<dyn Error>>;
+    fn set_creation_cycle(&mut self,value: i64)->Result<(),Box<dyn Error>>;
 }
 

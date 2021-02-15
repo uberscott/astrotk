@@ -1,6 +1,6 @@
 #![macro_use]
 
-use no_proto::buffer::NP_Buffer;
+use no_proto::buffer::{NP_Buffer, NP_Generic_Iterator};
 use no_proto::NP_Factory;
 
 use crate::artifact::Artifact;
@@ -19,10 +19,7 @@ macro_rules! path{
 
 pub trait BufferFactories
 {
-    fn create_buffer(&self, artifact: &Artifact) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
-    fn create_buffer_from_array(&self, artifact: &Artifact, array: Vec<u8> ) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
-    fn create_buffer_from_buffer(&self, artifact: &Artifact, buffer: NP_Buffer<NP_Memory_Owned> ) ->Result<NP_Buffer<NP_Memory_Owned>,Box<dyn Error>>;
-    fn get_buffer_factory(&self, artifact: &Artifact) ->Option<&'static NP_Factory<'static>>;
+    fn get(&self, artifact: &Artifact) ->Result<Arc<NP_Factory<'static>>,Box<dyn Error>>;
 }
 
 
@@ -53,6 +50,7 @@ impl Buffer
         }
     }
 
+
     pub fn is_set<'get, X: 'get>( &'get self, path: &Vec<String>) -> Result<bool, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
         let path  = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
@@ -61,7 +59,10 @@ impl Buffer
             Ok(option)=>{
                 Ok(option.is_some())
             },
-            Err(e)=>Err(format!("could not get {}",cat(path)).into())
+            Err(e)=>{
+                println!("{:?}",e);
+                Err(format!("could not get {}",cat(path)).into())
+            }
         }
     }
 
@@ -82,14 +83,18 @@ impl Buffer
         }
     }
 
-    pub fn set<'set, X: 'set>(&'set mut self, path: &Vec<String>, value: X) -> Result<bool, Box<dyn Error>> where X: NP_Value<'set> + NP_Scalar<'set> {
+    pub fn set<'set, X: 'set>(&'set mut self, path: &Vec<String>, value: X) -> Result<(), Box<dyn Error>> where X: NP_Value<'set> + NP_Scalar<'set> {
 
         let path  = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
+println!("setting {:?}",path);
         match self.np_buffer.set::<X>(path, value)
         {
             Ok(option)=>{
-               Ok(option)
+               match option {
+                   true => Ok(()),
+                   false => Err(format!("set option returned false: {}",cat(path)).into())
+               }
             },
             Err(e)=>Err(format!("could not set {}",cat(path)).into())
         }
@@ -140,6 +145,21 @@ impl RO_Buffer
             np_buffer: np_buffer
         }
     }
+
+
+    pub fn get_length( &self, path: &Vec<String> )->Result<usize,Box<dyn Error>>
+    {
+        let path  = Vec::from_iter(path.iter().map(String::as_str));
+        let path = path.as_slice();
+        match self.np_buffer.get_length(path)
+        {
+            Ok(option)=>{
+                Ok(option.unwrap())
+            },
+            Err(e)=>Err(format!("could not get {}",cat(path)).into())
+        }
+    }
+
     pub fn is_set<'get, X: 'get>( &'get self, path: &Vec<String>) -> Result<bool, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
         let path  = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
@@ -155,6 +175,7 @@ impl RO_Buffer
     pub fn get<'get, X: 'get>( &'get self, path: &Vec<String>) -> Result<X, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
         let path  = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
+println!("getting {:?}",path);
         match self.np_buffer.get::<X>(path)
         {
             Ok(option)=>{
@@ -191,6 +212,8 @@ impl RO_Buffer
     }
 }
 
+
+#[derive(PartialEq,Eq,Clone,Debug)]
 pub struct Path
 {
     segments: Vec<String>
@@ -222,7 +245,10 @@ impl Path
         segment.append(&mut more);
         return segment;
     }
+
+
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -276,8 +302,9 @@ mod tests {
         let mut np_buffer = np_factory.new_buffer(Option::None);
         let mut buffer = Buffer::new(np_buffer);
 
-        assert_eq!( true, buffer.set( &path!("userId"), "Henry").unwrap() );
-        assert_eq!( true, buffer.set::<u8>( &path!("age"), 27).unwrap());
+        assert!( buffer.set( &path!("userId"), "Henry").is_ok() );
+        assert!( buffer.set::<u8>( &path!("age"), 27).is_ok());
+        assert!( buffer.set::<u8>( &path!("blah"), 27).is_err());
 
         assert_eq!("Henry", buffer.get::<String>(&path!("userId")).unwrap());
         assert_eq!(27, buffer.get::<u8>(&path!("age")).unwrap());
@@ -300,8 +327,9 @@ mod tests {
         let mut np_buffer = np_factory.new_buffer(Option::None);
         let mut buffer = Buffer::new(np_buffer);
 
-        assert_eq!( true, buffer.set( &path!("userId"), "Henry").unwrap() );
-        assert_eq!( true, buffer.set::<u8>( &path!("age"), 27).unwrap());
+        assert!( buffer.set( &path!("userId"), "Henry").is_ok() );
+        assert!( buffer.set::<u8>( &path!("age"), 27).is_ok());
+        assert!( buffer.set::<u8>( &path!("blah"), 27).is_err());
 
         let buffer = Buffer::read_only(buffer);
 
@@ -322,6 +350,17 @@ mod tests {
 
         assert_eq!(Option::Some(0),buffer.list_push(&[], "hi" ).unwrap());
     }
+
+    #[test]
+    fn check_how_lists_work2() {
+
+        let factory: NP_Factory = NP_Factory::new(r#"struct({fields:{paylods:list( {of: struct({fields:{ name: string() }}) })}})"#).unwrap();
+        let mut buffer = factory.new_buffer(Option::None);
+
+        //assert!(buffer.set(&["payloads","3","name"], "hi".as_bytes() ).unwrap());
+        assert!(buffer.set(&["payloads","3","name"], "phil" ).unwrap());
+    }
+
 
 
     #[test]
@@ -348,18 +387,94 @@ mod tests {
     }
 
     #[test]
-    fn check_path(){
-        let factory: NP_Factory = NP_Factory::new(r#"list({of: map({ value: list({ of: string() })})})"#).unwrap();
+    fn check_nested_example2(){
+        let factory: NP_Factory = NP_Factory::new(r#"struct({fields:{ somelist: list({of: map({ value: list({ of: string() })})}) }})"#).unwrap();
+
         let mut new_buffer = factory.new_buffer(None);
+// third item in the top level list -> key "alpha" of map at 3rd element -> 9th element of list at "alpha" key
+//
+        new_buffer.set(&["3", "alpha", "9"], "look at all this nesting madness").unwrap();
+
+// get the same item we just set
+        let message = new_buffer.get::<&str>(&["somelist", "3", "alpha", "9"]).unwrap();
+
+        assert_eq!(message, Some("look at all this nesting madness"))
+    }
+
+
+    // this will PASS
+    #[test]
+    fn check_np_bytes(){
+        let factory: NP_Factory = NP_Factory::new(r#"bytes()"#).unwrap();
+
+        let mut buffer = factory.new_buffer(None);
+
+        let bytes:Vec<u8> = vec![0,1,3,4,5,6];
+        assert!(buffer.set(&[], bytes.clone() ).unwrap());
+
+        let new_bytes = buffer.get::<Vec<u8>>( &[] ).unwrap();
+        assert!(new_bytes.is_some());
+        let new_bytes = new_bytes.unwrap();
+
+        assert_eq!(bytes,new_bytes);
+
+    }
+
+    // this will FAIL
+    #[test]
+    fn check_change_bytes(){
+        let factory: NP_Factory = NP_Factory::new(r#"bytes()"#).unwrap();
+
+        let mut buffer = factory.new_buffer(None);
+
+        let bytes = "hello this is a string".as_bytes();
+        assert!(buffer.set(&[], bytes.clone() ).unwrap());
+
+        let bytes:Vec<u8> = vec![0,1,3,4,5,6];
+        assert!(buffer.set(&[], bytes.clone() ).unwrap());
+
+        let new_bytes = buffer.get::<Vec<u8>>( &[] ).unwrap();
+        assert!(new_bytes.is_some());
+        let new_bytes = new_bytes.unwrap();
+
+        assert_eq!(bytes,new_bytes);
+    }
+
+    #[test]
+    fn check_bytes(){
+        let factory: NP_Factory = NP_Factory::new(r#"struct({fields:{bytes:bytes(),id:i64()}})"#).unwrap();
+
+        let mut buffer = factory.new_buffer(None);
+        let mut buffer = Buffer::new(buffer);
+
+        assert!(buffer.set::<i64>(&path!["id"], 0 ).is_ok());
+        let bytes:Vec<u8> = vec![0,1,3,4,5,6];
+        assert!(buffer.set(&path!["bytes"], bytes.clone() ).is_ok());
+
+        let bytes:Vec<u8> = vec![0,1,3,4,5,6,7];
+        assert!(buffer.set(&path!["bytes"], bytes.clone() ).is_ok());
+
+        let new_bytes = buffer.get::<Vec<u8>>( &path!["bytes"] ).unwrap();
+
+        assert_eq!(bytes,new_bytes);
+    }
+
+
+    #[test]
+    fn check_path(){
 
         let path= Path::new(path!("0") );
         assert_eq!( &["0","alpha","9"], path.with(path!("alpha", "9")).as_slice());
         let deep_path = path.push(path!("alpha", "9"));
         assert_eq!( path!("0","alpha","9"), deep_path.segments);
 
-        /*new_buffer.set(path.with(&["alpha", "9"]).as_slice(), "look at all this nesting madness").unwrap();
-        let message = new_buffer.get::<&str>(&deep_path.segments).unwrap();
+        let factory: NP_Factory = NP_Factory::new(r#"list({of: map({ value: list({ of: string() })})})"#).unwrap();
+        let mut buffer = factory.new_buffer(None);
+        let mut buffer = Buffer::new(buffer);
 
-        assert_eq!(message, Some("look at all this nesting madness"))*/
+        buffer.set(&path.with(path!["alpha", "9"]), "look at all this nesting madness").unwrap();
+        let message = buffer.get::<&str>(&deep_path.segments).unwrap();
+
+        assert_eq!(message, "look at all this nesting madness")
     }
 }

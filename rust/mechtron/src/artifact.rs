@@ -46,6 +46,7 @@ impl ArtifactRepository for FileSystemArtifactRepository
         return Ok(());
     }
 }
+
 impl ArtifactCache for FileSystemArtifactRepository
 {
     fn cache(&self, artifact: &Artifact) -> Result<(),Box<dyn Error + '_>>
@@ -107,4 +108,17 @@ impl ArtifactCache for FileSystemArtifactRepository
         }
     }
 
+}
+#[cfg(test)]
+mod tests {
+    use crate::artifact::FileSystemArtifactRepository;
+    use mechtron_common::artifact::{Artifact, ArtifactCache};
+    use mechtron_common::core::*;
+
+    #[test]
+    fn test_load_artifact() {
+        let repo = FileSystemArtifactRepository::new("../repo".to_string() );
+        assert!(repo.cache(&CORE_SCHEMAT_EMPTY).is_ok());
+        assert_eq!("{}",repo.load(&CORE_SCHEMAT_EMPTY));
+    }
 }

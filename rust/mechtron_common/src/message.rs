@@ -13,57 +13,80 @@ use std::sync::Arc;
 use crate::id::{Id, IdSeq, TronKey, Revision, DeliveryMomentKey};
 use crate::configs::Configs;
 use no_proto::memory::NP_Memory_Owned;
+use no_proto::pointer::option::NP_Enum;
+use no_proto::collection::map::NP_Map;
+use no_proto::collection::struc::NP_Struct;
+
+static ID: &'static str = r#"
+struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+"#;
+
+static MESSAGE_SCHEMA: &'static str = r#"
+struct({fields: {
+  id:struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+  kind: enum({choices: ["Create", "Update", "Content", "Request", "Response", "Reject"]}),
+  from: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    cycle: i64(),
+    timestamp: i64()
+  }}),
+  to: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    port: string(),
+    cycle: i64(),
+    phase: u8(),
+    delivery: enum({choices: ["Cyclic", "Phasic"], default: "Cyclic"})
+  }}),
+  payloads: list( of: struct({fields:{
+    bytes: bytes()
+    artifact: string()
+    }})),
+  meta: map( value: string() ),
+  transaction: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+}})
 
 
-static MESSAGE_SCHEMA: &'static str = r#"{
-    "type":"list",
-    "of":
-    {"type": "table",
-    "columns": [
-        ["id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],
-        ["kind",   {"type": "u8"}],
-        ["from",    {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}],["timestamp",{"type":"i64"}]]}],
-        ["to",      {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["cycle",{"type":"i64"}],["phase",{"type":"u8"}]]},["inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],["port",   {"type": "string"}]],
-
-        ["payloads",   {"type": "list", "of":{ "type":"table", "columns": [ ["buffer", {"type","bytes"}], ["artifact", {"type","string"}] ]  }}],
-
-        ["meta",   {"type": "map","value": { "type": "string" } }],
-        ["transaction",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]
-        ]
-}"#;
+"#;
 
 
 static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
-    "type":"list",
-    "of":
-    {"type": "table",
-    "columns": [
-        ["kind",   {"type": "i32"}],
-
-        ["to_tron",  {"type": "table", "columns":[["nucleus_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}],["tron_id",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]]}],
-
-        ["to_nucleus_lookup_name",      {"type": "string"}],
-        ["to_tron_lookup_name",      {"type": "string"}],
-        ["to_cycle_kind",      {"type": "i64"}],
-        ["to_cycle",      {"type": "i64"}],
-        ["to_phase_name",      {"type": "string"}],
-        ["to_phase",      {"type": "u8"}],
-        ["to_inter_delivery_type", {"type": "enum", "choices": ["cyclic", "phasic"], "default": "cyclic"}],
-        ["to_port",   {"type": "string"}],
-
-        ["payloads",   {"type": "list", "of":{ "type":"table", "columns": [ ["buffer", {"type","bytes"}], ["artifact", {"type","string"}] ]  }}],
-        ["meta",   {"type": "map","value": { "type": "string" } }],
-        ["transaction",   {"type": "table", "columns":[["seq_id":{"type":"i64"}],["id":{"type":"i64"}]]}]
-        ]
+"type": "string"
 }"#;
 
 lazy_static! {
-static ref MESSAGES_FACTORY : NP_Factory<'static> = NP_Factory::new_json(MESSAGE_SCHEMA).unwrap();
+static ref MESSAGES_FACTORY : NP_Factory<'static> = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
 static ref MESSAGE_BUILDERS_FACTORY : NP_Factory<'static> = NP_Factory::new_json(MESSAGE_BUILDERS_SCHEMA).unwrap();
 }
 
 
-#[derive(Clone)]
+#[derive(PartialEq,Eq,Clone,Debug)]
 pub struct To {
     pub tron: TronKey,
     pub port: String,
@@ -72,7 +95,7 @@ pub struct To {
     pub inter_delivery_type: InterDeliveryType,
 }
 
-#[derive(Clone)]
+#[derive(PartialEq,Eq,Clone,Debug)]
 pub struct From {
     pub tron: TronKey,
     pub cycle: i64,
@@ -83,14 +106,20 @@ impl From
 {
     pub fn append( &self, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
     {
+        self.tron.append(&path.push(path!("tron")), buffer )?;
+        buffer.set( &path.with(path!("cycle")), self.cycle.clone() )?;
+        buffer.set( &path.with(path!("timestamp")), self.cycle.clone() )?;
         Ok(())
     }
 
     pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
     {
-        unimplemented!()
+        Ok(From{
+            tron: TronKey::from( &path.push(path!["tron"]), buffer )?,
+            cycle: buffer.get(&path.with(path!["cycle"]))?,
+            timestamp: buffer.get(&path.with(path!["timestamp"]))?,
+        })
     }
-
 }
 
 
@@ -149,10 +178,10 @@ impl To
         match self.inter_delivery_type{
             InterDeliveryType::Cyclic =>
                 {
-                    buffer.set(&path.with(path!("delivery_moment")), "cyclic" )?;
+                    buffer.set(&path.with(path!("delivery")), NP_Enum::Some("Cyclic".to_string()) )?;
                 }
             InterDeliveryType::Phasic => {
-                buffer.set(&path.with(path!("delivery_moment")), "phasic" )?;
+                buffer.set(&path.with(path!("delivery")), NP_Enum::Some("Phasic".to_string()) )?;
             }
         }
 
@@ -174,11 +203,11 @@ impl To
         };
 
         let phase = buffer.get::<u8>(&path.with(path!["phase"]))?;
-        let delivery_moment = match buffer.get::<&str>(&path.with(path!("delivery_moment")))?
+        let delivery = match buffer.get::<&str>(&path.with(path!("delivery")))?
         {
             "cyclic" => InterDeliveryType::Cyclic,
             "phasic" => InterDeliveryType::Phasic,
-            _ => return Err("encountered unknown delivery_moment".into())
+            _ => return Err("encountered unknown delivery".into())
         };
 
         Ok(To{
@@ -186,21 +215,21 @@ impl To
             port: port,
             cycle: cycle,
             phase: phase,
-            inter_delivery_type: delivery_moment
+            inter_delivery_type: delivery
         })
     }
 
 }
 
 
-#[derive(Clone)]
+#[derive(PartialEq,Eq,Clone,Debug)]
 pub enum Cycle{
     Exact(i64),
     Present,
     Next
 }
 
-#[derive(Clone)]
+#[derive(PartialEq,Eq,Clone,Debug)]
 pub enum MessageKind{
     Create,
     Update,
@@ -222,6 +251,18 @@ fn message_kind_to_index(kind: &MessageKind ) -> u8
     }
 }
 
+fn message_kind_to_string(kind: &MessageKind ) -> &str
+{
+    match kind {
+        MessageKind::Create=>"Create",
+        MessageKind::Update=>"Update",
+        MessageKind::Content =>"Content",
+        MessageKind::Request =>"Request",
+        MessageKind::Response =>"Response",
+        MessageKind::Reject=>"Reject"
+    }
+}
+
 fn index_to_message_kind( index: u8 ) -> Result<MessageKind,Box<dyn Error>>
 {
     match index {
@@ -235,9 +276,23 @@ fn index_to_message_kind( index: u8 ) -> Result<MessageKind,Box<dyn Error>>
     }
 }
 
+fn string_to_message_kind( str: &str ) -> Result<MessageKind,Box<dyn Error>>
+{
+    match str{
+        "Create" => Ok(MessageKind::Create),
+        "Update" => Ok(MessageKind::Update),
+        "Content" => Ok(MessageKind::Content),
+        "Request" => Ok(MessageKind::Request),
+        "Response" => Ok(MessageKind::Response),
+        "Reject" => Ok(MessageKind::Reject),
+        _ => Err(format!("invalid index {}",str).into())
+    }
+}
+
+
 
 // meaning the "between" delivery which can either be between cycles or phases
-#[derive(Clone)]
+#[derive(PartialEq,Eq,Clone,Debug)]
 pub enum InterDeliveryType
 {
     Cyclic,
@@ -423,6 +478,30 @@ pub struct Payload {
     pub buffer: RO_Buffer,
     pub artifact: Artifact
 }
+impl Payload
+{
+    pub fn append ( &self, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
+    {
+        buffer.set::<Vec<u8>>( &path.with(path!["bytes"]), self.buffer.read_bytes().to_vec()  )?;
+        buffer.set( &path.with(path!["artifact"]), self.artifact.to() )?;
+        Ok(())
+    }
+
+    pub fn from( path: &Path, buffer: &RO_Buffer, buffer_factories: &BufferFactories )->Result<Payload,Box<dyn Error>>
+    {
+        let artifact = Artifact::from( buffer.get(&path.with(path!["artifact"]))?)?;
+        let factory = buffer_factories.get(&artifact)?;
+        let np_buffer = factory.open_buffer(buffer.get::<Vec<u8>>(&path.with( path!["bytes"]))?);
+        let buffer = Buffer::new(np_buffer);
+        let buffer = Buffer::read_only(buffer);
+        Ok(Payload
+        {
+          buffer: buffer,
+          artifact: artifact
+        })
+    }
+}
+
 
 #[derive(Clone)]
 pub struct Message {
@@ -490,8 +569,7 @@ impl Message {
     pub fn to_bytes(&mut self) -> Result<Vec<u8>,Box<dyn Error>>
     {
         let mut buffer= Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(self.calc_bytes())));
-        buffer.set(&path!("kind"), message_kind_to_index(&self.kind) )?;
-
+        buffer.set(&path!("kind"), NP_Enum::new(message_kind_to_string(&self.kind) ))?;
 
         let path = Path::new(path!("from"));
         self.from.append(&path,&mut buffer)?;
@@ -502,14 +580,14 @@ impl Message {
         match &self.to.cycle
         {
             Cycle::Exact(c)=>buffer.set(&path!(&"to", &"cycle"), c.clone())?,
-            _ => false
+            _ => ()
         };
 
         let mut payload_index = 0;
         for payload in &self.payloads
         {
-            buffer.set(&path!("payloads", payload_index.to_string(), "buffer" ), payload.buffer.read_bytes() )?;
-            buffer.set(&path!(&"payloads", &payload_index.to_string(), "artifact"), payload.artifact.to() )?;
+            let path = Path::new( path!["payloads",payload_index.to_string()] );
+            payload.append(&path,&mut buffer)?;
             payload_index = payload_index+1;
         }
 
@@ -532,15 +610,40 @@ impl Message {
         Ok((Buffer::bytes(buffer)))
     }
 
-    /*
-    pub fn from( configs: &Configs, bytes: Vec<u8> ) -> Result<Self,Box<dyn Error>>
+
+    pub fn from_bytes(bytes: Vec<u8>, buffer_factories: &dyn BufferFactories) -> Result<Self,Box<dyn Error>>
     {
+        let buffer = MESSAGES_FACTORY.open_buffer(bytes);
+        let buffer = Buffer::new(buffer);
+        let buffer = Buffer::read_only(buffer);
+        let id = Id::from(&Path::new(path!("id")), &buffer)?;
+        let kind = buffer.get::<NP_Enum>( &path!["kind"] )?;
+        let kind = string_to_message_kind(kind.to_str() )?;
 
+        let from = From::from( &Path::new(path!["from"]), &buffer )?;
+        let to = To::from( &Path::new(path!["to"]), &buffer )?;
 
-        return Ok(message);
+        let payload_count = buffer.get_length( &path!("payloads") )?;
+        let mut payloads = vec!();
+        for payload_index in 0..payload_count
+        {
+            let path = Path::new(path![payload_index.to_string()]);
+            payloads.push( Payload::from(&path,&buffer,buffer_factories)?);
+        }
+
+        Ok(Message{
+            id: id,
+            kind: kind,
+            from: from,
+            to: to,
+            payloads: payloads,
+            meta: Option::None,
+            transaction: Option::None
+        })
     }
 
-     */
+
+
 
 
 }
@@ -556,49 +659,134 @@ fn cat( path: &[&str])->String
 }
 
 
-/*
 #[cfg(test)]
 mod tests {
-    use crate::artifact_config::ArtifactFile;
-    use main::data;
-    use crate::buffers::BufferFactories;
-    use main::data::AstroTK;
     use no_proto::NP_Factory;
-    use crate::message::{MESSAGE_SCHEMA, MessageKind, Message, Address};
+    use crate::message::{MESSAGE_SCHEMA, MESSAGE_BUILDERS_SCHEMA, Message, PayloadBuilder, Payload, MessageKind, To, From, Cycle, InterDeliveryType, ID};
+    use crate::id::{IdSeq, TronKey, Id};
+    use crate::buffers::{Buffer, BufferFactories, Path};
+    use crate::artifact::Artifact;
+    use crate::message;
+    use std::error::Error;
+    use std::sync::Arc;
+
+    static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
+
+    struct BufferFactoriesImpl
+    {
+
+    }
+
+    impl BufferFactories for BufferFactoriesImpl
+    {
+        fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'static>>, Box<dyn Error>> {
+            Ok(Arc::new(NP_Factory::new( TEST_SCHEMA).unwrap()))
+        }
+    }
 
     #[test]
-    fn check_schema() {
+    fn check_message_schema() {
         NP_Factory::new( MESSAGE_SCHEMA ).unwrap();
     }
 
     #[test]
-    fn create_message() {
-        let mut astroTK = AstroTK::new();
-        let artifact_file = ArtifactFile::from("main:actor:1.0.0-alpha:content.json").unwrap();
-        astroTK.load_buffer_factory(&artifact_file).unwrap();
+    fn check_ro_buffer() {
+        let schema=   r#"struct({fields: {
+                         userId: string(),
+                         password: string(),
+                         email: string(),
+                         age: u8()
+}})"#;
+        let np_factory = NP_Factory::new( schema ).unwrap();
+        let mut np_buffer = np_factory.new_buffer(Option::None);
+        let mut buffer = Buffer::new(np_buffer);
 
-        let mut payload = astroTK.create_buffer(&artifact_file).unwrap();
+        buffer.set(&path!("userId"), "hello" ).unwrap();
+    }
+    #[test]
+    fn test_serialize_id() {
 
-        payload.set(&[&"name"], "Fred Jarvis");
+        let np_factory = NP_Factory::new(ID).unwrap();
+        let mut np_buffer = np_factory.new_buffer(Option::None);
 
-        let message = Message::new(MessageKind::Request,
-                                   Address { actor: 0 },
-                                   Address { actor: 1 },
-                                   "some-port".to_string(),
-                                   payload,
-                                   artifact_file.clone());
+        let mut buffer = Buffer::new(np_buffer);
 
-        let messages_buffer = Message::messages_to_buffer( &[&message] ).unwrap();
+        let mut seq = IdSeq::new(0);
+        let id = seq.next();
 
-        let rtn_messages = Message::messages_from_buffer(&astroTK, &messages_buffer ).unwrap();
+        let path = Path::new(path![]);
+        id.append(&path,&mut buffer).unwrap();
 
-        assert_eq!(  1, rtn_messages.len() );
+        let buffer = Buffer::read_only(buffer);
 
+        let ser_id= Id::from(&path, &buffer ).unwrap();
 
+        assert_eq!(id,ser_id);
+    }
+
+    #[test]
+    fn test_serialize_from() {
+        let np_factory = NP_Factory::new( MESSAGE_SCHEMA).unwrap();
+        let np_buffer =np_factory.new_buffer(Option::None);
+        let mut buffer = Buffer::new(np_buffer);
+
+        let mut seq = IdSeq::new(0);
+        let from= message::From{
+            tron: TronKey { nucleus: seq.next(), tron: seq.next() },
+            cycle: 0,
+            timestamp: 0
+        };
+
+        let path = Path::new(path!["from"]);
+        from.append(&path,&mut buffer).unwrap();
+
+        let buffer = Buffer::read_only(buffer);
+
+        let ser_from= message::From::from(&path, &buffer ).unwrap();
+
+        assert_eq!(from,ser_from);
 
     }
+
+    #[test]
+    fn test_serialize_message() {
+        let np_factory= NP_Factory::new( MESSAGE_SCHEMA).unwrap();
+        let np_buffer = np_factory.new_buffer(Option::None);
+        let buffer = Buffer::new(np_buffer);
+        let payload = Payload{
+            buffer: Buffer::read_only(buffer),
+            artifact: Artifact::from("mectrhon.io:core:1.0.0:schema/empty.schema").unwrap()
+        };
+        let mut seq = IdSeq::new(0);
+
+        let from= message::From{
+            tron: TronKey { nucleus: seq.next(), tron: seq.next() },
+            cycle: 0,
+            timestamp: 0
+        };
+
+        let to = To {
+            tron: TronKey { nucleus: seq.next(), tron: seq.next() },
+            port: "someport".to_string(),
+            cycle: Cycle::Present,
+            phase: 0,
+            inter_delivery_type: InterDeliveryType::Cyclic
+        };
+
+        let mut message = Message::single_payload( &mut seq,
+                                  MessageKind::Create,
+                                   from.clone(),to.clone(),payload.clone());
+
+        let bytes = message.to_bytes().unwrap();
+
+        let factories = BufferFactoriesImpl{};
+
+        Message::from_bytes(bytes,&factories ).unwrap();
+    }
+
+
+
 }
 
- */
 
 
