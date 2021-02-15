@@ -109,10 +109,10 @@ impl NucleusMessagingStructure
           }
           Cycle::Present => {
               // Nucleus intake is InterCyclic therefore cannot accept present cycles
-              contex.head()+1
+              context.head()+1
           }
           Cycle::Next => {
-              contex.head()+1
+              context.head()+1
           }
       };
 

@@ -22,12 +22,11 @@ use mechtron_common::buffers::BufferFactories;
 use mechtron_common::configs::{Configs, Keeper, MechtronConfig, MechtronConfigYaml, Parser, SimConfig};
 use mechtron_common::message::Message;
 
-use crate::content::{NucleusContentStructure, TronKey};
-use crate::nucleus::{NucleiStore, Nucleus};
+use crate::state::NucleusStateStructure;
 use crate::artifact::FileSystemArtifactRepository;
-use crate::source::Nucleus;
 use mechtron_common::id::{IdSeq, Id};
 use crate::message::GlobalMessageRouter;
+use crate::nucleus::Nucleus;
 
 lazy_static! {
   pub static ref SYS : System = System::new();
@@ -45,7 +44,7 @@ impl System
         System {
             local: Local::new(),
             net: Network::new(),
-            router: GlobalMessageRouter{}
+            router: GlobalMessageRouter::new()
 
         }
     }

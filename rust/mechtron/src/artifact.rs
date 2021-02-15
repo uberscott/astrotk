@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn test_load_artifact() {
         let repo = FileSystemArtifactRepository::new("../repo".to_string() );
-        assert!(repo.cache(&CORE_SCHEMAT_EMPTY).is_ok());
-        assert_eq!("{}",repo.load(&CORE_SCHEMAT_EMPTY));
+        assert!(repo.cache(&CORE_SCHEMA_EMPTY).is_ok());
+        assert_eq!("{}",repo.load(&CORE_SCHEMA_EMPTY));
     }
 }

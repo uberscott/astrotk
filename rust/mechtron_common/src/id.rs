@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicI64, Ordering};
-use crate::buffers::{Buffer, Path, RO_Buffer};
+use crate::buffers::{Buffer, Path, ReadOnlyBuffer};
 use std::error::Error;
 
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
@@ -26,7 +26,7 @@ impl Id
         Ok(())
     }
 
-    pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
+    pub fn from( path: &Path, buffer: &ReadOnlyBuffer)->Result<Self,Box<dyn Error>>
     {
         Ok(Id {
             seq_id:buffer.get( &path.with(path!["seq_id"])) ?,
@@ -103,7 +103,7 @@ impl TronKey{
         Ok(())
     }
 
-    pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
+    pub fn from( path: &Path, buffer: &ReadOnlyBuffer)->Result<Self,Box<dyn Error>>
     {
         Ok(TronKey{
             nucleus: Id::from( &path.push(path!["nucleus"]), buffer )?,
@@ -114,9 +114,9 @@ impl TronKey{
 }
 
 #[derive(PartialEq,Eq,PartialOrd,Ord,Hash,Debug,Clone)]
-pub struct ContentKey
+pub struct StateKey
 {
-    pub tron_id: TronKey,
+    pub tron: TronKey,
     pub revision: Revision
 }
 

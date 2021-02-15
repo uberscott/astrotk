@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::NP_Factory;
 use no_proto::error::NP_Error;
-use crate::buffers::{BufferFactories, Buffer, RO_Buffer, Path};
+use crate::buffers::{BufferFactories, Buffer, ReadOnlyBuffer, Path};
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use bytes::Bytes;
 use std::error::Error;
@@ -101,11 +101,11 @@ impl From
     {
         self.tron.append(&path.push(path!("tron")), buffer )?;
         buffer.set( &path.with(path!("cycle")), self.cycle.clone() )?;
-        buffer.set( &path.with(path!("timestamp")), self.cycle.clone() )?;
+        buffer.set( &path.with(path!("timestamp")), self.timestamp.clone() )?;
         Ok(())
     }
 
-    pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
+    pub fn from( path: &Path, buffer: &ReadOnlyBuffer)->Result<Self,Box<dyn Error>>
     {
         Ok(From{
             tron: TronKey::from( &path.push(path!["tron"]), buffer )?,
@@ -180,7 +180,7 @@ impl To
         Ok(())
     }
 
-    pub fn from( path: &Path, buffer: &RO_Buffer)->Result<Self,Box<dyn Error>>
+    pub fn from( path: &Path, buffer: &ReadOnlyBuffer)->Result<Self,Box<dyn Error>>
     {
         let tron = TronKey::from( &path.push(path!("tron")),buffer )?;
         let port = buffer.get::<String>( &path.with(path!["port"]))?;
@@ -217,6 +217,15 @@ impl To
 
 }
 
+#[derive(PartialEq,Eq,Clone,Debug)]
+pub enum Phase
+{
+    Primordial,
+    Pre,
+    Zero,
+    Custom(String),
+    Post
+}
 
 #[derive(PartialEq,Eq,Clone,Debug)]
 pub enum Cycle{
@@ -310,7 +319,7 @@ pub struct MessageBuilder {
     pub to_phase_name: Option<String>,
     pub to_port: Option<String>,
     pub to_inter_delivery_type: Option<DeliveryMoment>,
-    pub payloads: Option<Vec<Payload>>,
+    pub payloads: Option<Vec<PayloadBuilder>>,
     pub meta: Option<HashMap<String,String>>,
     pub transaction: Option<Id>
 }
@@ -335,6 +344,7 @@ impl  MessageBuilder {
             transaction: None,
         }
     }
+
 
     pub fn validate(&self) ->Result<(),Box<dyn Error>>
     {
@@ -471,26 +481,27 @@ impl PayloadBuilder
 
 #[derive(Clone)]
 pub struct Payload {
-    pub buffer: RO_Buffer,
+    pub buffer: ReadOnlyBuffer,
     pub artifact: Artifact
 }
+
 impl Payload
 {
-    pub fn append ( &self, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
+    pub fn dump( payload: Payload, path: &Path, buffer: &mut Buffer )->Result<(),Box<dyn Error>>
     {
-        buffer.set::<Vec<u8>>( &path.with(path!["bytes"]), self.buffer.read_bytes().to_vec()  )?;
-        buffer.set( &path.with(path!["artifact"]), self.artifact.to() )?;
+        buffer.set( &path.with(path!["artifact"]), payload.artifact.to() )?;
+        buffer.set::<Vec<u8>>( &path.with(path!["bytes"]), ReadOnlyBuffer::bytes(payload.buffer) )?;
 
         Ok(())
     }
 
-    pub fn from( path: &Path, buffer: &RO_Buffer, buffer_factories: &BufferFactories )->Result<Payload,Box<dyn Error>>
+    pub fn from( path: &Path, buffer: &ReadOnlyBuffer, buffer_factories: &BufferFactories )->Result<Payload,Box<dyn Error>>
     {
         let artifact = Artifact::from( buffer.get(&path.with(path!["artifact"]))?)?;
-        let factory = buffer_factories.get(&artifact)?;
-        let np_buffer = factory.open_buffer(buffer.get::<Vec<u8>>(&path.with( path!["bytes"]))?);
-        let buffer = Buffer::new(np_buffer);
-        let buffer = Buffer::read_only(buffer);
+        let bytes = buffer.get::<Vec<u8>>(&path.with( path!["bytes"]))?;
+        let factory = buffer_factories.get( &artifact )?;
+        let buffer = factory.open_buffer(bytes);
+        let buffer = ReadOnlyBuffer::new(buffer);
         Ok(Payload
         {
           buffer: buffer,
@@ -515,35 +526,6 @@ pub struct Message {
 
 impl Message {
 
-    pub fn equals( &self, message: &Message )->bool
-    {
-
-        if    !(self.id.eq(&message.id) &&
-               self.from.eq(&message.from)  &&
-               self.to .eq(&message.to) &&
-               self.payloads.len() == message.payloads.len())
-        {
-            return false;
-        }
-
-        for p in 0..self.payloads.len()
-        {
-            let payload1 = &self.payloads[p];
-            let payload2 = &message.payloads[p];
-
-            if payload1.artifact != payload2.artifact
-            {
-                return false;
-            }
-
-            if payload1.buffer.read_bytes() != payload2.buffer.read_bytes()
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
 
 
     pub fn single_payload(seq: & mut IdSeq,
@@ -595,36 +577,36 @@ impl Message {
         return size;
     }
 
-    pub fn to_bytes(&mut self) -> Result<Vec<u8>,Box<dyn Error>>
+    pub fn to_bytes(message: Message ) -> Result<Vec<u8>,Box<dyn Error>>
     {
-        let mut buffer= Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(self.calc_bytes())));
+        let mut buffer= Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(message.calc_bytes())));
         let path = Path::new(path!());
-        self.id.append(&path.push(path!["id"]), &mut buffer )?;
-        buffer.set(&path!("kind"), NP_Enum::new(message_kind_to_string(&self.kind) ))?;
+        message.id.append(&path.push(path!["id"]), &mut buffer )?;
+        buffer.set(&path!("kind"), NP_Enum::new(message_kind_to_string(&message.kind) ))?;
 
-        self.from.append(&path.push(path!["from"]),&mut buffer)?;
+        message.from.append(&path.push(path!["from"]),&mut buffer)?;
 
-        self.to.append(&path.push(path!["to"]),&mut buffer)?;
+        message.to.append(&path.push(path!["to"]),&mut buffer)?;
 
         let mut payload_index = 0;
-        for payload in &self.payloads
+        for payload in message.payloads
         {
             let path = path.push( path!("payloads",payload_index.to_string()));
-            payload.append(&path,&mut buffer)?;
+            Payload::dump(payload,&path,&mut buffer)?;
             payload_index = payload_index+1;
         }
 
-        if self.meta.is_some() {
-            let meta = self.meta.clone().unwrap();
+        if message.meta.is_some() {
+            let meta = message.meta.unwrap();
             for k in meta.keys()
             {
                 buffer.set(&path!(&"meta",&k.as_str()), meta.get(k).unwrap().to_string())?;
             }
         }
 
-        if self.transaction.is_some()
+        if message.transaction.is_some()
         {
-            let transaction = &self.transaction.clone().unwrap();
+            let transaction = &message.transaction.clone().unwrap();
             transaction.append(&Path::new(path!("transaction")),&mut buffer);
         }
 
@@ -693,6 +675,8 @@ mod tests {
     use crate::message;
     use std::error::Error;
     use std::sync::Arc;
+    use no_proto::memory::NP_Memory_Ref;
+    use no_proto::buffer::NP_Buffer;
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
@@ -804,12 +788,17 @@ mod tests {
                                   MessageKind::Create,
                                    from.clone(),to.clone(),payload.clone());
 
-        let bytes = message.to_bytes().unwrap();
+        let bytes = Message::to_bytes(message.clone()).unwrap();
 
 
         let new_message = Message::from_bytes(bytes,&factories ).unwrap();
 
-        assert!(message.equals(&new_message));
+        assert_eq!(message.to,new_message.to);
+        assert_eq!(message.from,new_message.from);
+        assert_eq!(message.payloads[0].artifact,new_message.payloads[0].artifact);
+        assert_eq!(message.payloads[0].buffer.read_bytes(),new_message.payloads[0].buffer.read_bytes());
+
+        //assert_eq!(message,new_message);
     }
 
 

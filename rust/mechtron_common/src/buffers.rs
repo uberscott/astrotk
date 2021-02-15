@@ -5,7 +5,7 @@ use no_proto::NP_Factory;
 
 use crate::artifact::Artifact;
 use std::error::Error;
-use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New};
+use no_proto::memory::{NP_Memory_Owned, NP_Memory, NP_Mem_New, NP_Memory_Ref};
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use std::sync::Arc;
 use no_proto::error::NP_Error;
@@ -21,9 +21,6 @@ pub trait BufferFactories
 {
     fn get(&self, artifact: &Artifact) ->Result<Arc<NP_Factory<'static>>,Box<dyn Error>>;
 }
-
-
-
 
 fn cat( path: &[&str])->String
 {
@@ -108,9 +105,9 @@ impl Buffer
         }
     }
 
-    pub fn read_only(buffer: Buffer ) ->RO_Buffer
+    pub fn read_only(buffer: Buffer ) ->ReadOnlyBuffer
     {
-        RO_Buffer {
+        ReadOnlyBuffer{
             np_buffer: buffer.np_buffer
         }
     }
@@ -130,85 +127,92 @@ impl Buffer
 
 
 #[derive(Clone)]
-pub struct RO_Buffer
+pub struct ReadOnlyBuffer
 {
     np_buffer: NP_Buffer<NP_Memory_Owned>
 }
 
-impl RO_Buffer
+impl ReadOnlyBuffer
 {
 
     pub fn new( np_buffer: NP_Buffer<NP_Memory_Owned> )->Self
     {
-        RO_Buffer{
+        ReadOnlyBuffer{
             np_buffer: np_buffer
         }
     }
 
 
-    pub fn get_length( &self, path: &Vec<String> )->Result<usize,Box<dyn Error>>
+    pub fn bytes(buffer:ReadOnlyBuffer)->Vec<u8>
     {
-        let path  = Vec::from_iter(path.iter().map(String::as_str));
+        buffer.np_buffer.finish().bytes()
+    }
+
+    pub fn get_length(&self, path: &Vec<String>) -> Result<usize, Box<dyn Error>>
+    {
+        let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
         match self.np_buffer.get_length(path)
         {
-            Ok(option)=>{
+            Ok(option) => {
                 Ok(option.unwrap())
             },
-            Err(e)=>Err(format!("could not get {}",cat(path)).into())
+            Err(e) => Err(format!("could not get {}", cat(path)).into())
         }
     }
 
-    pub fn is_set<'get, X: 'get>( &'get self, path: &Vec<String>) -> Result<bool, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
-        let path  = Vec::from_iter(path.iter().map(String::as_str));
+    pub fn is_set<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<bool, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
+        let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
         match self.np_buffer.get::<X>(path)
         {
-            Ok(option)=>{
+            Ok(option) => {
                 Ok(option.is_some())
             },
-            Err(e)=>Err(format!("could not get {}",cat(path)).into())
+            Err(e) => Err(format!("could not get {}", cat(path)).into())
         }
     }
 
-    pub fn get<'get, X: 'get>( &'get self, path: &Vec<String>) -> Result<X, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
-        let path  = Vec::from_iter(path.iter().map(String::as_str));
+    pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Box<dyn Error>> where X: NP_Value<'get> + NP_Scalar<'get> {
+        let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
         match self.np_buffer.get::<X>(path)
         {
-            Ok(option)=>{
-                match option{
-                    Some(rtn)=>Ok(rtn),
-                    None=>Err(format!("expected a value for {}", path[path.len()-1] ).into())
+            Ok(option) => {
+                match option {
+                    Some(rtn) => Ok(rtn),
+                    None => Err(format!("expected a value for {}", path[path.len() - 1]).into())
                 }
             },
-            Err(e)=>Err(format!("could not get {}",cat(path)).into())
+            Err(e) => Err(format!("could not get {}", cat(path)).into())
         }
     }
 
-    pub fn clone_to_buffer( &self )->Result<Buffer,Box<dyn Error>>
+    pub fn copy_to_buffer(&self) -> Buffer
     {
-        Ok(Buffer {
-            np_buffer: self.np_buffer.clone()
-        })
+        Buffer {
+            np_buffer: self.np_buffer.copy_buffer()
+        }
     }
 
-    pub fn read_bytes(&self)->&[u8]
+    pub fn read_bytes(&self) -> &[u8]
     {
         return self.np_buffer.read_bytes();
     }
 
 
-    pub fn bytes(buffer: RO_Buffer)->Vec<u8>
-    {
-        buffer.np_buffer.finish().bytes()
-    }
-
-    pub fn size(&self)->usize
+    pub fn size(&self) -> usize
     {
         self.np_buffer.data_length()
     }
+
+
 }
+
+
+
+
+
 
 
 #[derive(PartialEq,Eq,Clone,Debug)]
@@ -231,6 +235,11 @@ impl Path
         }
     }
 
+    pub fn just( segment: &str )->Self
+    {
+        Path::new( path![segment])
+    }
+
     pub fn push( &self, more: Vec<String> )->Self
     {
         let mut segment = self.segments.clone();
@@ -250,14 +259,17 @@ impl Path
         return rtn;
     }
 
-
+    pub fn plus( & self, more: &str )->Vec<String>
+    {
+        return self.with( path!(more));
+    }
 }
 
 
 #[cfg(test)]
 mod tests {
     use no_proto::NP_Factory;
-    use crate::buffers::{Buffer, Path};
+    use crate::buffers::{Buffer, Path, ReadOnlyBuffer};
 
     #[test]
     fn test_example() {
