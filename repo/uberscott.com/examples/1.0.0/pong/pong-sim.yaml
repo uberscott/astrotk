@@ -1,0 +1,17 @@
+name: Pong Simulation
+
+nuclei:
+- phases:
+  - update
+  - physics
+  - score
+
+	trons:
+	- artifact:
+			path:  pong/mechtron/pong-physics.yaml
+
+	- name: stdout
+		artifact: 
+			bundle: mechtron.io:core:0.0.1
+			path:   tron/stdout.yaml
+

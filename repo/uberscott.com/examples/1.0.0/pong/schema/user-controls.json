@@ -1,0 +1,7 @@
+{
+  "type":"table", 
+  "columns" :
+   [
+   ["puck_position", {"type":"f32"}]
+   ]
+}

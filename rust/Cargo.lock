@@ -435,17 +435,17 @@ name = "mechtron"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "console_error_panic_hook",
  "lazy_static",
- "mechtron_common",
+ "mechtron_core",
  "no_proto",
- "semver",
- "serde",
- "serde_yaml",
- "wasmer",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "wee_alloc",
 ]
 
 [[package]]
-name = "mechtron_common"
+name = "mechtron_core"
 version = "0.1.0"
 dependencies = [
  "bytes",
@@ -458,17 +458,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "mechtron_wasm"
+name = "mechtronium"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "console_error_panic_hook",
  "lazy_static",
- "mechtron",
+ "mechtron_core",
  "no_proto",
- "wasm-bindgen",
- "wasm-bindgen-test",
- "wee_alloc",
+ "semver",
+ "serde",
+ "serde_yaml",
+ "wasmer",
 ]
 
 [[package]]
@@ -719,8 +719,8 @@ dependencies = [
  "anyhow",
  "bytes",
  "lazy_static",
- "mechtron",
- "mechtron_common",
+ "mechtron_core",
+ "mechtronium",
  "no_proto",
  "semver",
  "wasmer",

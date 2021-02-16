@@ -1,0 +1,13 @@
+kind: mechtron
+name: Pong Physics
+description: this is an interface for making pong physics
+  
+messages:
+  inbound:
+  - name: user-controls
+    artifact:
+      path: schema/user-controls.json
+
+updates:
+  phases:
+  - physics

@@ -1,0 +1,9 @@
+name: Pong Physics
+wasm: 
+  artifact:
+    path: pong/wasm/physics.wasm
+tron:
+  artifact:
+    path: pong/tron/physics.yaml
+      
+ 

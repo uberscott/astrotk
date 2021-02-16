@@ -1,0 +1,10 @@
+struct( { fields: {
+
+  name: string(),
+
+  id: struct( { fields: {
+      seq_id: i64,
+      id: i64
+   }})
+
+}})
