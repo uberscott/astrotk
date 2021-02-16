@@ -3,11 +3,9 @@ extern crate lazy_static;
 
 pub mod artifact;
 pub mod buffers;
-pub mod message;
 pub mod configs;
-pub mod id;
-pub mod state;
 pub mod core;
-
-
-
+pub mod error;
+pub mod id;
+pub mod message;
+pub mod state;

@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "main",
-  "mechtron",
-  "mechtron_common",
-  "mechtron_wasm"
+  "mechtronium",
+  "mechtron_core",
+  "mechtron"
   ]
