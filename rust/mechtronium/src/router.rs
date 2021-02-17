@@ -4,7 +4,7 @@ use std::error::Error;
 use mechtron_core::message::Message;
 
 pub trait Router {
-    fn send(&mut self, message: Message);
+    fn send(&self, message: Arc<Message>);
 }
 
 pub struct GlobalRouter<'configs> {
@@ -34,7 +34,7 @@ impl <'configs> GlobalRouter<'configs> {
 }
 
 impl <'configs> Router for GlobalRouter<'configs> {
-    fn send(&mut self, message: Message) {
+    fn send(&self, message: Arc<Message>) {
         self.local.send(message);
     }
 }
@@ -61,26 +61,26 @@ impl <'configs> LocalRouter<'configs> {
 }
 
 impl <'configs> Router for LocalRouter<'configs> {
-    fn send(&mut self, message: Message) {
+    fn send(&self, message: Arc<Message>) {
         if self.sys().is_err() {
             println!("cannot send message because MessageRouter has no connection to the system");
             return;
         }
 
-        match self
-            .sys()
-            .unwrap()
-            .local
-            .nuclei()
-            .get(&message.to.tron.nucleus)
+        /*
+        let nucleus = self .sys() .unwrap() .local .nuclei() .get(&message.to.tron.nucleus);
+
+        match nucleus
         {
-            Ok(nucleus) => {
-                let mut nucleus = nucleus;
+            Ok(mut nucleus) => {
                 nucleus.intake(message);
             }
             Err(e) => {
                 print!("message failed to be sent: {:?}", e)
             }
         }
+
+         */
+        unimplemented!()
     }
 }

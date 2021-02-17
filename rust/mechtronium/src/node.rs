@@ -1,5 +1,5 @@
 use crate::artifact::FileSystemArtifactRepository;
-use crate::router::GlobalRouter;
+use crate::router::{GlobalRouter, Router};
 use crate::nucleus::{Nuclei, Nucleus};
 use mechtron_core::artifact::Artifact;
 use mechtron_core::configs::{Configs, Keeper, Parser};
@@ -47,6 +47,11 @@ impl <'configs> Node<'configs> {
     pub fn net(&self) -> &Network {
         &self.net
     }
+
+    pub fn router<'get>(&'get self) -> &'get dyn Router
+    {
+        &self.router
+    }
 }
 
 pub struct Local<'configs> {
@@ -84,9 +89,9 @@ impl <'configs> Local <'configs>{
         &self.nuclei
     }
 
-    pub fn node(&'configs self)->&'configs Node<'configs>
+    pub fn node(&'configs self) -> &Node<'configs>
     {
-        self.node.get().expect("local must be initialized before node can be accessed")
+        self.node.get().unwrap()
     }
 
 

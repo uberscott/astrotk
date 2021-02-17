@@ -125,10 +125,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         key: TronKey,
         artifact: &Artifact,
     ) -> TronContext {
-        /*
-        let sys = unimplemented!();
-        let local = sys.local();
-        let configs = &local.configs;
+        let configs = self.configs();
         let tron_config_keeper = &configs.tron_config_keeper;
         let config = tron_config_keeper.get(&artifact).unwrap();
 
@@ -136,8 +133,6 @@ impl <'nucleus> Nucleus<'nucleus> {
         let rtn = self.context_for(key, config);
         rtn
 
-         */
-        unimplemented!()
     }
 
     fn context_for(
@@ -145,17 +140,13 @@ impl <'nucleus> Nucleus<'nucleus> {
         key: TronKey,
         config: Arc<TronConfig>,
     ) -> TronContext {
-        /*
-        let sys = self.context.sys();
         TronContext::new(
             key,
             self.head.clone(),
             config.clone(),
-            timestamp().unwrap().clone(),
+            timestamp().unwrap().clone()
         )
 
-         */
-        unimplemented!()
     }
 
     fn local(&self)->&'nucleus Local<'nucleus>
@@ -170,7 +161,7 @@ impl <'nucleus> Nucleus<'nucleus> {
 
     fn node(&self)->&'nucleus Node<'nucleus>
     {
-        self.nuclei.local().node()
+        &self.nuclei.local().node()
     }
 
     fn seq(&self)->Arc<IdSeq>
@@ -232,42 +223,53 @@ impl <'nucleus> Nucleus<'nucleus> {
         Ok(context.key.nucleus.clone())
     }
 
-    pub fn intake(&self, message: Message) {
-//        self.messaging.intake(message, self);
-        unimplemented!()
+    pub fn intake_message(&mut self, message: Message) {
+        self.messaging.intake(message, CycleMessagingContext{ head: self.head.cycle  });
     }
 
-    pub fn revise(&mut self, from: Revision, to: Revision) -> Result<(), Box<dyn Error + '_>> {
+    pub fn revise(&mut self, from: Revision, to: Revision) -> Result<(), NucleusError> {
         if from.cycle != to.cycle - 1 {
             return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
         }
 
-        let context = NucleusCycleContext {
-            revision: to.clone(),
-            timestamp: timestamp()?,
-            phase: "dunno".to_string(),
-            nucleus: self
-        };
+        let mut states = vec!();
+        let mut messages= vec!();
+        {
+            let context = NucleusCycleContext {
+                revision: to.clone(),
+                timestamp: timestamp()?,
+                phase: "dunno".to_string(),
+                nucleus: self
+            };
 
-        /*
-        let mut nucleus_cycle = NucleusCycle::init(self.id.clone(), context, self)?;
+            let mut nucleus_cycle = NucleusCycle::init(self.id.clone(), context, self)?;
 
-        for message in self.messaging.query(&to.cycle)? {
-            nucleus_cycle.intake_message(message)?;
-        }
+            for message in self.messaging.query(to.cycle)? {
+                nucleus_cycle.intake_message(message)?;
+            }
 
-        match self.state.query(&context.revision) {
-            None => {}
-            Some(results) => {
-                for (key, state) in results {
-                    nucleus_cycle.intake_state(key, state)?;
+            match self.state.query(to.clone())? {
+                None => {}
+                Some(results) => {
+                    for (key, state) in results {
+                        nucleus_cycle.intake_state(key, state);
+                    }
                 }
             }
+
+            nucleus_cycle.execute();
+
+
+            let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
+            for state in tmp_states
+            {
+                states.push(state);
+            }
+            for message in tmp_messages
+            {
+                messages.push(message);
+            }
         }
-
-        nucleus_cycle.step();
-
-        let (states, messages) = nucleus_cycle.commit();
 
         self.head = to;
 
@@ -276,21 +278,15 @@ impl <'nucleus> Nucleus<'nucleus> {
         }
 
         for message in messages {
-            context.sys()?.router.send(message);
+            let mut node = self.node();
+            let router = node.router();
+            router.send(message );
         }
-
-         */
 
         Ok(())
     }
 }
 
-impl <'c> CycleMessagingContext for Nucleus<'c> {
-    fn head(&self) -> i64 {
-        self.head.cycle
-    }
-
-}
 
 struct NucleusCycle<'cycle,'nucleus> {
     nucleus: &'cycle Nucleus<'nucleus>,
@@ -329,7 +325,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         Ok(())
     }
 
-    fn intake_state(&mut self, key: TronKey, state: &ReadOnlyState) {
+    fn intake_state(&mut self, key: TronKey, state: Arc<ReadOnlyState>) {
         match self.state.intake(key, state)
         {
             Ok(_) => {}
@@ -337,7 +333,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         }
     }
 
-    fn run(&mut self) -> Result<(), Box<dyn Error>> {
+    fn execute(&mut self) -> Result<(), NucleusError> {
         let phase: u8 = 0;
         match self.messaging.drain(&phase)? {
             None => {}
@@ -350,14 +346,11 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         Ok(())
     }
 
-    fn commit(&mut self) -> (Vec<(StateKey, Rc<State>)>, Vec<Message>) {
-        /*
-        (
-            self.state.drain(self.context.revision()),
-            self.outbound.drain(),
-        )
-         */
-        unimplemented!()
+    fn commit(&mut self) -> Result<(Vec<(StateKey, Arc<Mutex<State>>)>, Vec<Arc<Message>>),NucleusError> {
+
+        let states= self.state.drain(self.context.revision())?;
+        let messages = self.messaging.drain_all()?;
+        Ok((states,messages))
     }
 
     fn tron(
@@ -460,7 +453,9 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
 }
 
 impl<'cycle,'nucleus> Router for NucleusCycle<'cycle,'nucleus> {
-    fn send(&mut self, message: Message) {
+    fn send(&self, message: Arc<Message>) {
+        unimplemented!()
+        /*
         if !&message.to.tron.nucleus.eq(&self.id) {
             self.outbound.push(message);
             return;
@@ -495,6 +490,8 @@ impl<'cycle,'nucleus> Router for NucleusCycle<'cycle,'nucleus> {
                 }
             }
         }
+
+         */
     }
 }
 
@@ -630,9 +627,9 @@ mod message
         pub fn intake(
             &mut self,
             message: Message,
-            context: &dyn CycleMessagingContext,
-        ) -> Result<(), Box<dyn Error + '_>> {
-            let delivery = MessageDelivery::new(message, context);
+            context: CycleMessagingContext,
+        ) -> Result<(), NucleusError> {
+            let delivery = MessageDelivery::new(message, context.clone());
 
             let mut store = self.store.write()?;
 
@@ -640,9 +637,9 @@ mod message
                 Cycle::Exact(cycle) => cycle,
                 Cycle::Present => {
                     // Nucleus intake is InterCyclic therefore cannot accept present cycles
-                    context.head() + 1
+                    context.clone().head.clone() + 1
                 }
-                Cycle::Next => context.head() + 1
+                Cycle::Next => context.clone().head.clone() + 1
             };
 
             // at some point we must determine if the nucleus policy allows for message deliveries to this
@@ -667,7 +664,7 @@ mod message
             Ok(())
         }
 
-        pub fn query(&self, cycle: i64) -> Result<Vec<Arc<Message>>, Box<dyn Error + '_>> {
+        pub fn query(&self, cycle: i64) -> Result<Vec<Arc<Message>>, NucleusError> {
             let store = self.store.read()?;
             match store.get(&cycle) {
                 None => Ok(vec![]),
@@ -753,15 +750,25 @@ mod message
         }
 
 
-        pub fn drain(&mut self, phase: &u8) -> Result<Option<Vec<Arc<Message>>>, Box<dyn Error>> {
+        pub fn drain(&mut self, phase: &u8) -> Result<Option<Vec<Arc<Message>>>, NucleusError> {
             Ok(self.store.remove(phase))
         }
+        pub fn drain_all(&mut self ) -> Result<Vec<Arc<Message>>, NucleusError> {
+            let mut rtn = vec!();
+            for (key,mut message) in self.store.drain()
+            {
+                rtn.append( & mut message );
+            }
+            Ok(rtn)
+        }
+
     }
 
 
 
-    pub trait CycleMessagingContext {
-        fn head(&self) -> i64;
+    #[derive(Clone)]
+    pub struct CycleMessagingContext {
+        pub head: i64
     }
 
     pub struct OutboundMessaging {
@@ -795,10 +802,10 @@ mod message
     }
 
     impl MessageDelivery {
-        fn new(message: Message, context: &dyn CycleMessagingContext) -> Self {
+        fn new(message: Message, context: CycleMessagingContext) -> Self {
             MessageDelivery {
                 received: Instant::now(),
-                cycle: context.head(),
+                cycle: context.head.clone(),
                 message: Arc::new(message),
             }
         }
@@ -817,6 +824,7 @@ mod message
 
         use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
         use crate::test::*;
+        use mechtron_core::message::DeliveryMoment::Cyclic;
 
         fn message(configs: &mut Configs) -> Message {
             let mut seq = IdSeq::new(0);
@@ -912,12 +920,6 @@ mod message
 
         struct MockNucleusMessagingContext;
 
-        impl CycleMessagingContext for MockNucleusMessagingContext
-        {
-            fn head(&self) -> i64 {
-                0
-            }
-        }
 
 
         #[test]
@@ -929,9 +931,11 @@ mod message
             let mut builder = message_builder(configs_ref);
             builder.to_cycle_kind = Option::Some(Cycle::Next);
             let message = builder.build(&mut IdSeq::new(0)).unwrap();
-            let context = MockNucleusMessagingContext;
+            let context = CycleMessagingContext{
+                head: 0
+            };
 
-            messaging.intake(message, &context);
+            messaging.intake(message, context);
 
             let query = messaging.query(0).unwrap();
             assert_eq!(0, query.len());
@@ -949,9 +953,11 @@ mod message
             let mut builder = message_builder(configs_ref);
             builder.to_cycle_kind = Option::Some(Cycle::Exact(0));
             let message = builder.build(&mut IdSeq::new(0)).unwrap();
-            let context = MockNucleusMessagingContext;
+            let context =CycleMessagingContext{
+                head: 0
+            };
 
-            messaging.intake(message, &context);
+            messaging.intake(message, context);
 
 
             let query = messaging.query(0).unwrap();
@@ -967,9 +973,9 @@ mod message
             let mut builder = message_builder(configs);
             builder.to_cycle_kind = Option::Some(Cycle::Exact(cycle));
             let message = builder.build(&mut IdSeq::new(0)).unwrap();
-            let context = MockNucleusMessagingContext;
+            let context =  CycleMessagingContext{head:0};
 
-            messaging.intake(message, &context);
+            messaging.intake(message, context);
         }
 
 
@@ -1120,7 +1126,7 @@ mod state
             Ok(self.get(key)?.clone())
         }
 
-        pub fn query(&self, revision: &Revision) -> Result<Option<Vec<(TronKey, Arc<ReadOnlyState>)>>, NucleusError> {
+        pub fn query(&self, revision: Revision) -> Result<Option<Vec<(TronKey, Arc<ReadOnlyState>)>>, NucleusError> {
             let history = self.history.read()?;
             let history = history.get(&revision);
             match history {
@@ -1136,7 +1142,8 @@ mod state
             }
         }
 
-        fn intake(&mut self, state: Rc<State>, key: StateKey) -> Result<(), NucleusError> {
+        pub fn intake(&mut self, state: Arc<Mutex<State>>, key: StateKey) -> Result<(), NucleusError> {
+            let state = state.lock()?;
             let state = state.read_only()?;
             let mut history = self.history.write()?;
             let mut history =
@@ -1201,7 +1208,7 @@ mod state
             }
         }
 
-        pub fn intake(&mut self, key: TronKey, state: &ReadOnlyState) -> Result<(), NucleusError> {
+        pub fn intake(&mut self, key: TronKey, state: Arc<ReadOnlyState>) -> Result<(), NucleusError> {
             let mut store = self.store.write()?;
             store.insert(key, Arc::new(Mutex::new(state.copy())));
             Ok(())
@@ -1244,6 +1251,7 @@ mod state
         use mechtron_core::configs::Configs;
         use std::rc::Rc;
         use mechtron_core::id::{StateKey, TronKey, Id, Revision};
+        use std::sync::{Arc, Mutex};
 
         pub fn mock_state(configs_ref:&Configs)->State
         {
@@ -1274,19 +1282,19 @@ mod state
             let state = mock_state(configs_ref);
 
             let key = mock_state_key();
-            history.intake(Rc::new(state), key ).unwrap();
+            history.intake(Arc::new(Mutex::new(state) ), key ).unwrap();
 
             let revision = Revision{
                 cycle: 0
             };
 
-            let states = history.query(&revision).unwrap().unwrap();
+            let states = history.query(revision.clone()).unwrap().unwrap();
             assert_eq!(1,states.len());
 
             let states= history.drain( 1 ).unwrap();
             assert_eq!(1,states.len());
 
-            let states = history.query(&revision).unwrap();
+            let states = history.query(revision.clone()).unwrap();
             assert!(states.is_none());
         }
     }
