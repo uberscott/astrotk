@@ -302,9 +302,9 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         }
     }
 
-    fn step(&mut self) -> Result<(), Box<dyn Error>> {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let phase: u8 = 0;
-        match self.messaging.remove(&phase)? {
+        match self.messaging.drain(&phase)? {
             None => {}
             Some(messages) => {
                 for message in messages {
