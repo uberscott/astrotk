@@ -1,12 +1,12 @@
 use mechtron_core::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 use std::env;
+use mechtron_core::error::Error;
 
 pub struct FileSystemArtifactRepository {
     repo_path: String,
@@ -25,7 +25,7 @@ impl FileSystemArtifactRepository {
 }
 
 impl ArtifactRepository for FileSystemArtifactRepository {
-    fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Box<dyn Error + '_>> {
+    fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Error> {
         {
             let lock = self.fetches.read()?;
             if lock.contains(bundle) {
@@ -44,7 +44,7 @@ impl ArtifactRepository for FileSystemArtifactRepository {
 }
 
 impl ArtifactCache for FileSystemArtifactRepository {
-    fn cache(&self, artifact: &Artifact) -> Result<(), Box<dyn Error + '_>> {
+    fn cache(&self, artifact: &Artifact) -> Result<(), Error > {
 
 
         self.fetch( &artifact.bundle )?;
@@ -59,7 +59,7 @@ impl ArtifactCache for FileSystemArtifactRepository {
         return Ok(());
     }
 
-    fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Box<dyn Error + '_>> {
+    fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Error > {
         {
             let lock = self.fetches.read()?;
             if !lock.contains(&artifact.bundle) {
@@ -91,7 +91,7 @@ impl ArtifactCache for FileSystemArtifactRepository {
         return Ok(data);
     }
 
-    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Box<dyn Error + '_>> {
+    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error > {
         let cache = self.cache.read()?;
         let option = cache.get(artifact);
 

@@ -12,9 +12,9 @@ use no_proto::pointer::option::NP_Enum;
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use no_proto::NP_Factory;
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::error::Error;
 
 static ID: &'static str = r#"
 struct({fields: {
@@ -94,14 +94,14 @@ pub struct From {
 }
 
 impl From {
-    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Box<dyn Error>> {
+    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         self.tron.append(&path.push(path!("tron")), buffer)?;
         buffer.set(&path.with(path!("cycle")), self.cycle.clone())?;
         buffer.set(&path.with(path!("timestamp")), self.timestamp.clone())?;
         Ok(())
     }
 
-    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Box<dyn Error>> {
+    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Error> {
         Ok(From {
             tron: TronKey::from(&path.push(path!["tron"]), buffer)?,
             cycle: buffer.get(&path.with(path!["cycle"]))?,
@@ -141,7 +141,7 @@ impl To {
         }
     }
 
-    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Box<dyn Error>> {
+    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         self.tron.append(&path.push(path!("tron")), buffer)?;
         buffer.set(&path.with(path!("port")), self.port.clone())?;
 
@@ -173,7 +173,7 @@ impl To {
         Ok(())
     }
 
-    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Box<dyn Error>> {
+    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Error> {
         let tron = TronKey::from(&path.push(path!("tron")), buffer)?;
         let port = buffer.get::<String>(&path.with(path!["port"]))?;
         let cycle = match buffer.is_set::<i64>(&path.with(path!("cycle")))? {
@@ -252,7 +252,7 @@ fn message_kind_to_string(kind: &MessageKind) -> &str {
     }
 }
 
-fn index_to_message_kind(index: u8) -> Result<MessageKind, Box<dyn Error>> {
+fn index_to_message_kind(index: u8) -> Result<MessageKind, Error> {
     match index {
         0 => Ok(MessageKind::Create),
         1 => Ok(MessageKind::Update),
@@ -265,7 +265,7 @@ fn index_to_message_kind(index: u8) -> Result<MessageKind, Box<dyn Error>> {
     }
 }
 
-fn string_to_message_kind(str: &str) -> Result<MessageKind, Box<dyn Error>> {
+fn string_to_message_kind(str: &str) -> Result<MessageKind, Error> {
     match str {
         "Create" => Ok(MessageKind::Create),
         "Update" => Ok(MessageKind::Update),
@@ -323,7 +323,7 @@ impl MessageBuilder {
         }
     }
 
-    pub fn validate(&self) -> Result<(), Box<dyn Error>> {
+    pub fn validate(&self) -> Result<(), Error> {
         if self.kind.is_none() {
             return Err("message builder kind must be set".into());
         }
@@ -361,7 +361,7 @@ impl MessageBuilder {
         Ok(())
     }
 
-    pub fn validate_build(&self) -> Result<(), Box<dyn Error>> {
+    pub fn validate_build(&self) -> Result<(), Error> {
         self.validate()?;
 
         if self.to_nucleus_id.is_none() {
@@ -375,7 +375,7 @@ impl MessageBuilder {
         Ok(())
     }
 
-    pub fn build(&self, seq: &mut IdSeq) -> Result<Message, Box<dyn Error>> {
+    pub fn build(&self, seq: &mut IdSeq) -> Result<Message, Error> {
         self.validate_build()?;
         Ok(Message {
             id: seq.next(),
@@ -402,7 +402,7 @@ impl MessageBuilder {
 
     pub fn message_builders_to_buffer(
         builders: Vec<MessageBuilder>,
-    ) -> Result<NP_Buffer<NP_Memory_Owned>, Box<dyn Error>> {
+    ) -> Result<NP_Buffer<NP_Memory_Owned>, Error> {
         let mut buffer = MESSAGE_BUILDERS_FACTORY.new_buffer(Option::None);
         let mut index = 0;
         for b in builders {
@@ -422,7 +422,7 @@ impl MessageBuilder {
         &self,
         buffer: &mut NP_Buffer<NP_Memory_Owned>,
         index: usize,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Error> {
         self.validate()?;
         let result = self.append_to_buffer_np_error(buffer, index);
         match result {
@@ -465,7 +465,7 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn dump(payload: Payload, path: &Path, buffer: &mut Buffer) -> Result<(), Box<dyn Error>> {
+    pub fn dump(payload: Payload, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         buffer.set(&path.with(path!["artifact"]), payload.artifact.to())?;
         buffer.set::<Vec<u8>>(
             &path.with(path!["bytes"]),
@@ -479,7 +479,7 @@ impl Payload {
         path: &Path,
         buffer: &ReadOnlyBuffer,
         buffer_factories: &BufferFactories,
-    ) -> Result<Payload, Box<dyn Error>> {
+    ) -> Result<Payload, Error> {
         let artifact = Artifact::from(buffer.get(&path.with(path!["artifact"]))?)?;
         let bytes = buffer.get::<Vec<u8>>(&path.with(path!["bytes"]))?;
         let factory = buffer_factories.get(&artifact)?;
@@ -552,7 +552,7 @@ impl Message {
         return size;
     }
 
-    pub fn to_bytes(message: Message) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn to_bytes(message: Message) -> Result<Vec<u8>, Error> {
         let mut buffer =
             Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(message.calc_bytes())));
         let path = Path::new(path!());
@@ -599,7 +599,7 @@ impl Message {
     pub fn from_bytes(
         bytes: Vec<u8>,
         buffer_factories: &dyn BufferFactories,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, Error> {
         let buffer = MESSAGES_FACTORY.open_buffer(bytes);
         let buffer = Buffer::new(buffer);
         let buffer = buffer.read_only();
@@ -659,7 +659,7 @@ mod tests {
     struct BufferFactoriesImpl {}
 
     impl BufferFactories for BufferFactoriesImpl {
-        fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'static>>, Box<dyn Error>> {
+        fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'static>>, Error> {
             Ok(Arc::new(NP_Factory::new(TEST_SCHEMA).unwrap()))
         }
     }

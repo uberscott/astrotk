@@ -1,7 +1,6 @@
 use std::{fmt, io};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
@@ -13,7 +12,7 @@ use no_proto::memory::NP_Memory_Owned;
 use mechtron_core::artifact::{Artifact, ArtifactCacher};
 use mechtron_core::configs::{Configs, Keeper, SimConfig, TronConfig};
 use mechtron_core::core::*;
-use mechtron_core::error::MechError;
+use mechtron_core::error::Error;
 use mechtron_core::id::{Id, StateKey, IdSeq};
 use mechtron_core::id::Revision;
 use mechtron_core::id::TronKey;
@@ -59,7 +58,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         self.local().node()
     }
 
-    pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus<'nuclei>>, Box<dyn Error + '_>> {
+    pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus<'nuclei>>, Error> {
         let sources = self.nuclei.read()?;
         if !sources.contains_key(nucleus_id) {
             return Err(format!(
@@ -73,7 +72,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         return Ok(nucleus.clone());
     }
 
-    pub fn add(&'nuclei self, id:Id, sim_id: Id, lookup_name: Option<String>) -> Result<(), NucleusError> {
+    pub fn add(&'nuclei self, id:Id, sim_id: Id, lookup_name: Option<String>) -> Result<(), Error> {
         let mut sources = self.nuclei.write()?;
         let nucleus = Nucleus::new( id, sim_id, lookup_name, self )?;
         sources.insert(nucleus.id.clone(), Arc::new(nucleus));
@@ -91,7 +90,7 @@ pub struct Nucleus<'nucleus> {
     lookup_name: Option<String>
 }
 
-fn timestamp() -> Result<u64, Box<dyn Error>> {
+fn timestamp() -> Result<u64, Error> {
     let since_the_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
     let timestamp =
         since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
@@ -105,7 +104,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         sim_id: Id,
         lookup_name: Option<String>,
         nuclei: &'nucleus Nuclei<'nucleus>
-    ) -> Result<Self, NucleusError> {
+    ) -> Result<Self, Error> {
 
         let mut nucleus = Nucleus {
             id: id,
@@ -169,7 +168,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         self.nuclei.local().node().net().seq()
     }
 
-    fn bootstrap(&mut self, lookup_name: Option<String>) -> Result<Id, Box<dyn Error+'_>> {
+    fn bootstrap(&mut self, lookup_name: Option<String>) -> Result<Id, Error> {
         let configs = self.configs();
         let mut seq= self.seq();
 
@@ -227,7 +226,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         self.messaging.intake(message, CycleMessagingContext{ head: self.head.cycle  });
     }
 
-    pub fn revise(&mut self, from: Revision, to: Revision) -> Result<(), NucleusError> {
+    pub fn revise(&mut self, from: Revision, to: Revision) -> Result<(), Error> {
         if from.cycle != to.cycle - 1 {
             return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
         }
@@ -303,7 +302,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         id: Id,
         context: NucleusCycleContext<'cycle,'nucleus>,
         nucleus: &'cycle Nucleus<'nucleus>,
-    ) -> Result<Self, Box<dyn Error+'error>> {
+    ) -> Result<Self, Error> {
         Ok(NucleusCycle {
             nucleus: nucleus,
             id: id,
@@ -320,7 +319,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         println!( "nucleus cycle panic! {:?}",error )
     }
 
-    fn intake_message(&mut self, message: Arc<Message>) -> Result<(), Box<dyn Error>> {
+    fn intake_message(&mut self, message: Arc<Message>) -> Result<(), Error> {
         self.messaging.intake(message)?;
         Ok(())
     }
@@ -333,7 +332,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         }
     }
 
-    fn execute(&mut self) -> Result<(), NucleusError> {
+    fn execute(&mut self) -> Result<(), Error> {
         let phase: u8 = 0;
         match self.messaging.drain(&phase)? {
             None => {}
@@ -346,7 +345,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         Ok(())
     }
 
-    fn commit(&mut self) -> Result<(Vec<(StateKey, Arc<Mutex<State>>)>, Vec<Arc<Message>>),NucleusError> {
+    fn commit(&mut self) -> Result<(Vec<(StateKey, Arc<Mutex<State>>)>, Vec<Arc<Message>>),Error> {
 
         let states= self.state.drain(self.context.revision())?;
         let messages = self.messaging.drain_all()?;
@@ -356,36 +355,19 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
     fn tron(
         &mut self,
         key: &TronKey,
-    ) -> Result<(Arc<TronConfig>, Rc<State>, TronShell, TronContext), Box<dyn Error+'static >> {
-        /*
-        let mut state = self.state.get(key)?;
+    ) -> Result<(Arc<TronConfig>, Arc<Mutex<State>>, TronShell, TronContext), Error> {
+        let mut rtn = self.state.get(key)?;
+        let mut state = rtn.lock()?;
         let artifact = state.get_artifact()?;
-        let tron_config = self
-            .context
-            .sys()
-            .local
-            .configs
-            .tron_config_keeper
-            .get(&artifact).unwrap();
+        let tron_config = self.nucleus.configs().tron_config_keeper.get(&artifact)?;
         let tron_shell = TronShell::new(init_tron(&tron_config)?);
 
-        let context = TronContext::new(
-            self.nucleus,
-            self.context.sys()?,
-            key.clone(),
-            Revision {
-                cycle: self.context.revision.cycle,
-            },
-            tron_config.clone(),
-            self.context.timestamp.clone(),
-        );
+        let context = self.nucleus.context_for(key.clone(), tron_config.clone() );
 
-        Ok((tron_config, state, tron_shell, context))
-         */
-        unimplemented!()
+        Ok((tron_config, rtn.clone(), tron_shell, context))
     }
 
-    fn process(&mut self, message: &Message) -> Result<(), Box<dyn Error>> {
+    fn process(&mut self, message: &Message) -> Result<(), Error> {
         match message.kind {
             MessageKind::Create => self.process_create(message),
             MessageKind::Update => self.process_update(message),
@@ -393,7 +375,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         }
     }
 
-    fn process_create(&mut self, message: &Message) -> Result<(), Box<dyn Error>> {
+    fn process_create(&mut self, message: &Message) -> Result<(), Error> {
         /*
         // ensure this is addressed to a neutron
         if !Neutron::valid_neutron_id(message.to.tron.tron.clone()) {
@@ -440,7 +422,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         unimplemented!()
     }
 
-    fn process_update(&mut self, message: &Message) -> Result<(), Box<dyn Error>> {
+    fn process_update(&mut self, message: &Message) -> Result<(), Error> {
         let state_key = StateKey {
             tron: message.to.tron.clone(),
             revision: Revision {
@@ -525,93 +507,18 @@ impl <'context,'nucleus> NucleusCycleContext<'context,'nucleus> {
 }
 
 
-#[derive(Debug, Clone)]
-pub struct NucleusError{
-    error: String
-}
 
-impl fmt::Display for NucleusError{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "nucleus error: {:?}",self)
-    }
-}
-
-impl From<NP_Error> for NucleusError{
-    fn from(e: NP_Error) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-impl From<io::Error> for NucleusError{
-    fn from(e: io::Error) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-impl From<Box<dyn Error>> for NucleusError{
-    fn from(e: Box<dyn Error>) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-impl From<&dyn Error> for NucleusError{
-    fn from(e: &dyn Error) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-impl From<Box<dyn Debug>> for NucleusError{
-    fn from(e: Box<Debug>) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-impl From<&dyn Debug> for NucleusError{
-    fn from(e: &dyn Debug) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-
-impl From<&str> for NucleusError{
-    fn from(e: &str) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
-        }
-    }
-}
-
-impl<T> From<PoisonError<T>> for NucleusError {
-    fn from(e: PoisonError<T>) -> Self {
-        NucleusError {
-            error: format!("{:?}", e)
-        }
-    }
-}
 
 mod message
 {
     use std::collections::HashMap;
-    use std::error::Error;
     use std::sync::{Arc, RwLock};
     use std::time::Instant;
 
     use mechtron_core::id::TronKey;
     use mechtron_core::message::{Cycle, Message};
+    use mechtron_core::error::Error;
 
-    use crate::nucleus::NucleusError;
 
     pub struct CyclicMessagingStructure {
         store: RwLock<HashMap<i64, HashMap<TronKey, TronMessageChamber>>>,
@@ -628,7 +535,7 @@ mod message
             &mut self,
             message: Message,
             context: CycleMessagingContext,
-        ) -> Result<(), NucleusError> {
+        ) -> Result<(), Error> {
             let delivery = MessageDelivery::new(message, context.clone());
 
             let mut store = self.store.write()?;
@@ -664,7 +571,7 @@ mod message
             Ok(())
         }
 
-        pub fn query(&self, cycle: i64) -> Result<Vec<Arc<Message>>, NucleusError> {
+        pub fn query(&self, cycle: i64) -> Result<Vec<Arc<Message>>, Error> {
             let store = self.store.read()?;
             match store.get(&cycle) {
                 None => Ok(vec![]),
@@ -678,7 +585,7 @@ mod message
             }
         }
 
-        pub fn release(&mut self, before_cycle: i64) -> Result<usize, NucleusError>
+        pub fn release(&mut self, before_cycle: i64) -> Result<usize, Error>
         {
             let mut releases = vec!();
 
@@ -722,7 +629,7 @@ mod message
             self.deliveries.iter().map(|d| d.message.clone()).collect()
         }
 
-        pub fn intake(&mut self, delivery: MessageDelivery) -> Result<(), Box<dyn Error>> {
+        pub fn intake(&mut self, delivery: MessageDelivery) -> Result<(), Error> {
             self.deliveries.push(delivery);
             Ok(())
         }
@@ -739,7 +646,7 @@ mod message
             }
         }
 
-        pub fn intake(&mut self, message: Arc<Message>) -> Result<(), Box<dyn Error>> {
+        pub fn intake(&mut self, message: Arc<Message>) -> Result<(), Error> {
             if !self.store.contains_key(&message.to.phase) {
                 self.store.insert(message.to.phase.clone(), vec![]);
             }
@@ -750,10 +657,10 @@ mod message
         }
 
 
-        pub fn drain(&mut self, phase: &u8) -> Result<Option<Vec<Arc<Message>>>, NucleusError> {
+        pub fn drain(&mut self, phase: &u8) -> Result<Option<Vec<Arc<Message>>>, Error> {
             Ok(self.store.remove(phase))
         }
-        pub fn drain_all(&mut self ) -> Result<Vec<Arc<Message>>, NucleusError> {
+        pub fn drain_all(&mut self ) -> Result<Vec<Arc<Message>>, Error> {
             let mut rtn = vec!();
             for (key,mut message) in self.store.drain()
             {
@@ -1095,7 +1002,7 @@ mod state
     use mechtron_core::id::{Revision, StateKey, TronKey};
     use mechtron_core::state::{ReadOnlyState, State};
 
-    use crate::nucleus::NucleusError;
+    use crate::nucleus::Error;
 
     pub struct StateHistory {
         history: RwLock<HashMap<Revision, HashMap<TronKey, Arc<ReadOnlyState>>>>,
@@ -1108,25 +1015,25 @@ mod state
             }
         }
 
-        fn unwrap<V>(&self, option: Option<V>) -> Result<V, NucleusError> {
+        fn unwrap<V>(&self, option: Option<V>) -> Result<V, Error> {
             match option {
                 None => return Err("option was none".into()),
                 Some(value) => Ok(value),
             }
         }
 
-        pub fn get(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, NucleusError> {
+        pub fn get(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error> {
             let history = self.history.read()?;
             let history = self.unwrap(history.get(&key.revision))?;
             let state = self.unwrap(history.get(&key.tron))?;
             Ok(state.clone())
         }
 
-        pub fn read_only(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, NucleusError> {
+        pub fn read_only(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error> {
             Ok(self.get(key)?.clone())
         }
 
-        pub fn query(&self, revision: Revision) -> Result<Option<Vec<(TronKey, Arc<ReadOnlyState>)>>, NucleusError> {
+        pub fn query(&self, revision: Revision) -> Result<Option<Vec<(TronKey, Arc<ReadOnlyState>)>>, Error> {
             let history = self.history.read()?;
             let history = history.get(&revision);
             match history {
@@ -1142,7 +1049,7 @@ mod state
             }
         }
 
-        pub fn intake(&mut self, state: Arc<Mutex<State>>, key: StateKey) -> Result<(), NucleusError> {
+        pub fn intake(&mut self, state: Arc<Mutex<State>>, key: StateKey) -> Result<(), Error> {
             let state = state.lock()?;
             let state = state.read_only()?;
             let mut history = self.history.write()?;
@@ -1154,7 +1061,7 @@ mod state
             Ok(())
         }
 
-        fn drain(&mut self, before_cycle: i64) -> Result<Vec<(StateKey, Arc<ReadOnlyState>)>, NucleusError>
+        fn drain(&mut self, before_cycle: i64) -> Result<Vec<(StateKey, Arc<ReadOnlyState>)>, Error>
         {
             let mut history = self.history.write()?;
             let mut revisions = vec!();
@@ -1208,13 +1115,13 @@ mod state
             }
         }
 
-        pub fn intake(&mut self, key: TronKey, state: Arc<ReadOnlyState>) -> Result<(), NucleusError> {
+        pub fn intake(&mut self, key: TronKey, state: Arc<ReadOnlyState>) -> Result<(), Error> {
             let mut store = self.store.write()?;
             store.insert(key, Arc::new(Mutex::new(state.copy())));
             Ok(())
         }
 
-        pub fn get(&mut self, key: &TronKey) -> Result<Arc<Mutex<State>>, NucleusError> {
+        pub fn get(&mut self, key: &TronKey) -> Result<Arc<Mutex<State>>, Error> {
             let store = self.store.read()?;
             let rtn = store.get(key);
 
@@ -1226,7 +1133,7 @@ mod state
             }
         }
 
-        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, Arc<Mutex<State>>)>, NucleusError> {
+        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, Arc<Mutex<State>>)>, Error> {
             let mut store = self.store.write()?;
             let mut rtn = vec![];
             for (key, state) in store.drain() {

@@ -1,7 +1,6 @@
 use std::borrow::BorrowMut;
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::error::Error;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
@@ -10,7 +9,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository, ArtifactYaml};
-use crate::error::MechError;
+use crate::error::Error;
 
 pub struct Configs<'config> {
     pub artifact_cache: Arc<dyn ArtifactCache + Sync + Send>,
@@ -58,7 +57,7 @@ impl<V> Keeper<V> {
         }
     }
 
-    pub fn cache(&mut self, artifact: &Artifact) -> Result<(),Box<dyn Error+'_>>  {
+    pub fn cache(&mut self, artifact: &Artifact) -> Result<(),Error>  {
         let mut cache = self.config_cache.write().unwrap();
 
         if cache.contains_key(artifact) {
@@ -74,7 +73,7 @@ impl<V> Keeper<V> {
         Ok(())
     }
 
-    pub fn get<'get>(&self, artifact: &Artifact) -> Result<Arc<V>,Box<dyn Error+'_>>  where V: 'get {
+    pub fn get<'get>(&self, artifact: &Artifact) -> Result<Arc<V>,Error>  where V: 'get {
         let cache = self.config_cache.read()?;
 
         let rtn = match cache.get(&artifact)
@@ -88,13 +87,13 @@ impl<V> Keeper<V> {
 }
 
 pub trait Parser<V> {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<V, Box<dyn Error>>;
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<V, Error>;
 }
 
 struct NP_Buffer_Factory_Parser;
 
 impl<'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<NP_Factory<'fact>, Box<dyn Error>> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<NP_Factory<'fact>, Error> {
         let result = NP_Factory::new(str);
         match result {
             Ok(rtn) => Ok(rtn),
@@ -110,7 +109,7 @@ impl<'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser {
 struct SimConfigParser;
 
 impl Parser<SimConfig> for SimConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<SimConfig, Box<dyn Error>> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<SimConfig, Error> {
         let sim_config_yaml = SimConfigYaml::from(str)?;
         let sim_config = sim_config_yaml.to_config(artifact)?;
         Ok(sim_config)
@@ -120,7 +119,7 @@ impl Parser<SimConfig> for SimConfigParser {
 struct MechtronConfigParser;
 
 impl Parser<MechtronConfig> for MechtronConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<MechtronConfig, Box<dyn Error>> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<MechtronConfig, Error> {
         let mechtron_config_yaml = MechtronConfigYaml::from_yaml(str)?;
         let mechtron_config = mechtron_config_yaml.to_config(artifact)?;
         Ok(mechtron_config)
@@ -130,7 +129,7 @@ impl Parser<MechtronConfig> for MechtronConfigParser {
 struct TronConfigParser;
 
 impl Parser<TronConfig> for TronConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<TronConfig, Box<dyn Error>> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<TronConfig, Error> {
         let tron_config_yaml = TronConfigYaml::from_yaml(str)?;
         let tron_config = tron_config_yaml.to_config(artifact)?;
         Ok(tron_config)
@@ -195,11 +194,11 @@ pub struct MechtronConfigYaml {
 }
 
 impl MechtronConfigYaml {
-    pub fn from_yaml(string: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_yaml(string: &str) -> Result<Self, Error> {
         Ok(serde_yaml::from_str(string)?)
     }
 
-    pub fn to_config(&self, artifact: &Artifact) -> Result<MechtronConfig, Box<dyn Error>> {
+    pub fn to_config(&self, artifact: &Artifact) -> Result<MechtronConfig, Error> {
         let default_bundle = &artifact.bundle.clone();
         return Ok(MechtronConfig {
             source: artifact.clone(),
@@ -265,11 +264,11 @@ pub struct OutMessageConfigYaml {
 }
 
 impl TronConfigYaml {
-    pub fn from_yaml(string: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_yaml(string: &str) -> Result<Self, Error> {
         Ok(serde_yaml::from_str(string)?)
     }
 
-    pub fn to_config(&self, artifact: &Artifact) -> Result<TronConfig, Box<dyn Error>> {
+    pub fn to_config(&self, artifact: &Artifact) -> Result<TronConfig, Error> {
         let default_bundle = &artifact.bundle.clone();
 
         return Ok(TronConfig {
@@ -346,11 +345,11 @@ pub struct DataRefYaml {
 }
 
 impl SimConfigYaml {
-    pub fn from(string: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from(string: &str) -> Result<Self, Error> {
         Ok(serde_yaml::from_str(string)?)
     }
 
-    pub fn to_config(&self, artifact: &Artifact) -> Result<SimConfig, Box<dyn Error>> {
+    pub fn to_config(&self, artifact: &Artifact) -> Result<SimConfig, Error> {
         Ok(SimConfig {
             source: artifact.clone(),
             name: self.name.clone(),
@@ -359,7 +358,7 @@ impl SimConfigYaml {
         })
     }
 
-    fn to_trons(&self, artifact: &Artifact) -> Result<Vec<SimTronConfig>, Box<dyn Error>> {
+    fn to_trons(&self, artifact: &Artifact) -> Result<Vec<SimTronConfig>, Error> {
         let default_bundle = &artifact.bundle;
         let mut rtn = vec![];
         for t in &self.trons {

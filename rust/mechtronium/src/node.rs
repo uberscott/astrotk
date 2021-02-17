@@ -6,10 +6,10 @@ use mechtron_core::configs::{Configs, Keeper, Parser};
 use mechtron_core::id::{Id, IdSeq};
 use std::alloc::System;
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, Module, Store, JIT};
 use std::cell::Cell;
+use mechtron_core::error::Error;
 
 pub struct Node<'configs> {
     pub local: Local<'configs>,
@@ -141,11 +141,11 @@ struct WasmModuleParser {
 }
 
 impl Parser<Module> for WasmModuleParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, Box<dyn Error>> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, Error> {
         let result = Module::new(&self.wasm_store, str);
         match result {
             Ok(module) => Ok(module),
-            Err(e) => Err(e.into()),
+            Err(e) => Err("wasm compile error".into()),
         }
     }
 }

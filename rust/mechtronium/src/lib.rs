@@ -17,3 +17,4 @@ pub mod router;
 
 #[cfg(test)]
 pub mod test;
+pub mod error;
