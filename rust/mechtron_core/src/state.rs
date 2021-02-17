@@ -24,7 +24,7 @@ impl State {
         let meta = Buffer::new(
             configs
                 .buffer_factory_keeper
-                .get(&CORE_CONTENT_META)?
+                .get(&CORE_STATE_META)?
                 .new_buffer(Option::None),
         );
         let data = Buffer::new(
@@ -115,7 +115,7 @@ impl ReadOnlyState {
         let rtn: Vec<Payload> = vec![
             Payload {
                 buffer: state.meta,
-                artifact: CORE_CONTENT_META.clone(),
+                artifact: CORE_STATE_META.clone(),
             },
             Payload {
                 buffer: state.data,

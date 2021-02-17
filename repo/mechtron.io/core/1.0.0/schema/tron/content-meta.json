@@ -1,8 +1,0 @@
-{
-    "type": "table",
-    "columns": [
-               ["artifact",           {"type":"string"}],
-               ["creation_timestamp", {"type":"i64"}],
-               ["creation_cycle",     {"type":"i64"}]
-               ]
-}

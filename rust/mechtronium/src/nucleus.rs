@@ -22,9 +22,9 @@ use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State};
 
 use crate::mechtronium::{Mechtronium, NucleusContext};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
+use crate::nucleus::state::{PhasicStateStructure, StateHistory};
 use crate::router::Router;
 use crate::tron::{CreatePayloadsBuilder, init_tron, Neutron, Tron, TronContext, TronShell};
-use crate::nucleus::state::{StateHistory, PhasicStateStructure};
 
 pub struct Nuclei<'nuclei> {
     nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
@@ -65,12 +65,12 @@ impl<'nuclei> Nuclei<'nuclei> {
 }
 
 pub struct Nucleus<'nucleus> {
-    pub id: Id,
-    pub sim_id: Id,
-    pub state: StateHistory,
-    pub messaging: CyclicMessagingStructure,
-    pub head: Revision,
-    pub context: NucleusContext<'nucleus>,
+    id: Id,
+    sim_id: Id,
+    state: StateHistory,
+    messaging: CyclicMessagingStructure,
+    head: Revision,
+    context: NucleusContext<'nucleus>,
 }
 
 fn timestamp() -> Result<u64, Box<dyn Error>> {
@@ -1044,12 +1044,14 @@ mod message
 
 mod state
 {
-    use std::sync::{RwLock, Arc, Mutex};
     use std::collections::HashMap;
-    use mechtron_core::id::{Revision, TronKey, StateKey};
-    use mechtron_core::state::{ReadOnlyState, State};
-    use crate::nucleus::NucleusError;
     use std::rc::Rc;
+    use std::sync::{Arc, Mutex, RwLock};
+
+    use mechtron_core::id::{Revision, StateKey, TronKey};
+    use mechtron_core::state::{ReadOnlyState, State};
+
+    use crate::nucleus::NucleusError;
 
     pub struct StateHistory {
         history: RwLock<HashMap<Revision, HashMap<TronKey, Arc<ReadOnlyState>>>>,
@@ -1095,9 +1097,7 @@ mod state
                 }
             }
         }
-    }
 
-    impl CyclicStateIntake for StateHistory {
         fn intake(&mut self, state: Rc<State>, key: StateKey) -> Result<(), NucleusError> {
             let state = state.read_only()?;
             let mut history = self.history.write()?;
@@ -1108,16 +1108,49 @@ mod state
             history.insert(key.tron.clone(), Arc::new(state));
             Ok(())
         }
+
+        fn drain(&mut self, before_cycle: i64) -> Result<Vec<(StateKey, Arc<ReadOnlyState>)>, NucleusError>
+        {
+            let mut history = self.history.write()?;
+            let mut revisions = vec!();
+            {
+                for revision in history.keys()
+                {
+                    if revision.cycle < before_cycle
+                    {
+                        revisions.push(revision.clone());
+                    }
+                }
+            }
+
+            if revisions.is_empty()
+            {
+                return Ok(vec!());
+            }
+
+            let mut rtn = vec!();
+//            let history = self.history.write()?;
+
+            for revision in revisions {
+
+                let mut revision_states = history.remove(&revision).unwrap();
+                for state_entry in revision_states.drain().map(|(key, state)| {
+                    let key = StateKey
+                    {
+                        tron: key,
+                        revision: revision.clone(),
+                    };
+
+                    return (key, state);
+                }) {
+                    rtn.push(state_entry);
+                }
+            }
+
+            Ok(rtn)
+        }
     }
 
-    pub trait CyclicStateIntake {
-        fn intake(&mut self, state: Rc<State>, key: StateKey) -> Result<(), NucleusError>;
-    }
-
-
-    pub trait PhasicStateIntake {
-        fn intake(&mut self, state: ReadOnlyState, key: StateKey) -> Result<(), NucleusError>;
-    }
 
     pub struct PhasicStateStructure {
         store: RwLock<HashMap<TronKey, Arc<Mutex<State>>>>,
@@ -1162,6 +1195,63 @@ mod state
         }
     }
 
+
+    #[cfg(test)]
+    mod test{
+        use crate::test::create_configs;
+        use crate::nucleus::state::StateHistory;
+        use mechtron_core::state::State;
+        use mechtron_core::buffers::Buffer;
+        use mechtron_core::core::*;
+        use mechtron_core::configs::Configs;
+        use std::rc::Rc;
+        use mechtron_core::id::{StateKey, TronKey, Id, Revision};
+
+        pub fn mock_state(configs_ref:&Configs)->State
+        {
+            let state = State::new(configs_ref, CORE_SCHEMA_EMPTY.clone() ).unwrap();
+            state
+        }
+
+        pub fn mock_state_key()->StateKey
+        {
+            StateKey{
+                tron: TronKey{
+                    nucleus: Id::new(0,0),
+                    tron: Id ::new(0,0)
+                },
+
+                revision: Revision {
+                    cycle: 0
+                }
+            }
+        }
+
+        #[test]
+        pub fn test()
+        {
+            let mut configs = create_configs();
+            let mut configs_ref = &mut configs;
+            let mut history = StateHistory::new();
+            let state = mock_state(configs_ref);
+
+            let key = mock_state_key();
+            history.intake(Rc::new(state), key ).unwrap();
+
+            let revision = Revision{
+                cycle: 0
+            };
+
+            let states = history.query(&revision).unwrap().unwrap();
+            assert_eq!(1,states.len());
+
+            let states= history.drain( 1 ).unwrap();
+            assert_eq!(1,states.len());
+
+            let states = history.query(&revision).unwrap();
+            assert!(states.is_none());
+        }
+    }
 
 }
 
