@@ -10,111 +10,11 @@ use crate::mechtronium::Mechtronium;
 use crate::nucleus::Nucleus;
 use wasmer::wasmparser::NameType::Local;
 
-pub trait MessageRouter {
-    fn send(&mut self, message: Message);
-}
 
-pub struct GlobalMessageRouter<'configs> {
-    local: LocalMessageRouter<'configs>,
-    sys: Option<Arc<Mechtronium<'configs>>>,
-}
 
-impl <'configs> GlobalMessageRouter<'configs> {
-    pub fn new() -> Self {
-        GlobalMessageRouter {
-            local: LocalMessageRouter::new(),
-            sys: Option::None,
-        }
-    }
-
-    pub fn init(&mut self, sys: Arc<Mechtronium<'configs>>) {
-        self.local.init(sys.clone());
-        self.sys = Option::Some(sys);
-    }
-
-    pub fn sys<'get>(&'get self) -> Result<Arc<Mechtronium<'configs>>, Box<dyn Error>> {
-        match &self.sys {
-            None => Err("sys is not set".into()),
-            Some(sys) => Ok(sys.clone()),
-        }
-    }
-}
-
-impl <'configs> MessageRouter for GlobalMessageRouter<'configs> {
-    fn send(&mut self, message: Message) {
-        self.local.send(message);
-    }
-}
-
-struct LocalMessageRouter<'configs> {
-    sys: Option<Arc<Mechtronium<'configs>>>,
-}
-
-impl <'configs> LocalMessageRouter<'configs> {
-    pub fn new() -> Self {
-        LocalMessageRouter { sys: Option::None }
-    }
-
-    pub fn init(&mut self, sys: Arc<Mechtronium<'configs>>) {
-        self.sys = Option::Some(sys);
-    }
-
-    pub fn sys(&self) -> Result<Arc<Mechtronium<'configs>>, Box<dyn Error>> {
-        match &self.sys {
-            None => Err("sys is not set".into()),
-            Some(sys) => Ok(sys.clone()),
-        }
-    }
-}
-
-impl <'configs>MessageRouter for LocalMessageRouter<'configs> {
-    fn send(&mut self, message: Message) {
-        if self.sys().is_err() {
-            println!("cannot send message because MessageRouter has no connection to the system");
-            return;
-        }
-
-        match self
-            .sys()
-            .unwrap()
-            .local
-            .nuclei
-            .get(&message.to.tron.nucleus)
-        {
-            Ok(nucleus) => {
-                let mut nucleus = nucleus;
-                nucleus.intake(message);
-            }
-            Err(e) => {
-                print!("message failed to be sent: {:?}", e)
-            }
-        }
-    }
-}
-
-struct MessageDelivery {
-    received: Instant,
-    cycle: i64,
-    message: Arc<Message>,
-}
-
-impl MessageDelivery {
-    fn new(message: Message, context: &dyn IntakeContext) -> Self {
-        MessageDelivery {
-            received: Instant::now(),
-            cycle: context.head(),
-            message: Arc::new(message),
-        }
-    }
-}
-
-pub trait IntakeContext {
-    fn head(&self) -> i64;
-    fn phase(&self) -> u8;
-}
 
 pub struct NucleusMessagingStructure {
-    store: RwLock<HashMap<i64, HashMap<TronKey, TronMessagingChamber>>>,
+    store: RwLock<HashMap<i64, HashMap<TronKey, TronMessageChamber>>>,
 }
 
 impl NucleusMessagingStructure {
@@ -127,7 +27,7 @@ impl NucleusMessagingStructure {
     pub fn intake(
         &mut self,
         message: Message,
-        context: &dyn IntakeContext,
+        context: &dyn NucleusMessagingContext,
     ) -> Result<(), Box<dyn Error + '_>> {
         let delivery = MessageDelivery::new(message, context);
 
@@ -139,7 +39,7 @@ impl NucleusMessagingStructure {
                 // Nucleus intake is InterCyclic therefore cannot accept present cycles
                 context.head() + 1
             }
-            Cycle::Next => context.head() + 1,
+            Cycle::Next => context.head() + 1
         };
 
         // at some point we must determine if the nucleus policy allows for message deliveries to this
@@ -154,7 +54,7 @@ impl NucleusMessagingStructure {
         if !store.contains_key(&delivery.message.to.tron) {
             store.insert(
                 delivery.message.to.tron.clone(),
-                TronMessagingChamber::new(),
+                TronMessageChamber::new(),
             );
         }
 
@@ -164,9 +64,9 @@ impl NucleusMessagingStructure {
         Ok(())
     }
 
-    pub fn query(&self, cycle: &i64) -> Result<Vec<Arc<Message>>, Box<dyn Error + '_>> {
+    pub fn query(&self, cycle: i64) -> Result<Vec<Arc<Message>>, Box<dyn Error + '_>> {
         let store = self.store.read()?;
-        match store.get(cycle) {
+        match store.get(&cycle) {
             None => Ok(vec![]),
             Some(chambers) => {
                 let mut rtn = vec![];
@@ -179,13 +79,33 @@ impl NucleusMessagingStructure {
     }
 }
 
-struct TronMessagingChamber {
+struct MessageDelivery {
+    received: Instant,
+    cycle: i64,
+    message: Arc<Message>,
+}
+
+impl MessageDelivery {
+    fn new(message: Message, context: &dyn NucleusMessagingContext) -> Self {
+        MessageDelivery {
+            received: Instant::now(),
+            cycle: context.head(),
+            message: Arc::new(message),
+        }
+    }
+}
+
+pub trait NucleusMessagingContext {
+    fn head(&self) -> i64;
+}
+
+struct TronMessageChamber {
     deliveries: Vec<MessageDelivery>,
 }
 
-impl TronMessagingChamber {
+impl TronMessageChamber {
     pub fn new() -> Self {
-        TronMessagingChamber { deliveries: vec![] }
+        TronMessageChamber { deliveries: vec![] }
     }
 
     pub fn messages(&self) -> Vec<Arc<Message>> {
@@ -198,13 +118,13 @@ impl TronMessagingChamber {
     }
 }
 
-pub struct NucleusPhasicMessagingStructure {
+pub struct NucleusCycleMessageStructure {
     store: HashMap<u8, Vec<Arc<Message>>>,
 }
 
-impl NucleusPhasicMessagingStructure {
+impl NucleusCycleMessageStructure {
     pub fn new() -> Self {
-        NucleusPhasicMessagingStructure {
+        NucleusCycleMessageStructure {
             store: HashMap::new(),
         }
     }
@@ -256,4 +176,157 @@ impl OutboundMessaging {
     pub fn push(&mut self, message: Message) {
         self.queue.push(message);
     }
+}
+#[cfg(test)]
+mod tests {
+    use crate::message::{NucleusMessagingStructure, NucleusMessagingContext};
+    use mechtron_core::message::{Message, MessageKind, To, Cycle, DeliveryMoment, Payload, MessageBuilder, PayloadBuilder};
+    use mechtron_core::core::*;
+    use crate::test::*;
+    use mechtron_core::id::{IdSeq, TronKey, Id};
+    use mechtron_core::configs::Configs;
+    use mechtron_core::buffers::Buffer;
+
+
+    fn message(configs: &mut Configs) ->Message{
+
+        let mut seq = IdSeq::new(0);
+
+        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+//        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE).unwrap();
+        let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY ).unwrap();
+        let buffer = factory.new_buffer(Option::None);
+        let buffer = Buffer::new(buffer);
+        let buffer = buffer.read_only();
+        let payload = Payload{
+            buffer: buffer,
+            artifact: CORE_CREATE_META.clone()
+        };
+
+
+        let seq_borrow = &mut seq;
+
+        Message::single_payload(seq_borrow,
+        MessageKind::Update,
+            mechtron_core::message::From{
+                tron: TronKey::new(seq_borrow.next(),seq_borrow.next()),
+                cycle: 0,
+                timestamp: 0
+            },
+            To{
+                tron: TronKey::new(seq_borrow.next(),seq_borrow.next()),
+                port: "someport".to_string(),
+                cycle: Cycle::Present,
+                phase: 0,
+                delivery: DeliveryMoment::Cyclic
+            },
+            payload
+        )
+
+    }
+
+    fn message_builder(configs: &mut Configs) ->MessageBuilder{
+        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+        let mut builder = MessageBuilder::new();
+        builder.to_nucleus_id = Option::Some(Id::new(0,0) );
+        builder.to_tron_id = Option::Some(Id::new(0,0) );
+        builder.to_phase = Option::Some(0);
+        builder.to_cycle_kind = Option::Some(Cycle::Next);
+        builder.to_port = Option::Some("port".to_string());
+        builder.from = Option::Some(mock_from());
+        builder.kind = Option::Some(MessageKind::Update);
+
+        let factory = configs.buffer_factory_keeper.get( &CORE_SCHEMA_EMPTY ).unwrap();
+        let buffer = factory.new_buffer(Option::None);
+        let buffer = Buffer::new(buffer);
+
+        builder.payloads = Option::Some(vec![PayloadBuilder{
+            buffer: buffer,
+            artifact: CORE_SCHEMA_EMPTY.clone()
+        }]);
+
+        let mut seq = IdSeq::new(0);
+
+
+        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+        let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY ).unwrap();
+        let buffer = factory.new_buffer(Option::None);
+        let buffer = Buffer::new(buffer);
+        let payload = PayloadBuilder{
+            buffer: buffer,
+            artifact: CORE_CREATE_META.clone()
+        };
+
+        builder.payloads = Option::Some(vec![payload]);
+
+
+        builder
+    }
+
+    fn mock_from() -> mechtron_core::message::From{
+        return mechtron_core::message::From{
+            tron: mock_tron_key(),
+            cycle: 0,
+            timestamp: 0
+        }
+    }
+
+   fn mock_tron_key()->TronKey{
+
+       TronKey{
+           tron: Id{
+               seq_id: 0,
+               id: 0
+           },
+           nucleus: Id {
+               seq_id: 0,
+               id: 0
+           }
+       }
+   }
+
+struct MockNucleusMessagingContext;
+impl NucleusMessagingContext for MockNucleusMessagingContext
+{
+    fn head(&self) -> i64 {
+        0
+    }
+}
+
+#[test]
+fn test_intake()
+{
+    let mut messaging = NucleusMessagingStructure::new();
+    let mut configs = create_configs();
+    let configs_ref = &mut configs;
+
+    let message = message(configs_ref);
+    let context = MockNucleusMessagingContext;
+
+    messaging.intake(message, &context ).unwrap();
+
+    let query = messaging.query(1).unwrap();
+
+    assert_eq!( 1, query.len());
+}
+
+    #[test]
+    fn test_intake_exact()
+    {
+        let mut messaging = NucleusMessagingStructure::new();
+        let mut configs = create_configs();
+        let configs_ref = &mut configs;
+        let mut builder = message_builder(configs_ref);
+        builder.to_cycle_kind = Option::Some( Cycle::Exact(0));
+        let message = builder.build(&mut IdSeq::new(0)).unwrap();
+        let context = MockNucleusMessagingContext;
+
+        messaging.intake(message,&context);
+
+        let query = messaging.query(0).unwrap();
+
+        assert_eq!( 1, query.len());
+    }
+
+
 }

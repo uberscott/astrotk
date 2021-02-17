@@ -225,6 +225,7 @@ pub enum MessageKind {
     Request,
     Response,
     Reject,
+    Panic
 }
 
 fn message_kind_to_index(kind: &MessageKind) -> u8 {
@@ -235,6 +236,7 @@ fn message_kind_to_index(kind: &MessageKind) -> u8 {
         MessageKind::Request => 3,
         MessageKind::Response => 4,
         MessageKind::Reject => 5,
+        MessageKind::Panic => 6,
     }
 }
 
@@ -246,6 +248,7 @@ fn message_kind_to_string(kind: &MessageKind) -> &str {
         MessageKind::Request => "Request",
         MessageKind::Response => "Response",
         MessageKind::Reject => "Reject",
+        MessageKind::Panic=> "Panic",
     }
 }
 
@@ -257,6 +260,7 @@ fn index_to_message_kind(index: u8) -> Result<MessageKind, Box<dyn Error>> {
         3 => Ok(MessageKind::Request),
         4 => Ok(MessageKind::Response),
         5 => Ok(MessageKind::Reject),
+        6 => Ok(MessageKind::Panic),
         _ => Err(format!("invalid index {}", index).into()),
     }
 }
@@ -269,6 +273,7 @@ fn string_to_message_kind(str: &str) -> Result<MessageKind, Box<dyn Error>> {
         "Request" => Ok(MessageKind::Request),
         "Response" => Ok(MessageKind::Response),
         "Reject" => Ok(MessageKind::Reject),
+        "Panic" => Ok(MessageKind::Reject),
         _ => Err(format!("invalid index {}", str).into()),
     }
 }
@@ -327,11 +332,11 @@ impl MessageBuilder {
             return Err("to_phase_name and to_phase cannot both be set".into());
         }
 
-        if self.to_nucleus_lookup_name.is_some() != self.to_nucleus_id.is_some() {
+        if self.to_nucleus_lookup_name.is_some() == self.to_nucleus_id.is_some() {
             return Err("message builder to_nucleus_lookup_name OR to_nucleus_id must be set (but not both)".into());
         }
 
-        if self.to_tron_lookup_name.is_some() != self.to_tron_id.is_some() {
+        if self.to_tron_lookup_name.is_some() == self.to_tron_id.is_some() {
             return Err(
                 "message builder to_tron_lookup_name OR to_tron_id must be set (but not both)"
                     .into(),
@@ -347,17 +352,23 @@ impl MessageBuilder {
             return Err("message builder payload must be set".into());
         }
 
+        if self.to_port.is_none() {
+            return Err("message builder to_port must be set".into());
+        }
+
+
+
         Ok(())
     }
 
     pub fn validate_build(&self) -> Result<(), Box<dyn Error>> {
         self.validate()?;
 
-        if self.to_nucleus_id.is_some() {
+        if self.to_nucleus_id.is_none() {
             return Err("message builder to_nucleus_id must be set before build".into());
         }
 
-        if self.to_tron_id.is_some() {
+        if self.to_tron_id.is_none() {
             return Err("message builder to_tron_id must be set before build".into());
         }
 
@@ -685,7 +696,7 @@ mod tests {
         let path = Path::new(path![]);
         id.append(&path, &mut buffer).unwrap();
 
-        let buffer = Buffer::read_only(buffer);
+        let buffer = buffer.read_only();
 
         let ser_id = Id::from(&path, &buffer).unwrap();
 
@@ -727,7 +738,7 @@ mod tests {
         let mut buffer = Buffer::new(np_buffer);
         buffer.set(&path!("0"), "hello");
         let payload = Payload {
-            buffer: Buffer::read_only(buffer),
+            buffer: buffer.read_only(),
             artifact: artifact.clone(),
         };
         let mut seq = IdSeq::new(0);

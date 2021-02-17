@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
+use std::env;
 
 pub struct FileSystemArtifactRepository {
     repo_path: String,
@@ -14,9 +15,9 @@ pub struct FileSystemArtifactRepository {
 }
 
 impl FileSystemArtifactRepository {
-    pub fn new(repo_path: String) -> Self {
+    pub fn new(repo_path: &str ) -> Self {
         return FileSystemArtifactRepository {
-            repo_path: repo_path,
+            repo_path: repo_path.to_string(),
             cache: RwLock::new(HashMap::new()),
             fetches: RwLock::new(HashSet::new()),
         };
@@ -25,9 +26,11 @@ impl FileSystemArtifactRepository {
 
 impl ArtifactRepository for FileSystemArtifactRepository {
     fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Box<dyn Error + '_>> {
-        let lock = self.fetches.read()?;
-        if lock.contains(bundle) {
-            return Ok(());
+        {
+            let lock = self.fetches.read()?;
+            if lock.contains(bundle) {
+                return Ok(());
+            }
         }
 
         let mut lock = self.fetches.write()?;
@@ -42,15 +45,9 @@ impl ArtifactRepository for FileSystemArtifactRepository {
 
 impl ArtifactCache for FileSystemArtifactRepository {
     fn cache(&self, artifact: &Artifact) -> Result<(), Box<dyn Error + '_>> {
-        let lock = self.fetches.read()?;
-        if !lock.contains(&artifact.bundle) {
-            return Err(format!(
-                "fetch must be called on bundle: {} before artifact can be loaded: {}",
-                artifact.bundle.to(),
-                artifact.to()
-            )
-            .into());
-        }
+
+
+        self.fetch( &artifact.bundle )?;
 
         let mut cache = self.cache.write()?;
         if cache.contains_key(artifact) {
@@ -63,14 +60,16 @@ impl ArtifactCache for FileSystemArtifactRepository {
     }
 
     fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Box<dyn Error + '_>> {
-        let lock = self.fetches.read()?;
-        if !lock.contains(&artifact.bundle) {
-            return Err(format!(
-                "fetch must be called on bundle: {} before artifact can be loaded: {}",
-                artifact.bundle.to(),
-                artifact.to()
-            )
-            .into());
+        {
+            let lock = self.fetches.read()?;
+            if !lock.contains(&artifact.bundle) {
+                return Err(format!(
+                    "fetch must be called on bundle: {} before artifact can be loaded: {}",
+                    artifact.bundle.to(),
+                    artifact.to()
+                )
+                    .into());
+            }
         }
 
         let mut path = String::new();

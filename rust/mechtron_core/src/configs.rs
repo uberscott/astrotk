@@ -21,17 +21,17 @@ pub struct Configs<'config> {
 }
 
 impl<'config> Configs<'config> {
-    pub fn new(artifact_source: Arc<dyn ArtifactCache + Sync + Send>) -> Self {
+    pub fn new(artifact_cache: Arc<dyn ArtifactCache + Sync + Send>) -> Self {
         let mut configs = Configs {
-            artifact_cache: artifact_source.clone(),
+            artifact_cache: artifact_cache.clone(),
             buffer_factory_keeper: Keeper::new(
-                artifact_source.clone(),
+                artifact_cache.clone(),
                 Box::new(NP_Buffer_Factory_Parser),
             ),
-            sim_config_keeper: Keeper::new(artifact_source.clone(), Box::new(SimConfigParser)),
-            tron_config_keeper: Keeper::new(artifact_source.clone(), Box::new(TronConfigParser)),
+            sim_config_keeper: Keeper::new(artifact_cache.clone(), Box::new(SimConfigParser)),
+            tron_config_keeper: Keeper::new(artifact_cache.clone(), Box::new(TronConfigParser)),
             mechtron_config_keeper: Keeper::new(
-                artifact_source.clone(),
+                artifact_cache.clone(),
                 Box::new(MechtronConfigParser),
             ),
         };
@@ -58,14 +58,14 @@ impl<V> Keeper<V> {
         }
     }
 
-    pub fn cache(&mut self, artifact: &Artifact) -> Result<(),Box<dyn Error>>  {
+    pub fn cache(&mut self, artifact: &Artifact) -> Result<(),Box<dyn Error+'_>>  {
         let mut cache = self.config_cache.write().unwrap();
 
         if cache.contains_key(artifact) {
             return Ok(());
         }
 
-        self.repo.cache(&artifact);
+        self.repo.cache(&artifact)?;
 
         let str = self.repo.get(&artifact).unwrap();
 
@@ -76,7 +76,14 @@ impl<V> Keeper<V> {
 
     pub fn get<'get>(&self, artifact: &Artifact) -> Result<Arc<V>,Box<dyn Error+'_>>  where V: 'get {
         let cache = self.config_cache.read()?;
-        Ok(cache.get(&artifact).unwrap().clone())
+
+        let rtn = match cache.get(&artifact)
+        {
+            None => return Err(format!("could not find {}",artifact.to()).into()),
+            Some(rtn) =>rtn
+        };
+
+        Ok(rtn.clone())
     }
 }
 

@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, PoisonError};
 
 use no_proto::memory::NP_Memory_Owned;
 
@@ -14,15 +14,20 @@ use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State};
 
 use crate::mechtronium::{Mechtronium, NucleusContext};
 use crate::message::{
-    IntakeContext, MessageRouter, NucleusMessagingStructure, NucleusPhasicMessagingStructure,
+    NucleusMessagingContext,NucleusMessagingStructure, NucleusCycleMessageStructure,
     OutboundMessaging,
 };
-use crate::state::{NucleusPhasicStateStructure, NucleusStateStructure, StateIntake};
+use crate::state::{NucleusCycleStateStructure, NucleusStateHistory, NucleusStateHistoryIntake};
 use crate::tron::{init_tron, CreatePayloadsBuilder, Neutron, Tron, TronContext, TronShell};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::SystemTime;
+use no_proto::error::NP_Error;
+use std::fmt::{Formatter, Display, Debug};
+use std::{fmt, io};
+use mechtron_core::error::MechError;
+use crate::router::Router;
 
 pub struct Nuclei<'nuclei> {
     nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
@@ -65,7 +70,7 @@ impl <'nuclei> Nuclei <'nuclei> {
 pub struct Nucleus<'nucleus> {
     pub id: Id,
     pub sim_id: Id,
-    pub state: NucleusStateStructure,
+    pub state: NucleusStateHistory,
     pub messaging: NucleusMessagingStructure,
     pub head: Revision,
     pub context: NucleusContext<'nucleus>,
@@ -245,21 +250,18 @@ impl <'nucleus> Nucleus<'nucleus> {
     }
 }
 
-impl <'c> IntakeContext for Nucleus<'c> {
+impl <'c> NucleusMessagingContext for Nucleus<'c> {
     fn head(&self) -> i64 {
         self.head.cycle
     }
 
-    fn phase(&self) -> u8 {
-        0
-    }
 }
 
 struct NucleusCycle<'cycle,'nucleus> {
     nucleus: &'cycle Nucleus<'nucleus>,
     id: Id,
-    state: NucleusPhasicStateStructure,
-    messaging: NucleusPhasicMessagingStructure,
+    state: NucleusCycleStateStructure,
+    messaging: NucleusCycleMessageStructure,
     outbound: OutboundMessaging,
     context: NucleusCycleContext<'cycle,'nucleus>,
     phase: u8
@@ -274,12 +276,17 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         Ok(NucleusCycle {
             nucleus: nucleus,
             id: id,
-            state: NucleusPhasicStateStructure::new(),
-            messaging: NucleusPhasicMessagingStructure::new(),
+            state: NucleusCycleStateStructure::new(),
+            messaging: NucleusCycleMessageStructure::new(),
             outbound: OutboundMessaging::new(),
             context: context,
             phase: 0,
         })
+    }
+
+    fn panic( &self, error: Box<dyn Debug>)
+    {
+        println!( "nucleus cycle panic! {:?}",error )
     }
 
     fn intake_message(&mut self, message: Arc<Message>) -> Result<(), Box<dyn Error>> {
@@ -287,9 +294,12 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         Ok(())
     }
 
-    fn intake_state(&mut self, key: TronKey, state: &ReadOnlyState) -> Result<(), Box<dyn Error>> {
-        self.state.intake(key, state)?;
-        Ok(())
+    fn intake_state(&mut self, key: TronKey, state: &ReadOnlyState) {
+        match self.state.intake(key, state)
+        {
+            Ok(_) => {}
+            Err(e) => self.panic(Box::new(e))
+        }
     }
 
     fn step(&mut self) -> Result<(), Box<dyn Error>> {
@@ -306,10 +316,13 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
     }
 
     fn commit(&mut self) -> (Vec<(StateKey, Rc<State>)>, Vec<Message>) {
+        /*
         (
             self.state.drain(self.context.revision()),
             self.outbound.drain(),
         )
+         */
+        unimplemented!()
     }
 
     fn tron(
@@ -411,7 +424,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
     }
 }
 
-impl<'cycle,'nucleus> MessageRouter for NucleusCycle<'cycle,'nucleus> {
+impl<'cycle,'nucleus> Router for NucleusCycle<'cycle,'nucleus> {
     fn send(&mut self, message: Message) {
         if !&message.to.tron.nucleus.eq(&self.id) {
             self.outbound.push(message);
@@ -479,3 +492,79 @@ impl <'context,'nucleus> NucleusCycleContext<'context,'nucleus> {
     }
 }
 
+
+#[derive(Debug, Clone)]
+pub struct NucleusError{
+    error: String
+}
+
+impl fmt::Display for NucleusError{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "nucleus error: {:?}",self)
+    }
+}
+
+impl From<NP_Error> for NucleusError{
+    fn from(e: NP_Error) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<io::Error> for NucleusError{
+    fn from(e: io::Error) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<Box<dyn Error>> for NucleusError{
+    fn from(e: Box<dyn Error>) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<&dyn Error> for NucleusError{
+    fn from(e: &dyn Error) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<Box<dyn Debug>> for NucleusError{
+    fn from(e: Box<Debug>) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<&dyn Debug> for NucleusError{
+    fn from(e: &dyn Debug) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+
+impl From<&str> for NucleusError{
+    fn from(e: &str) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl <T> From<PoisonError<T>> for NucleusError{
+    fn from(e: PoisonError<T>) -> Self {
+        NucleusError{
+            error: format!("{:?}",e)
+        }
+    }
+}

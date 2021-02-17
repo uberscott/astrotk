@@ -1,5 +1,5 @@
 use crate::artifact::FileSystemArtifactRepository;
-use crate::message::GlobalMessageRouter;
+use crate::router::GlobalRouter;
 use crate::nucleus::{Nuclei, Nucleus};
 use mechtron_core::artifact::Artifact;
 use mechtron_core::configs::{Configs, Keeper, Parser};
@@ -13,7 +13,7 @@ use wasmer::{Cranelift, Module, Store, JIT};
 pub struct Mechtronium<'configs> {
     pub local: Local<'configs>,
     pub net: Network,
-    pub router: GlobalMessageRouter<'configs>,
+    pub router: GlobalRouter<'configs>,
 }
 
 impl <'configs> Mechtronium <'configs> {
@@ -57,12 +57,12 @@ pub struct Local<'configs> {
 
 impl <'configs> Local <'configs>{
     fn new() -> Self {
-        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/".to_string()));
+        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
 
         Local {
             wasm_store: wasm_store.clone(),
-            configs: Configs::new(repo.clone()),
+            configs: Configs::new(repo.clone() ),
             wasm_module_keeper: Keeper::new(
                 repo.clone(),
                 Box::new(WasmModuleParser {
