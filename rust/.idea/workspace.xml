@@ -15,8 +15,9 @@
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/message.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/state.rs" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -76,7 +77,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure2">
+  <component name="RunManager" selected="Cargo.Test nucleus">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -103,8 +104,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib message::tests" />
+    <configuration name="Test message::tests (1)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib nucleus::message::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -120,21 +121,6 @@
     </configuration>
     <configuration name="Test message::tests::test_intake_release" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package mechtronium --lib message::tests::test_intake_release -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test message::tests::test_nucleus_cycle_messaging_structure" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib message::tests::test_nucleus_cycle_messaging_structure -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -178,6 +164,21 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test nucleus" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib nucleus" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --package rust --lib tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -196,19 +197,19 @@
     <list>
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
-      <item itemvalue="Cargo.Test message::tests" />
       <item itemvalue="Cargo.Test message::tests::test_intake_release" />
-      <item itemvalue="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure" />
       <item itemvalue="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure1" />
       <item itemvalue="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure2" />
+      <item itemvalue="Cargo.Test message::tests (1)" />
+      <item itemvalue="Cargo.Test nucleus" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test nucleus" />
+        <item itemvalue="Cargo.Test message::tests (1)" />
         <item itemvalue="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure2" />
         <item itemvalue="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure1" />
         <item itemvalue="Cargo.Test message::tests::test_intake_release" />
-        <item itemvalue="Cargo.Test message::tests::test_nucleus_cycle_messaging_structure" />
-        <item itemvalue="Cargo.Test message::tests" />
       </list>
     </recent_temporary>
   </component>

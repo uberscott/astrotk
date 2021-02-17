@@ -1,40 +1,37 @@
+use std::{fmt, io};
+use std::borrow::BorrowMut;
+use std::collections::HashMap;
 use std::error::Error;
-use std::sync::{Arc, RwLock, PoisonError};
+use std::fmt::{Debug, Display, Formatter};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::time::{Instant, SystemTime};
 
+use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
 use mechtron_core::artifact::{Artifact, ArtifactCacher};
-use mechtron_core::configs::{Configs, SimConfig, TronConfig, Keeper};
+use mechtron_core::configs::{Configs, Keeper, SimConfig, TronConfig};
 use mechtron_core::core::*;
+use mechtron_core::error::MechError;
+use mechtron_core::id::{Id, StateKey};
 use mechtron_core::id::Revision;
 use mechtron_core::id::TronKey;
-use mechtron_core::id::{Id, StateKey};
 use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To};
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State};
 
 use crate::mechtronium::{Mechtronium, NucleusContext};
-use crate::message::{
-    NucleusMessagingContext,NucleusMessagingStructure, NucleusCycleMessageStructure,
-    OutboundMessaging,
-};
-use crate::state::{NucleusCycleStateStructure, NucleusStateHistory, NucleusStateHistoryIntake};
-use crate::tron::{init_tron, CreatePayloadsBuilder, Neutron, Tron, TronContext, TronShell};
-use std::borrow::BorrowMut;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::time::SystemTime;
-use no_proto::error::NP_Error;
-use std::fmt::{Formatter, Display, Debug};
-use std::{fmt, io};
-use mechtron_core::error::MechError;
+use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::router::Router;
+use crate::tron::{CreatePayloadsBuilder, init_tron, Neutron, Tron, TronContext, TronShell};
+use crate::nucleus::state::{StateHistory, PhasicStateStructure};
 
 pub struct Nuclei<'nuclei> {
     nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
     sys: Option<Arc<Mechtronium<'nuclei>>>,
 }
 
-impl <'nuclei> Nuclei <'nuclei> {
+impl<'nuclei> Nuclei<'nuclei> {
     pub fn new() -> Self {
         Nuclei {
             nuclei: RwLock::new(HashMap::new()),
@@ -70,8 +67,8 @@ impl <'nuclei> Nuclei <'nuclei> {
 pub struct Nucleus<'nucleus> {
     pub id: Id,
     pub sim_id: Id,
-    pub state: NucleusStateHistory,
-    pub messaging: NucleusMessagingStructure,
+    pub state: StateHistory,
+    pub messaging: CyclicMessagingStructure,
     pub head: Revision,
     pub context: NucleusContext<'nucleus>,
 }
@@ -250,7 +247,7 @@ impl <'nucleus> Nucleus<'nucleus> {
     }
 }
 
-impl <'c> NucleusMessagingContext for Nucleus<'c> {
+impl <'c> CycleMessagingContext for Nucleus<'c> {
     fn head(&self) -> i64 {
         self.head.cycle
     }
@@ -260,8 +257,8 @@ impl <'c> NucleusMessagingContext for Nucleus<'c> {
 struct NucleusCycle<'cycle,'nucleus> {
     nucleus: &'cycle Nucleus<'nucleus>,
     id: Id,
-    state: NucleusCycleStateStructure,
-    messaging: NucleusCycleMessageStructure,
+    state: PhasicStateStructure,
+    messaging: PhasicMessagingStructure,
     outbound: OutboundMessaging,
     context: NucleusCycleContext<'cycle,'nucleus>,
     phase: u8
@@ -276,8 +273,8 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         Ok(NucleusCycle {
             nucleus: nucleus,
             id: id,
-            state: NucleusCycleStateStructure::new(),
-            messaging: NucleusCycleMessageStructure::new(),
+            state: PhasicStateStructure::new(),
+            messaging: PhasicMessagingStructure::new(),
             outbound: OutboundMessaging::new(),
             context: context,
             phase: 0,
@@ -561,10 +558,613 @@ impl From<&str> for NucleusError{
     }
 }
 
-impl <T> From<PoisonError<T>> for NucleusError{
+impl<T> From<PoisonError<T>> for NucleusError {
     fn from(e: PoisonError<T>) -> Self {
-        NucleusError{
-            error: format!("{:?}",e)
+        NucleusError {
+            error: format!("{:?}", e)
         }
     }
 }
+
+mod message
+{
+    use std::collections::HashMap;
+    use std::error::Error;
+    use std::sync::{Arc, RwLock};
+    use std::time::Instant;
+
+    use mechtron_core::id::TronKey;
+    use mechtron_core::message::{Cycle, Message};
+
+    use crate::nucleus::NucleusError;
+
+    pub struct CyclicMessagingStructure {
+        store: RwLock<HashMap<i64, HashMap<TronKey, TronMessageChamber>>>,
+    }
+
+    impl CyclicMessagingStructure {
+        pub fn new() -> Self {
+            CyclicMessagingStructure {
+                store: RwLock::new(HashMap::new()),
+            }
+        }
+
+        pub fn intake(
+            &mut self,
+            message: Message,
+            context: &dyn CycleMessagingContext,
+        ) -> Result<(), Box<dyn Error + '_>> {
+            let delivery = MessageDelivery::new(message, context);
+
+            let mut store = self.store.write()?;
+
+            let desired_cycle = match delivery.message.to.cycle {
+                Cycle::Exact(cycle) => cycle,
+                Cycle::Present => {
+                    // Nucleus intake is InterCyclic therefore cannot accept present cycles
+                    context.head() + 1
+                }
+                Cycle::Next => context.head() + 1
+            };
+
+            // at some point we must determine if the nucleus policy allows for message deliveries to this
+            // nucleus after x number of cycles and then send a rejection message if needed
+
+            if !store.contains_key(&desired_cycle) {
+                store.insert(desired_cycle.clone(), HashMap::new());
+            }
+
+            let mut store = store.get_mut(&desired_cycle).unwrap();
+
+            if !store.contains_key(&delivery.message.to.tron) {
+                store.insert(
+                    delivery.message.to.tron.clone(),
+                    TronMessageChamber::new(),
+                );
+            }
+
+            let mut chamber = store.get_mut(&delivery.message.to.tron).unwrap();
+            chamber.intake(delivery)?;
+
+            Ok(())
+        }
+
+        pub fn query(&self, cycle: i64) -> Result<Vec<Arc<Message>>, Box<dyn Error + '_>> {
+            let store = self.store.read()?;
+            match store.get(&cycle) {
+                None => Ok(vec![]),
+                Some(chambers) => {
+                    let mut rtn = vec![];
+                    for chamber in chambers.values() {
+                        rtn.append(&mut chamber.messages());
+                    }
+                    Ok(rtn)
+                }
+            }
+        }
+
+        pub fn release(&mut self, before_cycle: i64) -> Result<usize, NucleusError>
+        {
+            let mut releases = vec!();
+
+            {
+                let store = self.store.read()?;
+
+                for cycle in store.keys()
+                {
+                    if cycle < &before_cycle
+                    {
+                        releases.push(cycle.clone());
+                    }
+                }
+            }
+
+            if releases.is_empty()
+            {
+                return Ok(0);
+            }
+
+            let mut store = self.store.write()?;
+            for cycle in &releases
+            {
+                store.remove(cycle);
+            }
+
+            Ok(releases.len())
+        }
+    }
+
+    pub struct TronMessageChamber {
+        deliveries: Vec<MessageDelivery>,
+    }
+
+    impl TronMessageChamber {
+        pub fn new() -> Self {
+            TronMessageChamber { deliveries: vec![] }
+        }
+
+        pub fn messages(&self) -> Vec<Arc<Message>> {
+            self.deliveries.iter().map(|d| d.message.clone()).collect()
+        }
+
+        pub fn intake(&mut self, delivery: MessageDelivery) -> Result<(), Box<dyn Error>> {
+            self.deliveries.push(delivery);
+            Ok(())
+        }
+    }
+
+    pub struct PhasicMessagingStructure {
+        store: HashMap<u8, Vec<Arc<Message>>>,
+    }
+
+    impl PhasicMessagingStructure {
+        pub fn new() -> Self {
+            PhasicMessagingStructure {
+                store: HashMap::new(),
+            }
+        }
+
+        pub fn intake(&mut self, message: Arc<Message>) -> Result<(), Box<dyn Error>> {
+            if !self.store.contains_key(&message.to.phase) {
+                self.store.insert(message.to.phase.clone(), vec![]);
+            }
+            let mut messages = self.store.get_mut(&message.to.phase).unwrap();
+            messages.push(message);
+
+            Ok(())
+        }
+
+
+        pub fn drain(&mut self, phase: &u8) -> Result<Option<Vec<Arc<Message>>>, Box<dyn Error>> {
+            Ok(self.store.remove(phase))
+        }
+    }
+
+
+
+    pub trait CycleMessagingContext {
+        fn head(&self) -> i64;
+    }
+
+    pub struct OutboundMessaging {
+        queue: Vec<Message>,
+    }
+
+    impl OutboundMessaging {
+        pub fn new() -> Self {
+            OutboundMessaging { queue: vec![] }
+        }
+
+        pub fn drain(&mut self) -> Vec<Message> {
+            let mut rtn = vec![];
+
+            while let Some(message) = self.queue.pop() {
+                rtn.push(message)
+            }
+
+            return rtn;
+        }
+
+        pub fn push(&mut self, message: Message) {
+            self.queue.push(message);
+        }
+    }
+
+    pub struct MessageDelivery {
+        received: Instant,
+        cycle: i64,
+        message: Arc<Message>,
+    }
+
+    impl MessageDelivery {
+        fn new(message: Message, context: &dyn CycleMessagingContext) -> Self {
+            MessageDelivery {
+                received: Instant::now(),
+                cycle: context.head(),
+                message: Arc::new(message),
+            }
+        }
+    }
+
+
+    #[cfg(test)]
+    mod tests {
+        use std::sync::Arc;
+
+        use mechtron_core::buffers::Buffer;
+        use mechtron_core::configs::Configs;
+        use mechtron_core::core::*;
+        use mechtron_core::id::{Id, IdSeq, TronKey};
+        use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To};
+
+        use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
+        use crate::test::*;
+
+        fn message(configs: &mut Configs) -> Message {
+            let mut seq = IdSeq::new(0);
+
+            configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+//        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE).unwrap();
+            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY).unwrap();
+            let buffer = factory.new_buffer(Option::None);
+            let buffer = Buffer::new(buffer);
+            let buffer = buffer.read_only();
+            let payload = Payload {
+                buffer: buffer,
+                artifact: CORE_CREATE_META.clone(),
+            };
+
+
+            let seq_borrow = &mut seq;
+
+            Message::single_payload(seq_borrow,
+                                    MessageKind::Update,
+                                    mechtron_core::message::From {
+                                        tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),
+                                        cycle: 0,
+                                        timestamp: 0,
+                                    },
+                                    To {
+                                        tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),
+                                        port: "someport".to_string(),
+                                        cycle: Cycle::Present,
+                                        phase: 0,
+                                        delivery: DeliveryMoment::Cyclic,
+                                    },
+                                    payload,
+            )
+        }
+
+        fn message_builder(configs: &mut Configs) -> MessageBuilder {
+            configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+            let mut builder = MessageBuilder::new();
+            builder.to_nucleus_id = Option::Some(Id::new(0, 0));
+            builder.to_tron_id = Option::Some(Id::new(0, 0));
+            builder.to_phase = Option::Some(0);
+            builder.to_cycle_kind = Option::Some(Cycle::Next);
+            builder.to_port = Option::Some("port".to_string());
+            builder.from = Option::Some(mock_from());
+            builder.kind = Option::Some(MessageKind::Update);
+
+            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY).unwrap();
+            let buffer = factory.new_buffer(Option::None);
+            let buffer = Buffer::new(buffer);
+
+            builder.payloads = Option::Some(vec![PayloadBuilder {
+                buffer: buffer,
+                artifact: CORE_SCHEMA_EMPTY.clone(),
+            }]);
+
+            let mut seq = IdSeq::new(0);
+
+            configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY).unwrap();
+            let buffer = factory.new_buffer(Option::None);
+            let buffer = Buffer::new(buffer);
+            let payload = PayloadBuilder {
+                buffer: buffer,
+                artifact: CORE_CREATE_META.clone(),
+            };
+
+            builder.payloads = Option::Some(vec![payload]);
+
+            builder
+        }
+
+        fn mock_from() -> mechtron_core::message::From {
+            return mechtron_core::message::From {
+                tron: mock_tron_key(),
+                cycle: 0,
+                timestamp: 0,
+            }
+        }
+
+        fn mock_tron_key() -> TronKey {
+            TronKey {
+                tron: Id {
+                    seq_id: 0,
+                    id: 0,
+                },
+                nucleus: Id {
+                    seq_id: 0,
+                    id: 0,
+                },
+            }
+        }
+
+        struct MockNucleusMessagingContext;
+
+        impl CycleMessagingContext for MockNucleusMessagingContext
+        {
+            fn head(&self) -> i64 {
+                0
+            }
+        }
+
+
+        #[test]
+        fn test_intake_next()
+        {
+            let mut messaging = CyclicMessagingStructure::new();
+            let mut configs = create_configs();
+            let configs_ref = &mut configs;
+            let mut builder = message_builder(configs_ref);
+            builder.to_cycle_kind = Option::Some(Cycle::Next);
+            let message = builder.build(&mut IdSeq::new(0)).unwrap();
+            let context = MockNucleusMessagingContext;
+
+            messaging.intake(message, &context);
+
+            let query = messaging.query(0).unwrap();
+            assert_eq!(0, query.len());
+
+            let query = messaging.query(1).unwrap();
+            assert_eq!(1, query.len());
+        }
+
+        #[test]
+        fn test_intake_exact()
+        {
+            let mut messaging = CyclicMessagingStructure::new();
+            let mut configs = create_configs();
+            let configs_ref = &mut configs;
+            let mut builder = message_builder(configs_ref);
+            builder.to_cycle_kind = Option::Some(Cycle::Exact(0));
+            let message = builder.build(&mut IdSeq::new(0)).unwrap();
+            let context = MockNucleusMessagingContext;
+
+            messaging.intake(message, &context);
+
+
+            let query = messaging.query(0).unwrap();
+            assert_eq!(1, query.len());
+
+            let query = messaging.query(1).unwrap();
+            assert_eq!(0, query.len());
+        }
+
+
+        fn mock_intake(cycle: i64, messaging: &mut CyclicMessagingStructure, configs: &mut Configs)
+        {
+            let mut builder = message_builder(configs);
+            builder.to_cycle_kind = Option::Some(Cycle::Exact(cycle));
+            let message = builder.build(&mut IdSeq::new(0)).unwrap();
+            let context = MockNucleusMessagingContext;
+
+            messaging.intake(message, &context);
+        }
+
+
+        #[test]
+        fn test_intake_release()
+        {
+            let mut messaging = CyclicMessagingStructure::new();
+            let mut configs = create_configs();
+            let configs_ref = &mut configs;
+
+            mock_intake(0, &mut messaging, configs_ref);
+            mock_intake(1, &mut messaging, configs_ref);
+
+            let query = messaging.query(0).unwrap();
+            assert_eq!(1, query.len());
+            let query = messaging.query(1).unwrap();
+            assert_eq!(1, query.len());
+
+            let releases = messaging.release(1).unwrap();
+            assert_eq!(1, query.len());
+            let query = messaging.query(0).unwrap();
+            assert_eq!(0, query.len());
+            let query = messaging.query(1).unwrap();
+            assert_eq!(1, query.len());
+
+
+            let releases = messaging.release(2).unwrap();
+            assert_eq!(1, query.len());
+
+            let query = messaging.query(0).unwrap();
+            assert_eq!(0, query.len());
+            let query = messaging.query(0).unwrap();
+            assert_eq!(0, query.len());
+        }
+
+        fn mock_nucleus_messaging_structure() -> CyclicMessagingStructure
+        {
+            let mut messaging = CyclicMessagingStructure::new();
+            let mut configs = create_configs();
+            let configs_ref = &mut configs;
+
+
+            mock_intake(0, &mut messaging, configs_ref);
+            mock_intake(1, &mut messaging, configs_ref);
+
+            messaging
+        }
+
+        #[test]
+        fn test_nucleus_cycle_messaging_structure1()
+        {
+            let mut nucleus_messaging = CyclicMessagingStructure::new();
+            let mut cyclic_messaging = PhasicMessagingStructure::new();
+            let mut configs = create_configs();
+            let configs_ref = &mut configs;
+
+            mock_intake(0, &mut nucleus_messaging, configs_ref);
+            mock_intake(1, &mut nucleus_messaging, configs_ref);
+
+            let mut messages = nucleus_messaging.query(0).unwrap();
+
+            assert_eq!(1, messages.len());
+            while let Some(message) = messages.pop()
+            {
+                cyclic_messaging.intake(message).unwrap();
+            }
+
+            let messages = cyclic_messaging.drain(&0).unwrap().unwrap();
+
+            assert_eq!(1, messages.len());
+
+
+            let mut messages = nucleus_messaging.query(1).unwrap();
+
+            assert_eq!(1, messages.len());
+            while let Some(message) = messages.pop()
+            {
+                cyclic_messaging.intake(message).unwrap();
+            }
+
+            let messages = cyclic_messaging.drain(&0).unwrap().unwrap();
+        }
+
+        #[test]
+        fn test_nucleus_cycle_messaging_structure2()
+        {
+            let mut cyclic_messaging = PhasicMessagingStructure::new();
+            let mut configs = create_configs();
+            let mut id_seq = IdSeq::new(0);
+            let configs_ref = &mut configs;
+
+            let mut builder = message_builder(configs_ref);
+            builder.to_phase = Option::Some(0);
+            let message = builder.build(&mut id_seq).unwrap();
+            cyclic_messaging.intake(Arc::new(message));
+
+            let mut builder = message_builder(configs_ref);
+            builder.to_phase = Option::Some(1);
+            let message = builder.build(&mut id_seq).unwrap();
+            cyclic_messaging.intake(Arc::new(message));
+
+            assert_eq!(1, cyclic_messaging.drain(&0).unwrap().unwrap().len());
+            assert!(cyclic_messaging.drain(&0).unwrap().is_none());
+            assert_eq!(1, cyclic_messaging.drain(&1).unwrap().unwrap().len());
+            assert!(cyclic_messaging.drain(&1).unwrap().is_none());
+            assert!(cyclic_messaging.drain(&2).unwrap().is_none());
+        }
+    }
+}
+
+mod state
+{
+    use std::sync::{RwLock, Arc, Mutex};
+    use std::collections::HashMap;
+    use mechtron_core::id::{Revision, TronKey, StateKey};
+    use mechtron_core::state::{ReadOnlyState, State};
+    use crate::nucleus::NucleusError;
+    use std::rc::Rc;
+
+    pub struct StateHistory {
+        history: RwLock<HashMap<Revision, HashMap<TronKey, Arc<ReadOnlyState>>>>,
+    }
+
+    impl StateHistory {
+        pub fn new() -> Self {
+            StateHistory {
+                history: RwLock::new(HashMap::new()),
+            }
+        }
+
+        fn unwrap<V>(&self, option: Option<V>) -> Result<V, NucleusError> {
+            match option {
+                None => return Err("option was none".into()),
+                Some(value) => Ok(value),
+            }
+        }
+
+        pub fn get(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, NucleusError> {
+            let history = self.history.read()?;
+            let history = self.unwrap(history.get(&key.revision))?;
+            let state = self.unwrap(history.get(&key.tron))?;
+            Ok(state.clone())
+        }
+
+        pub fn read_only(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, NucleusError> {
+            Ok(self.get(key)?.clone())
+        }
+
+        pub fn query(&self, revision: &Revision) -> Result<Option<Vec<(TronKey, Arc<ReadOnlyState>)>>, NucleusError> {
+            let history = self.history.read()?;
+            let history = history.get(&revision);
+            match history {
+                None => Ok(Option::None),
+                Some(history) => {
+                    let mut rtn: Vec<(TronKey, Arc<ReadOnlyState>)> = vec![];
+                    for key in history.keys() {
+                        let state = history.get(key).unwrap();
+                        rtn.push((key.clone(), state.clone()))
+                    }
+                    Ok(Option::Some(rtn))
+                }
+            }
+        }
+    }
+
+    impl CyclicStateIntake for StateHistory {
+        fn intake(&mut self, state: Rc<State>, key: StateKey) -> Result<(), NucleusError> {
+            let state = state.read_only()?;
+            let mut history = self.history.write()?;
+            let mut history =
+                history
+                    .entry(key.revision.clone())
+                    .or_insert(HashMap::new());
+            history.insert(key.tron.clone(), Arc::new(state));
+            Ok(())
+        }
+    }
+
+    pub trait CyclicStateIntake {
+        fn intake(&mut self, state: Rc<State>, key: StateKey) -> Result<(), NucleusError>;
+    }
+
+
+    pub trait PhasicStateIntake {
+        fn intake(&mut self, state: ReadOnlyState, key: StateKey) -> Result<(), NucleusError>;
+    }
+
+    pub struct PhasicStateStructure {
+        store: RwLock<HashMap<TronKey, Arc<Mutex<State>>>>,
+    }
+
+    impl PhasicStateStructure {
+        pub fn new() -> Self {
+            PhasicStateStructure {
+                store: RwLock::new(HashMap::new()),
+            }
+        }
+
+        pub fn intake(&mut self, key: TronKey, state: &ReadOnlyState) -> Result<(), NucleusError> {
+            let mut store = self.store.write()?;
+            store.insert(key, Arc::new(Mutex::new(state.copy())));
+            Ok(())
+        }
+
+        pub fn get(&mut self, key: &TronKey) -> Result<Arc<Mutex<State>>, NucleusError> {
+            let store = self.store.read()?;
+            let rtn = store.get(key);
+
+            match rtn {
+                None => Err("could not find state".into()),
+                Some(rtn) => {
+                    Ok(rtn.clone())
+                }
+            }
+        }
+
+        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, Arc<Mutex<State>>)>, NucleusError> {
+            let mut store = self.store.write()?;
+            let mut rtn = vec![];
+            for (key, state) in store.drain() {
+                let key = StateKey {
+                    tron: key.clone(),
+                    revision: revision.clone(),
+                };
+                rtn.push((key, state));
+            }
+            return Ok(rtn);
+        }
+    }
+
+
+}
+
+
+
+
