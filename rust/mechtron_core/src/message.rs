@@ -505,7 +505,7 @@ pub struct Message {
 
 impl Message {
     pub fn single_payload(
-        seq: &mut IdSeq,
+        seq: Arc<IdSeq>,
         kind: MessageKind,
         from: From,
         to: To,
@@ -515,7 +515,7 @@ impl Message {
     }
 
     pub fn multi_payload(
-        seq: &mut IdSeq,
+        seq: Arc<IdSeq>,
         kind: MessageKind,
         from: From,
         to: To,
@@ -525,7 +525,7 @@ impl Message {
     }
 
     pub fn longform(
-        seq: &mut IdSeq,
+        seq: Arc<IdSeq>,
         kind: MessageKind,
         from: From,
         to: To,

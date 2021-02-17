@@ -9,30 +9,31 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, Module, Store, JIT};
+use std::cell::Cell;
 
-pub struct Mechtronium<'configs> {
+pub struct Node<'configs> {
     pub local: Local<'configs>,
     pub net: Network,
     pub router: GlobalRouter<'configs>,
 }
 
-impl <'configs> Mechtronium <'configs> {
-    fn new() -> Arc<Self> {
-        /*
-        let mut rtn = Arc::new(Mechtronium {
+impl <'configs> Node<'configs> {
+
+
+    fn new() -> Self {
+        let rtn = Node {
             local: Local::new(),
             net: Network::new(),
-            router: GlobalMessageRouter::new(),
-        });
-        rtn.init(rtn.clone());
+            router: GlobalRouter::new(),
+        };
+
+        //rtn.init()
+
         rtn
-         */
-        unimplemented!()
     }
 
-    fn init(&mut self, sys: Arc<Mechtronium<'configs>>) {
-        self.local.init(sys.clone());
-        self.router.init(sys.clone());
+    fn init(&'configs self) {
+        self.local.init(self);
     }
 
     pub fn local<'get>(&'get self) -> &'get Local<'configs> {
@@ -43,24 +44,27 @@ impl <'configs> Mechtronium <'configs> {
         &self.local.configs
     }
 
-    pub fn net(&mut self) -> &mut Network {
-        &mut self.net
+    pub fn net(&self) -> &Network {
+        &self.net
     }
 }
 
 pub struct Local<'configs> {
-    pub wasm_store: Arc<Store>,
-    pub configs: Configs<'configs>,
-    pub wasm_module_keeper: Keeper<Module>,
-    pub nuclei: Nuclei<'configs>,
+    wasm_store: Arc<Store>,
+    configs: Configs<'configs>,
+    wasm_module_keeper: Keeper<Module>,
+    nuclei: Nuclei<'configs>,
+    node: Cell<Option<&'configs Node<'configs>>>
 }
+
 
 impl <'configs> Local <'configs>{
     fn new() -> Self {
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
 
-        Local {
+        let rtn  = Local {
+            node: Cell::new(Option::None),
             wasm_store: wasm_store.clone(),
             configs: Configs::new(repo.clone() ),
             wasm_module_keeper: Keeper::new(
@@ -69,12 +73,26 @@ impl <'configs> Local <'configs>{
                     wasm_store: wasm_store.clone(),
                 }),
             ),
-            nuclei: Nuclei::new(),
-        }
+            nuclei: Nuclei::new()
+        };
+
+        rtn
     }
 
-    pub fn init(&mut self, sys: Arc<Mechtronium<'configs>>) {
-        self.nuclei.init(sys);
+    pub fn nuclei<'get>(&'get self)->&'get Nuclei<'configs>
+    {
+        &self.nuclei
+    }
+
+    pub fn node(&'configs self)->&'configs Node<'configs>
+    {
+        self.node.get().expect("local must be initialized before node can be accessed")
+    }
+
+
+    fn init(&'configs self,  sys: &'configs Node<'configs>) {
+        self.node.set(Option::Some(sys) );
+        self.nuclei.init(self)
     }
 
     pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
@@ -84,28 +102,33 @@ impl <'configs> Local <'configs>{
 
 #[derive(Clone)]
 pub struct NucleusContext<'context> {
-    sys: Arc<Mechtronium<'context>>,
+    sys: Arc<Node<'context>>,
 }
 
 impl <'context> NucleusContext <'context>{
-    pub fn new(sys: Arc<Mechtronium<'context>>) -> Self {
+    pub fn new(sys: Arc<Node<'context>>) -> Self {
         NucleusContext { sys: sys }
     }
-    pub fn sys<'get>(&'get self) -> Arc<Mechtronium<'context>> {
+    pub fn sys<'get>(&'get self) -> Arc<Node<'context>> {
 
         self.sys.clone()
     }
 }
 
 pub struct Network {
-    pub id_seq: IdSeq,
+    seq: Arc<IdSeq>,
 }
 
 impl Network {
     fn new() -> Self {
         Network {
-            id_seq: IdSeq::new(0),
+            seq: Arc::new(IdSeq::new(0)),
         }
+    }
+
+    pub fn seq(&self)-> Arc<IdSeq>
+    {
+        self.seq.clone()
     }
 }
 struct WasmModuleParser {

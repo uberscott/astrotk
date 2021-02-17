@@ -14,33 +14,49 @@ use mechtron_core::artifact::{Artifact, ArtifactCacher};
 use mechtron_core::configs::{Configs, Keeper, SimConfig, TronConfig};
 use mechtron_core::core::*;
 use mechtron_core::error::MechError;
-use mechtron_core::id::{Id, StateKey};
+use mechtron_core::id::{Id, StateKey, IdSeq};
 use mechtron_core::id::Revision;
 use mechtron_core::id::TronKey;
 use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To};
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State};
 
-use crate::mechtronium::{Mechtronium, NucleusContext};
+use crate::node::{Node, NucleusContext, Local};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{PhasicStateStructure, StateHistory};
 use crate::router::Router;
 use crate::tron::{CreatePayloadsBuilder, init_tron, Neutron, Tron, TronContext, TronShell};
+use std::cell::Cell;
 
 pub struct Nuclei<'nuclei> {
+    local: Cell<Option<&'nuclei Local<'nuclei>>>,
     nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
-    sys: Option<Arc<Mechtronium<'nuclei>>>,
 }
 
 impl<'nuclei> Nuclei<'nuclei> {
     pub fn new() -> Self {
         Nuclei {
             nuclei: RwLock::new(HashMap::new()),
-            sys: Option::None,
+            local: Cell::new(Option::None)
         }
     }
 
-    pub fn init(&mut self, system: Arc<Mechtronium<'nuclei>>) {
-        self.sys = Option::Some(system);
+    pub fn init(&self, local: &'nuclei Local<'nuclei>) {
+        self.local.set( Option::Some(local));
+    }
+
+    fn local(&self)->&'nuclei Local<'nuclei>
+    {
+        self.local.get().expect("nucleus must be initialized before it can be used: Nucleus.init()")
+    }
+
+    fn configs(&self)->&'nuclei Configs<'nuclei>
+    {
+        self.local().configs()
+    }
+
+    fn node(&self)->&'nuclei Node<'nuclei>
+    {
+        self.local().node()
     }
 
     pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus<'nuclei>>, Box<dyn Error + '_>> {
@@ -57,8 +73,9 @@ impl<'nuclei> Nuclei<'nuclei> {
         return Ok(nucleus.clone());
     }
 
-    pub fn add(&self, nucleus: Nucleus<'nuclei>) -> Result<(), Box<dyn Error + '_>> {
+    pub fn add(&'nuclei self, id:Id, sim_id: Id, lookup_name: Option<String>) -> Result<(), NucleusError> {
         let mut sources = self.nuclei.write()?;
+        let nucleus = Nucleus::new( id, sim_id, lookup_name, self )?;
         sources.insert(nucleus.id.clone(), Arc::new(nucleus));
         Ok(())
     }
@@ -70,7 +87,8 @@ pub struct Nucleus<'nucleus> {
     state: StateHistory,
     messaging: CyclicMessagingStructure,
     head: Revision,
-    context: NucleusContext<'nucleus>,
+    nuclei: &'nucleus Nuclei<'nucleus>,
+    lookup_name: Option<String>
 }
 
 fn timestamp() -> Result<u64, Box<dyn Error>> {
@@ -82,29 +100,24 @@ fn timestamp() -> Result<u64, Box<dyn Error>> {
 }
 
 impl <'nucleus> Nucleus<'nucleus> {
-    pub fn new(
+    fn new(
+        id: Id,
         sim_id: Id,
         lookup_name: Option<String>,
-        context: NucleusContext,
-    ) -> Result<Id, Box<dyn Error+'_>> {
+        nuclei: &'nucleus Nuclei<'nucleus>
+    ) -> Result<Self, NucleusError> {
 
-        /*
         let mut nucleus = Nucleus {
-            id: context.sys().net.id_seq.next(),
+            id: id,
             sim_id: sim_id,
-            state: NucleusStateStructure::new(),
-            messaging: NucleusMessagingStructure::new(),
+            state: StateHistory::new(),
+            messaging: CyclicMessagingStructure::new(),
             head: Revision { cycle: 0 },
-            context: context.clone(),
+            lookup_name: lookup_name,
+            nuclei: nuclei
         };
 
-        let id = nucleus.bootstrap(lookup_name)?;
-
-        context.sys().local.nuclei.add(nucleus);
-
-        return Ok(id);
-         */
-        unimplemented!()
+        Ok(nucleus)
     }
 
     fn context_from(
@@ -112,7 +125,8 @@ impl <'nucleus> Nucleus<'nucleus> {
         key: TronKey,
         artifact: &Artifact,
     ) -> TronContext {
-        let sys = self.context.sys();
+        /*
+        let sys = unimplemented!();
         let local = sys.local();
         let configs = &local.configs;
         let tron_config_keeper = &configs.tron_config_keeper;
@@ -121,6 +135,9 @@ impl <'nucleus> Nucleus<'nucleus> {
         let config = config.clone();
         let rtn = self.context_for(key, config);
         rtn
+
+         */
+        unimplemented!()
     }
 
     fn context_for(
@@ -128,6 +145,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         key: TronKey,
         config: Arc<TronConfig>,
     ) -> TronContext {
+        /*
         let sys = self.context.sys();
         TronContext::new(
             key,
@@ -135,12 +153,34 @@ impl <'nucleus> Nucleus<'nucleus> {
             config.clone(),
             timestamp().unwrap().clone(),
         )
+
+         */
+        unimplemented!()
+    }
+
+    fn local(&self)->&'nucleus Local<'nucleus>
+    {
+        self.nuclei.local()
+    }
+
+    fn configs(&self)->&'nucleus Configs<'nucleus>
+    {
+        self.nuclei.local().configs()
+    }
+
+    fn node(&self)->&'nucleus Node<'nucleus>
+    {
+        self.nuclei.local().node()
+    }
+
+    fn seq(&self)->Arc<IdSeq>
+    {
+        self.nuclei.local().node().net().seq()
     }
 
     fn bootstrap(&mut self, lookup_name: Option<String>) -> Result<Id, Box<dyn Error+'_>> {
-        /*
-        let sys = self.context.sys();
-        let configs = sys.configs();
+        let configs = self.configs();
+        let mut seq= self.seq();
 
         let timestamp = timestamp()?;
 
@@ -158,7 +198,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         }
 
         let create = Message::multi_payload(
-            &mut self.context.sys().net.id_seq,
+             seq,
             MessageKind::Create,
             mechtron_core::message::From {
                 tron: context.key.clone(),
@@ -175,7 +215,7 @@ impl <'nucleus> Nucleus<'nucleus> {
             CreatePayloadsBuilder::payloads(configs, neutron_create_payload_builder),
         );
 
-        let neutron_state_artifact = context.tron_config.content.unwrap().artifact;
+        let neutron_state_artifact = context.tron_config.as_ref().content.as_ref().unwrap().artifact.clone();
         let mut state = State::new(configs, neutron_state_artifact.clone())?;
 
         let neutron_config = configs.tron_config_keeper.get(&CORE_NEUTRON_CONFIG)?;
@@ -190,8 +230,6 @@ impl <'nucleus> Nucleus<'nucleus> {
         //self.state.intake(state, state_key)?;
 
         Ok(context.key.nucleus.clone())
-         */
-        unimplemented!()
     }
 
     pub fn intake(&self, message: Message) {
@@ -484,7 +522,7 @@ impl <'context,'nucleus> NucleusCycleContext<'context,'nucleus> {
         self.phase.as_str()
     }
 
-    pub fn sys(&self) -> Arc<Mechtronium<'context>>{
+    pub fn sys(&self) -> Arc<Node<'context>>{
         unimplemented!()
     }
 }
@@ -795,9 +833,9 @@ mod message
             };
 
 
-            let seq_borrow = &mut seq;
+            let seq_borrow = &Arc::new(seq);
 
-            Message::single_payload(seq_borrow,
+            Message::single_payload(seq_borrow.clone(),
                                     MessageKind::Update,
                                     mechtron_core::message::From {
                                         tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),

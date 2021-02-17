@@ -1,4 +1,4 @@
-use crate::mechtronium::{Mechtronium, NucleusContext};
+use crate::node::{Node, NucleusContext};
 use crate::nucleus::Nucleus;
 use crate::tron::CreatePayloadsBuilder;
 use mechtron_core::artifact::ArtifactCacher;
@@ -21,7 +21,7 @@ fn timestamp() -> Result<u64, Box<dyn Error>> {
 }
 
 impl SimulationBootstrap {
-    pub fn launch(sys: Arc<Mechtronium>, sim_config: Arc<SimConfig>) -> Result<(), Box<dyn Error>> {
+    pub fn launch(sys: Arc<Node>, sim_config: Arc<SimConfig>) -> Result<(), Box<dyn Error>> {
         //        sim_config.cache(&mut sys.local.configs)?;
 
         /*

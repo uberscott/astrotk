@@ -15,7 +15,7 @@ use mechtron_core::id::{Id, NucleusKey, Revision, StateKey, TronKey};
 use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, PayloadBuilder};
 use mechtron_core::state::{ReadOnlyState, State};
 
-use crate::mechtronium::Mechtronium;
+use crate::node::Node;
 use crate::nucleus::Nucleus;
 use mechtron_core::buffers::{Buffer, Path};
 use std::rc::Rc;
