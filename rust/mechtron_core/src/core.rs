@@ -9,7 +9,7 @@ lazy_static! {
     };
     pub static ref CORE_STATE_META: Artifact = CORE.path(&"schema/tron/state-meta.schema");
     pub static ref CORE_CREATE_META: Artifact = CORE.path(&"schema/tron/create-meta.schema");
-    pub static ref CORE_SCHEMA_EMPTY: Artifact = CORE.path(&"schema/empty.json");
+    pub static ref CORE_SCHEMA_EMPTY: Artifact = CORE.path(&"schema/empty.schema");
     pub static ref CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE: Artifact = CORE.path(&"schema/neutron/nucleus_lookup_name_message.schema");
 
     pub static ref CORE_NEUTRON_CREATE_SCHEMA : Artifact = CORE.path(&"schema/neutron/create.schema");
