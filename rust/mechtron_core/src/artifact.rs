@@ -40,19 +40,32 @@ impl ArtifactBundle {
         Artifact {
             bundle: self.clone(),
             path: string.to_string(),
+            kind: Option::None
         }
     }
+
+    pub fn path_and_kind(&self, path : &str, kind: &str ) -> Artifact {
+        Artifact {
+            bundle: self.clone(),
+            path: path.to_string(),
+            kind: Option::Some(kind.to_string())
+        }
+    }
+
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 pub struct Artifact {
     pub bundle: ArtifactBundle,
     pub path: String,
+    pub kind: Option<String>
+
 }
 
 impl Artifact {
     pub fn from(string: &str) -> Result<Self, Error> {
         let mut parts = string.split(":");
+
         return Ok(Artifact {
             bundle: ArtifactBundle {
                 group: parts.next().unwrap().to_string(),
@@ -60,6 +73,10 @@ impl Artifact {
                 version: Version::parse(parts.next().unwrap())?,
             },
             path: parts.next().unwrap().to_string(),
+            kind: match parts.next(){
+                None => Option::None,
+                Some(s) => Option::Some(s.to_string())
+            }
         });
     }
 
@@ -72,6 +89,13 @@ impl Artifact {
         rtn.push_str(self.bundle.version.to_string().as_str());
         rtn.push_str(":");
         rtn.push_str(self.path.as_str());
+
+        if self.kind.is_some()
+        {
+            rtn.push_str(":");
+            rtn.push_str(self.kind.as_ref().unwrap().as_str() );
+        }
+
         let rtn = rtn;
         return rtn;
     }
@@ -81,10 +105,11 @@ impl Artifact {
 pub struct ArtifactYaml {
     pub bundle: Option<String>,
     pub path: String,
+    pub kind: Option<String>,
 }
 
 impl ArtifactYaml {
-    pub fn to_artifact(&self, default_bundle: &ArtifactBundle) -> Result<Artifact, Error> {
+    pub fn to_artifact(&self, default_bundle: &ArtifactBundle, kind: Option<&str> ) -> Result<Artifact, Error> {
         let artifact = self.bundle.clone();
         return Ok(Artifact {
             bundle: match artifact {
@@ -92,6 +117,13 @@ impl ArtifactYaml {
                 Some(artifact) => ArtifactBundle::parse(artifact.as_str())?,
             },
             path: self.path.clone(),
+            kind: match &self.kind {
+                Some(kind)=>Option::Some(kind.to_string()),
+                None=>match kind {
+                    None => None,
+                    Some(str) => Option::Some(str.to_string())
+                }
+            }
         });
     }
 }
@@ -108,6 +140,4 @@ pub trait ArtifactCache: Send + Sync {
     fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error >;
 }
 
-pub trait ArtifactCacher {
-    fn cache(&self, configs: &mut Configs) -> Result<(), Error >;
-}
+

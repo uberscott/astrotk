@@ -10,7 +10,7 @@ use std::time::{Instant, SystemTime};
 use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
-use mechtron_core::artifact::{Artifact, ArtifactCacher};
+use mechtron_core::artifact::{Artifact};
 use mechtron_core::configs::{Configs, Keeper, SimConfig, TronConfig};
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq, StateKey};
@@ -39,8 +39,9 @@ impl<'nuclei> Nuclei<'nuclei> {
         }
     }
 
-    pub fn init(&self, local: &'nuclei Local<'nuclei>) {
+    pub fn init(&self, local: &'nuclei Local<'nuclei>)->Result<(),Error> {
         self.local.set( Option::Some(local));
+        Ok(())
     }
 
     fn local(&self)->&'nuclei Local<'nuclei>
@@ -160,7 +161,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         artifact: &Artifact,
     ) -> Result<TronInfo, Error> {
         let configs = self.configs();
-        let tron_config_keeper = &configs.tron_config_keeper;
+        let tron_config_keeper = &configs.trons;
         let config = tron_config_keeper.get(&artifact)?;
 
         let config = config.clone();
@@ -293,8 +294,8 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         let neutron_key = TronKey::new(self.id.clone(), Id::new(self.id.seq_id, 0));
 
         let configs = self.configs();
-        let tron_config_keeper = &configs.tron_config_keeper;
-        let config = tron_config_keeper.get(&CORE_NEUTRON_CONFIG).unwrap();
+        let tron_config_keeper = &configs.trons;
+        let config = tron_config_keeper.get(&CORE_TRONCONFIG_NEUTRON).unwrap();
         let info = TronInfo{
             config: config.clone(),
             key: neutron_key.clone()
@@ -328,11 +329,11 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
             CreatePayloadsBuilder::payloads(configs, neutron_create_payload_builder),
         );
 
-        let neutron_state_artifact = info.config.as_ref().content.as_ref().unwrap().artifact.clone();
+        let neutron_state_artifact = info.config.as_ref().state.as_ref().unwrap().artifact.clone();
         let mut state = State::new(configs, neutron_state_artifact.clone())?;
         let mut state = Arc::new(Mutex::new(state));
 
-        let neutron_config = configs.tron_config_keeper.get(&CORE_NEUTRON_CONFIG)?;
+        let neutron_config = configs.trons.get(&CORE_TRONCONFIG_NEUTRON)?;
         let neutron = TronShell::new(init_tron(&info.config)?);
         neutron.create(info.clone(), self, state.clone(), Arc::new(create)  );
 
@@ -382,7 +383,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         let mut rtn = self.state.get(key)?;
         let mut state = rtn.lock()?;
         let artifact = state.get_artifact()?;
-        let tron_config = self.nucleus.configs().tron_config_keeper.get(&artifact)?;
+        let tron_config = self.nucleus.configs().trons.get(&artifact)?;
         let tron_shell = TronShell::new(init_tron(&tron_config)?);
 
         let context = TronInfo {
@@ -420,7 +421,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
 
         let mut neutron_state = self.state.get(&neutron_state_key.tron)?;
 
-        let info = self.nucleus.tron_info_for(message.to.tron.clone(), &CORE_NEUTRON_CONFIG)?;
+        let info = self.nucleus.tron_info_for(message.to.tron.clone(), &CORE_TRONCONFIG_NEUTRON)?;
         let neutron = Neutron {};
 //        neutron.create_tron(info, neutron_state, message);
 
@@ -558,7 +559,7 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
     fn create(&mut self, key:TronKey, config: Artifact, mut state: Arc<Mutex<State>>, create: Arc<Message> ) ->Result<(),Error>
 
     {
-        let config = self.configs().tron_config_keeper.get(&config)?;
+        let config = self.configs().trons.get(&config)?;
         let tron = init_tron(&config)?;
         let tron = TronShell::new(tron);
 
@@ -863,9 +864,9 @@ mod message
         fn message(configs: &mut Configs) -> Message {
             let mut seq = IdSeq::new(0);
 
-            configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+            configs.schemas.cache(&CORE_SCHEMA_EMPTY).unwrap();
 //        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE).unwrap();
-            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY).unwrap();
+            let factory = configs.schemas.get(&CORE_SCHEMA_EMPTY).unwrap();
             let buffer = factory.new_buffer(Option::None);
             let buffer = Buffer::new(buffer);
             let buffer = buffer.read_only();
@@ -896,7 +897,7 @@ mod message
         }
 
         fn message_builder(configs: &mut Configs) -> MessageBuilder {
-            configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
+            configs.schemas.cache(&CORE_SCHEMA_EMPTY).unwrap();
             let mut builder = MessageBuilder::new();
             builder.to_nucleus_id = Option::Some(Id::new(0, 0));
             builder.to_tron_id = Option::Some(Id::new(0, 0));
@@ -906,7 +907,7 @@ mod message
             builder.from = Option::Some(mock_from());
             builder.kind = Option::Some(MessageKind::Update);
 
-            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY).unwrap();
+            let factory = configs.schemas.get(&CORE_SCHEMA_EMPTY).unwrap();
             let buffer = factory.new_buffer(Option::None);
             let buffer = Buffer::new(buffer);
 
@@ -917,8 +918,8 @@ mod message
 
             let mut seq = IdSeq::new(0);
 
-            configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
-            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY).unwrap();
+            configs.schemas.cache(&CORE_SCHEMA_EMPTY).unwrap();
+            let factory = configs.schemas.get(&CORE_SCHEMA_EMPTY).unwrap();
             let buffer = factory.new_buffer(Option::None);
             let buffer = Buffer::new(buffer);
             let payload = PayloadBuilder {

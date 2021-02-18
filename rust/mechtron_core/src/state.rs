@@ -22,13 +22,13 @@ impl State {
     pub fn new<'configs>(configs: &'configs Configs, artifact: Artifact) -> Result<Self, Error> {
         let meta = Buffer::new(
             configs
-                .buffer_factory_keeper
-                .get(&CORE_STATE_META)?
+                .schemas
+                .get(&CORE_SCHEMA_META_CREATE)?
                 .new_buffer(Option::None),
         );
         let data = Buffer::new(
             configs
-                .buffer_factory_keeper
+                .schemas
                 .get(&artifact)?
                 .new_buffer(Option::None),
         );
@@ -114,7 +114,7 @@ impl ReadOnlyState {
         let rtn: Vec<Payload> = vec![
             Payload {
                 buffer: state.meta,
-                artifact: CORE_STATE_META.clone(),
+                artifact: CORE_SCHEMA_META_STATE.clone(),
             },
             Payload {
                 buffer: state.data,

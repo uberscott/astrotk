@@ -218,13 +218,13 @@ impl Neutron {
 
         let tron_config = create_meta.get::<String>(&path![&"artifact"])?;
         let tron_config = Artifact::from(&tron_config)?;
-        let tron_config = context.configs().tron_config_keeper.get(&tron_config)?;
+        let tron_config = context.configs().trons.get(&tron_config)?;
 
-        let tron_state_artifact = match tron_config.content
+        let tron_state_artifact = match tron_config.state
         {
             None => CORE_SCHEMA_EMPTY.clone(),
             Some(_) => {
-                tron_config.content.as_ref().unwrap().artifact.clone()
+                tron_config.state.as_ref().unwrap().artifact.clone()
             }
         };
 
@@ -371,7 +371,7 @@ impl CreatePayloadsBuilder {
     }
 
     pub fn payloads<'configs>(configs: &'configs Configs, builder: CreatePayloadsBuilder) -> Vec<Payload> {
-        let meta_artifact = CORE_CREATE_META.clone();
+        let meta_artifact = CORE_SCHEMA_META_CREATE.clone();
         vec![
             Payload {
                 artifact: meta_artifact,

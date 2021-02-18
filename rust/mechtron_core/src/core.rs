@@ -7,14 +7,16 @@ lazy_static! {
         id: "core".to_string(),
         version: Version::new(1, 0, 0)
     };
-    pub static ref CORE_STATE_META: Artifact = CORE.path(&"schema/tron/state-meta.schema");
-    pub static ref CORE_CREATE_META: Artifact = CORE.path(&"schema/tron/create-meta.schema");
-    pub static ref CORE_SCHEMA_EMPTY: Artifact = CORE.path(&"schema/empty.schema");
-    pub static ref CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE: Artifact = CORE.path(&"schema/neutron/nucleus_lookup_name_message.schema");
+    pub static ref CORE_SCHEMA_META_STATE: Artifact = CORE.path_and_kind(&"schema/tron/state-meta.schema", "schema");
+    pub static ref CORE_SCHEMA_META_CREATE : Artifact = CORE.path_and_kind(&"schema/tron/create-meta.schema", "schema");
 
-    pub static ref CORE_NEUTRON_CREATE_SCHEMA : Artifact = CORE.path(&"schema/neutron/create.schema");
-    pub static ref CORE_NEUTRON_STATE_SCHEMA : Artifact = CORE.path(&"schema/neutron/state.schema");
+    pub static ref CORE_SCHEMA_EMPTY: Artifact = CORE.path_and_kind(&"schema/empty.schema", "schema");
+    pub static ref CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE: Artifact = CORE.path_and_kind(&"schema/neutron/nucleus_lookup_name_message.schema", "schema");
 
-    pub static ref CORE_NEUTRON_CONFIG: Artifact = CORE.path(&"tron/neutron.yaml");
-    pub static ref CORE_SIMTRON_CONFIG: Artifact = CORE.path(&"tron/sim.yaml");
+    pub static ref CORE_SCHEMA_NEUTRON_CREATE: Artifact = CORE.path_and_kind(&"schema/neutron/create.schema", "schema");
+    pub static ref CORE_SCHEMA_NEUTRON_STATE : Artifact = CORE.path_and_kind(&"schema/neutron/state.schema", "schema");
+
+    pub static ref CORE_TRONCONFIG_NEUTRON: Artifact = CORE.path_and_kind(&"tron/neutron.yaml", "interface");
+    pub static ref CORE_TRONCONFIG_SIMTRON: Artifact = CORE.path_and_kind(&"tron/sim.yaml", "interface");
 }
+

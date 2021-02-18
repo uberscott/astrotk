@@ -7,35 +7,91 @@ use std::sync::{Arc, RwLock};
 use no_proto::NP_Factory;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use crate::core::*;
 
-use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository, ArtifactYaml};
+use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository, ArtifactYaml };
 use crate::error::Error;
 
 pub struct Configs<'config> {
-    pub artifact_cache: Arc<dyn ArtifactCache + Sync + Send>,
-    pub buffer_factory_keeper: Keeper<NP_Factory<'config>>,
-    pub sim_config_keeper: Keeper<SimConfig>,
-    pub tron_config_keeper: Keeper<TronConfig>,
-    pub mechtron_config_keeper: Keeper<MechtronConfig>,
+    pub artifacts: Arc<dyn ArtifactCache + Sync + Send>,
+    pub schemas: Keeper<NP_Factory<'config>>,
+    pub sims: Keeper<SimConfig>,
+    pub trons: Keeper<TronConfig>,
+    pub mechtrons: Keeper<MechtronConfig>
 }
 
 impl<'config> Configs<'config> {
     pub fn new(artifact_cache: Arc<dyn ArtifactCache + Sync + Send>) -> Self {
         let mut configs = Configs {
-            artifact_cache: artifact_cache.clone(),
-            buffer_factory_keeper: Keeper::new(
+            artifacts: artifact_cache.clone(),
+            schemas: Keeper::new(
                 artifact_cache.clone(),
                 Box::new(NP_Buffer_Factory_Parser),
+                Option::None
             ),
-            sim_config_keeper: Keeper::new(artifact_cache.clone(), Box::new(SimConfigParser)),
-            tron_config_keeper: Keeper::new(artifact_cache.clone(), Box::new(TronConfigParser)),
-            mechtron_config_keeper: Keeper::new(
+            sims: Keeper::new(artifact_cache.clone(), Box::new(SimConfigParser), Option::Some(Box::new(SimConfigArtifactCacher{}))),
+            trons: Keeper::new(artifact_cache.clone(), Box::new(TronConfigParser), Option::Some(Box::new(TronConfigArtifactCacher{}))),
+            mechtrons: Keeper::new(
                 artifact_cache.clone(),
                 Box::new(MechtronConfigParser),
+                Option::None
             ),
         };
 
         return configs;
+    }
+
+    pub fn cache( &mut self, artifact: &Artifact )->Result<(),Error>
+    {
+        match &artifact.kind{
+            None => {
+                self.artifacts.cache(artifact)?;
+                Ok(())
+            }
+            Some(kind) => {
+                match kind.as_str(){
+                    "schema"=>Ok(self.schemas.cache(artifact)?),
+                    "tron_config"=>{
+                        self.trons.cache(artifact)?;
+                        let config = self.trons.get(artifact)?;
+                        for artifact in self.trons.get_cacher().as_ref().unwrap().artifacts(config)?
+                        {
+                            &self.cache(&artifact)?;
+                        }
+                        Ok(())
+                    },
+                    "sim_config"=>{
+                        self.sims.cache(artifact)?;
+                        let config = self.sims.get(artifact)?;
+                        for artifact in self.sims.get_cacher().as_ref().unwrap().artifacts(config)?
+                        {
+                            &self.cache(&artifact)?;
+                        }
+                        Ok(())
+                    },
+                    k => Err(format!("unrecognized kind: {}",k).into())
+                }
+            }
+        }
+    }
+
+
+
+
+    pub fn cache_core(&mut self)->Result<(),Error>
+    {
+        self.cache(&CORE_SCHEMA_META_STATE)?;
+        self.cache(&CORE_SCHEMA_META_CREATE)?;
+
+        self.cache(&CORE_SCHEMA_EMPTY)?;
+        self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
+
+        self.cache(&CORE_SCHEMA_NEUTRON_CREATE)?;
+        self.cache(&CORE_SCHEMA_NEUTRON_STATE)?;
+
+        self.cache(&CORE_TRONCONFIG_NEUTRON)?;
+        self.cache(&CORE_TRONCONFIG_SIMTRON)?;
+        Ok(())
     }
 }
 
@@ -43,16 +99,19 @@ pub struct Keeper<V> {
     config_cache: RwLock<HashMap<Artifact, Arc<V>>>,
     repo: Arc<dyn ArtifactCache + Send + Sync>,
     parser: Box<dyn Parser<V> + Send + Sync>,
+    cacher: Option<Box<dyn Cacher<V>+ Send+Sync>>
 }
 
 impl<V> Keeper<V> {
     pub fn new(
         repo: Arc<dyn ArtifactCache + Send + Sync>,
         parser: Box<dyn Parser<V> + Send + Sync>,
+        cacher: Option<Box<dyn Cacher<V> + Send + Sync>>,
     ) -> Self {
         Keeper {
             config_cache: RwLock::new(HashMap::new()),
             parser: parser,
+            cacher: cacher,
             repo: repo,
         }
     }
@@ -83,6 +142,11 @@ impl<V> Keeper<V> {
         };
 
         Ok(rtn.clone())
+    }
+
+    pub fn get_cacher( &self )->&Option<Box<dyn Cacher<V> +Send+Sync>>
+    {
+        &self.cacher
     }
 }
 
@@ -154,8 +218,44 @@ pub struct TronConfig {
     pub name: String,
     pub nucleus_lookup_name: Option<String>,
     pub source: Artifact,
-    pub content: Option<ContentConfig>,
-    pub messages: Option<MessagesConfig>,
+    pub state: Option<StateConfig>,
+    pub message: Option<MessagesConfig>,
+}
+
+struct TronConfigArtifactCacher;
+
+impl Cacher<TronConfig> for TronConfigArtifactCacher
+{
+    fn artifacts(&self, config: Arc<TronConfig>  ) -> Result<Vec<Artifact>,Error> {
+        let mut rtn = vec!();
+        if config.state.is_some()
+        {
+            rtn.push( config.state.as_ref().unwrap().artifact.clone());
+        }
+        if config.message.is_some()
+        {
+            if config.message.as_ref().unwrap().create.is_some()
+            {
+                rtn.push(config.message.as_ref().unwrap().create.as_ref().unwrap().artifact.clone());
+            }
+        }
+
+        Ok(rtn)
+    }
+}
+
+struct SimConfigArtifactCacher;
+impl Cacher<SimConfig> for SimConfigArtifactCacher
+{
+    fn artifacts(&self, source: Arc<SimConfig>) -> Result<Vec<Artifact>, Error> {
+        let mut rtn = vec!();
+        for tron in &source.trons
+        {
+            rtn.push(tron.artifact.clone() );
+        }
+
+        Ok(rtn)
+    }
 }
 
 #[derive(Clone)]
@@ -164,7 +264,7 @@ pub struct MessagesConfig {
 }
 
 #[derive(Clone)]
-pub struct ContentConfig {
+pub struct StateConfig {
     pub artifact: Artifact,
 }
 
@@ -202,9 +302,9 @@ impl MechtronConfigYaml {
         let default_bundle = &artifact.bundle.clone();
         return Ok(MechtronConfig {
             source: artifact.clone(),
-            wasm: self.wasm.to_artifact(default_bundle)?,
+            wasm: self.wasm.to_artifact(default_bundle, Option::Some("wasm"))?,
             tron: TronConfigRef {
-                artifact: self.tron.to_artifact(default_bundle)?,
+                artifact: self.tron.to_artifact(default_bundle, Option::Some("tron_config"))?,
             },
         });
     }
@@ -220,7 +320,7 @@ pub struct TronConfigYaml {
     kind: String,
     name: String,
     nucleus_lookup_name: Option<String>,
-    content: Option<ContentConfigYaml>,
+    state: Option<StateConfigYaml>,
     messages: Option<MessagesConfigYaml>,
 }
 
@@ -245,7 +345,7 @@ pub struct CreateConfigYaml {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct ContentConfigYaml {
+pub struct StateConfigYaml {
     artifact: ArtifactYaml,
 }
 
@@ -276,20 +376,20 @@ impl TronConfigYaml {
             source: artifact.clone(),
             name: self.name.clone(),
 
-            messages: match &self.messages {
+            message: match &self.messages {
                 None => Option::None,
                 Some(messages) => Option::Some(MessagesConfig {
                     create: match &messages.create {
                         None => Option::None,
                         Some(create) => Option::Some(CreateMessageConfig {
-                            artifact: create.artifact.to_artifact(default_bundle)?,
+                            artifact: create.artifact.to_artifact(default_bundle, Option::Some("schema"))?,
                         }),
                     },
                 }),
             },
-            content: match &self.content {
-                Some(content) => Option::Some(ContentConfig {
-                    artifact: content.artifact.to_artifact(default_bundle)?,
+            state: match &self.state {
+                Some(state) => Option::Some(StateConfig {
+                    artifact: state.artifact.to_artifact(default_bundle, Option::Some("schema"))?,
                 }),
                 None => Option::None,
             },
@@ -298,6 +398,8 @@ impl TronConfigYaml {
     }
 }
 
+
+#[derive(Clone)]
 pub struct SimConfig {
     pub source: Artifact,
     pub name: String,
@@ -305,16 +407,19 @@ pub struct SimConfig {
     pub trons: Vec<SimTronConfig>,
 }
 
+#[derive(Clone)]
 pub struct SimTronConfig {
     pub name: Option<String>,
     pub artifact: Artifact,
     pub create: Option<SimCreateTronConfig>,
 }
 
+#[derive(Clone)]
 pub struct SimCreateTronConfig {
     data: DataRef,
 }
 
+#[derive(Clone)]
 pub struct DataRef {
     artifact: Artifact,
 }
@@ -322,7 +427,6 @@ pub struct DataRef {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimConfigYaml {
     name: String,
-    main: ArtifactYaml,
     description: Option<String>,
     trons: Vec<SimTronConfigYaml>,
 }
@@ -364,17 +468,21 @@ impl SimConfigYaml {
         for t in &self.trons {
             rtn.push(SimTronConfig {
                 name: t.name.clone(),
-                artifact: t.artifact.to_artifact(&default_bundle)?,
+                artifact: t.artifact.to_artifact(&default_bundle, Option::Some("tron_config"))?,
                 create: match &t.create {
                     None => Option::None,
                     Some(c) => Option::Some(SimCreateTronConfig {
                         data: DataRef {
-                            artifact: c.data.artifact.to_artifact(&default_bundle)?,
-                        },
-                    }),
-                },
+                            artifact: c.data.artifact.to_artifact(&default_bundle, Option::Some("schema"))?,
+                        }
+                    })
+                }
             });
         }
         return Ok(rtn);
     }
+}
+
+pub trait Cacher<V> {
+    fn artifacts(&self, source: Arc<V>) -> Result<Vec<Artifact>, Error >;
 }

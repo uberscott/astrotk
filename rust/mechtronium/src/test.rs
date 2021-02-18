@@ -12,12 +12,12 @@
         let mut configs = Configs::new(Arc::new(repo) );
 
 
-        configs.artifact_cache.cache(&CORE_SCHEMA_EMPTY).unwrap();
-        configs.artifact_cache.cache(&CORE_STATE_META).unwrap();
-        configs.buffer_factory_keeper.cache(&CORE_SCHEMA_EMPTY).unwrap();
-        configs.buffer_factory_keeper.cache(&CORE_STATE_META ).unwrap();
+        configs.artifacts.cache(&CORE_SCHEMA_EMPTY).unwrap();
+        configs.artifacts.cache(&CORE_STATE_META).unwrap();
+        configs.schemas.cache(&CORE_SCHEMA_EMPTY).unwrap();
+        configs.schemas.cache(&CORE_STATE_META ).unwrap();
 
-        configs.artifact_cache.get(&CORE_STATE_META );
+        configs.artifacts.get(&CORE_STATE_META );
         configs
     }
 

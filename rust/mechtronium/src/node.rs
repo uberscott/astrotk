@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, Module, Store, JIT};
 use std::cell::Cell;
-use mechtron_core::error::Error;
+use crate::error::Error;
 
 pub struct Node<'configs> {
     pub local: Local<'configs>,
@@ -32,7 +32,8 @@ impl <'configs> Node<'configs> {
         rtn
     }
 
-    fn init(&'configs self) {
+    fn init(&'configs mut self) {
+        self.local.configs.cache_core();
         self.local.init(self);
     }
 
@@ -41,7 +42,7 @@ impl <'configs> Node<'configs> {
     }
 
     pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
-        &self.local.configs
+        &self.local.configs()
     }
 
     pub fn net(&self) -> &Network {
@@ -53,7 +54,7 @@ impl <'configs> Node<'configs> {
         &self.router
     }
 
-    pub fn as_context(&'configs self)-> Box<&'configs NodeContext>
+    pub fn as_context(&'configs self)-> Box<&'configs dyn NodeContext>
     {
        return Box::new(self);
     }
@@ -71,7 +72,7 @@ trait NodeContext
 pub struct Local<'configs> {
     wasm_store: Arc<Store>,
     configs: Configs<'configs>,
-    wasm_module_keeper: Keeper<Module>,
+    wasms: Keeper<Module>,
     nuclei: Nuclei<'configs>,
     node: Cell<Option<&'configs Node<'configs>>>,
 }
@@ -87,11 +88,13 @@ impl <'configs> Local <'configs>{
             node: Cell::new(Option::None),
             wasm_store: wasm_store.clone(),
             configs: Configs::new(repo.clone() ),
-            wasm_module_keeper: Keeper::new(
+            wasms: Keeper::new(
                 repo.clone(),
                 Box::new(WasmModuleParser {
                     wasm_store: wasm_store.clone(),
-                }),
+                },
+                ),
+                Option::None
             ),
             nuclei: Nuclei::new()
         };
@@ -102,7 +105,8 @@ impl <'configs> Local <'configs>{
 
     pub fn nuclei<'get>(&'get self)->&'get Nuclei<'configs>
     {
-        &self.nuclei
+        //&self.nuclei.into_inner()
+        unimplemented!()
     }
 
     pub fn node(&'configs self) -> &Node<'configs>
@@ -110,10 +114,16 @@ impl <'configs> Local <'configs>{
         self.node.get().unwrap()
     }
 
+    fn init(&'configs self, node: &'configs Node<'configs>) ->Result<(),Error> {
+        self.node.set(Option::Some(node) );
+        self.nuclei.init(self);
+        Ok(())
+    }
 
-    fn init(&'configs self,  sys: &'configs Node<'configs>) {
-        self.node.set(Option::Some(sys) );
-        self.nuclei.init(self)
+    fn cache_core(&mut self)->Result<(),Error>
+    {
+        self.configs.cache_core()?;
+        Ok(())
     }
 
     pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
@@ -157,7 +167,7 @@ struct WasmModuleParser {
 }
 
 impl Parser<Module> for WasmModuleParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, Error> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, mechtron_core::error::Error> {
         let result = Module::new(&self.wasm_store, str);
         match result {
             Ok(module) => Ok(module),

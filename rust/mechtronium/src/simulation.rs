@@ -1,7 +1,6 @@
 use crate::node::{Node, NucleusContext};
 use crate::nucleus::Nucleus;
 use crate::tron::CreatePayloadsBuilder;
-use mechtron_core::artifact::ArtifactCacher;
 use mechtron_core::configs::SimConfig;
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, TronKey};
