@@ -1,7 +1,0 @@
-{
-    "type": "table",
-    "columns": [
-               ["artifact", {"type":"string"}],
-               ["lookup_name", {"type":"string"}]
-               ]
-}

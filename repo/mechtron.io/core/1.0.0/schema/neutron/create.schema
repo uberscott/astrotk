@@ -1,0 +1,3 @@
+struct({ fields:{
+  nucleus_lookup_name: string()
+}})

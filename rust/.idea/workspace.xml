@@ -14,17 +14,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/mechtronium/src/error.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/neutron/content.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/neutron/create.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/artifact.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/configs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/error.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/message.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/state.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/artifact.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/core.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/error.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/tron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/tron.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -156,9 +153,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test nucleus::state::test::test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib nucleus::state::test::test -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
+    <configuration name="Test threading_works" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package no_proto --lib threading_works -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -205,18 +202,18 @@
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test nucleus" />
-      <item itemvalue="Cargo.Test nucleus::state::test::test" />
       <item itemvalue="Cargo.Tests in 'mechtronium'" />
       <item itemvalue="Cargo.Expand mechtron_core::error [rust]" />
       <item itemvalue="Cargo.Expand mechtronium::error [rust]" />
+      <item itemvalue="Cargo.Test threading_works" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test threading_works" />
         <item itemvalue="Cargo.Expand mechtronium::error [rust]" />
         <item itemvalue="Cargo.Test nucleus" />
         <item itemvalue="Cargo.Expand mechtron_core::error [rust]" />
         <item itemvalue="Cargo.Tests in 'mechtronium'" />
-        <item itemvalue="Cargo.Test nucleus::state::test::test" />
       </list>
     </recent_temporary>
   </component>

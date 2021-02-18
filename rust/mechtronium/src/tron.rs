@@ -1,5 +1,4 @@
-use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use no_proto::buffer::NP_Buffer;
 use no_proto::error::NP_Error;
@@ -16,27 +15,29 @@ use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, Payl
 use mechtron_core::state::{ReadOnlyState, State};
 
 use crate::node::Node;
-use crate::nucleus::Nucleus;
+use crate::nucleus::{Nucleus, TronContext, ApiKind};
 use mechtron_core::buffers::{Buffer, Path};
-use std::rc::Rc;
+use crate::error::Error;
+use std::ops::DerefMut;
 
 pub trait Tron {
     fn create(
         &self,
-        context: TronContext,
-        state: &mut State,
-        create: &Message,
-    ) -> Result<(Option<Vec<MessageBuilder>>), Box<dyn Error>>;
+        info: TronInfo,
+        state: Arc<Mutex<State>>,
+        create: Arc<Message>,
+    ) -> Result<(Option<Vec<MessageBuilder>>), Error>;
 
     fn update(
         &self,
         phase: &str,
     ) -> Result<
         fn(
-            context: TronContext,
-            state: &State,
-        ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
-        Box<dyn Error>,
+            info: TronInfo,
+            context: &dyn TronContext,
+            state: Arc<Mutex<State>>,
+        ) -> Result<Option<Vec<MessageBuilder>>, Error>,
+        Error,
     >;
 
     fn port(
@@ -44,11 +45,12 @@ pub trait Tron {
         port: &str,
     ) -> Result<
         fn(
-            context: TronContext,
-            state: &State,
-            message: &Message,
-        ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
-        Box<dyn Error>,
+            info: TronInfo,
+            context: &dyn TronContext,
+            state: Arc<Mutex<State>>,
+            message: Arc<Message>,
+        ) -> Result<Option<Vec<MessageBuilder>>, Error>,
+        Error,
     >;
 
     fn update_phases(&self) -> Phases;
@@ -62,136 +64,33 @@ pub enum Phases {
 
 pub struct MessagePort {
     pub receive: fn(
-        context: &TronContext,
+        context: &TronInfo,
         state: &State,
         message: &Message,
-    ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
+    ) -> Result<Option<Vec<MessageBuilder>>, Error>,
 }
 
 #[derive(Clone)]
-pub struct TronContext {
-    //    pub sim_id: Id,
+pub struct TronInfo {
     pub key: TronKey,
-    pub revision: Revision,
-    pub tron_config: Arc<TronConfig>,
-    pub timestamp: u64,
+    pub config: Arc<TronConfig>,
 }
 
-impl TronContext {
+impl TronInfo {
     pub fn new(
         key: TronKey,
-        revision: Revision,
         tron_config: Arc<TronConfig>,
-        timestamp: u64,
     ) -> Self {
-        TronContext {
-            //           sim_id: sim_id,
+        TronInfo {
             key: key,
-            revision: revision,
-            tron_config: tron_config,
-            timestamp: timestamp,
+            config: tron_config,
         }
     }
 
-    pub fn configs(&self) -> &Configs {
-        unimplemented!()
-    }
-
-    pub fn get_state(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Box<dyn Error>> {
-        /*
-        let sys = self.sys()?;
-        if key.revision.cycle >= self.revision.cycle {
-            return Err(format!("tron {:?} attempted to read the state of tron {:?} in a present or future cycle, which is not allowed", self.key, key).into());
-        }
-        let state = &self.nucleus.state;
-        let state = state.read_only(key)?;
-        Ok(state)
-         */
-        unimplemented!()
-    }
-
-    fn lookup_nucleus(&self, context: &TronContext, name: &str) -> Result<Id, Box<dyn Error>> {
-        let neutron_key = TronKey {
-            nucleus: context.key.nucleus.clone(),
-            tron: Id::new(context.key.nucleus.seq_id, 0),
-        };
-        let state_key = StateKey {
-            tron: neutron_key,
-            revision: Revision {
-                cycle: context.revision.cycle - 1,
-            },
-        };
-        let neutron_state = context.get_state(&state_key)?;
-
-        let simulation_nucleus_id = Id::new(
-            neutron_state
-                .data
-                .get::<i64>(&path![&"simulation_nucleus_id", &"seq_id"])?,
-            neutron_state
-                .data
-                .get::<i64>(&path![&"simulation_nucleus_id", &"id"])?,
-        );
-
-        let simtron_key = TronKey {
-            nucleus: simulation_nucleus_id.clone(),
-            tron: Id::new(simulation_nucleus_id.seq_id, 1),
-        };
-
-        let state_key = StateKey {
-            tron: simtron_key,
-            revision: Revision {
-                cycle: context.revision.cycle - 1,
-            },
-        };
-        let simtron_state = context.get_state(&state_key)?;
-
-        let nucleus_id = Id::new(
-            simtron_state
-                .data
-                .get::<i64>(&path![&"nucleus_names", name, &"seq_id"])?,
-            simtron_state
-                .data
-                .get::<i64>(&path![&"nucleus_names", name, &"id"])?,
-        );
-
-        Ok(nucleus_id)
-    }
-
-    fn lookup_tron(
-        &self,
-        context: &TronContext,
-        nucleus_id: &Id,
-        name: &str,
-    ) -> Result<TronKey, Box<dyn Error>> {
-        let neutron_key = TronKey {
-            nucleus: nucleus_id.clone(),
-            tron: Id::new(nucleus_id.seq_id, 0),
-        };
-        let state_key = StateKey {
-            tron: neutron_key,
-            revision: Revision {
-                cycle: context.revision.cycle - 1,
-            },
-        };
-        let neutron_state = context.get_state(&state_key)?;
-        let tron_id = Id::new(
-            neutron_state
-                .data
-                .get::<i64>(&path![&"tron_names", name, &"seq_id"])?,
-            neutron_state
-                .data
-                .get::<i64>(&path![&"tron_names", name, &"id"])?,
-        );
-
-        let tron_key = TronKey {
-            nucleus: nucleus_id.clone(),
-            tron: tron_id,
-        };
-
-        Ok(tron_key)
-    }
 
 }
+
+
 
 pub struct TronShell {
     pub tron: Box<dyn Tron>,
@@ -202,49 +101,51 @@ impl TronShell {
         TronShell { tron: tron }
     }
 
-    fn from(&self, context: TronContext) -> mechtron_core::message::From {
+    fn from(&self, info: TronInfo, context: &dyn TronContext) -> mechtron_core::message::From {
         mechtron_core::message::From {
-            tron: context.key.clone(),
-            cycle: context.revision.cycle.clone(),
-            timestamp: context.timestamp.clone(),
+            tron: info.key.clone(),
+            cycle: context.revision().cycle.clone(),
+            timestamp: context.timestamp()
         }
     }
 
     pub fn create(
         &self,
-        context: TronContext,
-        state: &mut State,
-        create: &Message,
-    ) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
-        let mut builders = self.tron.create(context.clone(), state, create)?;
+        info: TronInfo,
+        context: &dyn TronContext,
+        state:  Arc<Mutex<State>>,
+        create: Arc<Message>,
+    ) -> Result<Option<Vec<Message>>, Error> {
 
-        return self.handle_builders(context.clone(), builders);
+        let mut builders = self.tron.create(info.clone(), state, create)?;
+        return self.handle_builders(info.clone(), builders);
     }
 
     pub fn receive(
         &mut self,
-        context: TronContext,
-        state: &mut State,
-        message: &Message,
-    ) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+        info: TronInfo,
+        context: &dyn TronContext,
+        state: Arc<Mutex<State>>,
+        message: Arc<Message>,
+    ) -> Result<Option<Vec<Message>>, Error> {
         let func = self.tron.port(&"blah")?;
-        let builders = func(context.clone(), state, message)?;
+        let builders = func(info.clone(), context, state, message)?;
 
-        return self.handle_builders(context, builders);
+        return self.handle_builders(info , builders);
     }
 
     pub fn handle_builders(
         &self,
-        context: TronContext,
+        info : TronInfo,
         builders: Option<Vec<MessageBuilder>>,
-    ) -> Result<Option<Vec<Message>>, Box<dyn Error>> {
+    ) -> Result<Option<Vec<Message>>, Error> {
         /*            match builders {
                        None => Ok(Option::None),
                        Some(builders) =>
                            {
                                let mut rtn = vec!();
                                for mut builder in builders {
-                                   builder.from = Option::Some(self.from(context.clone()));
+                                   builder.from = Option::Some(self.from(info.clone()));
                                    rtn.push(builder.build(&mut context.sys()?.net.id_seq)?);
                                }
                                Ok(Option::Some(rtn))
@@ -261,7 +162,7 @@ pub struct Neutron {}
 pub struct NeutronStateInterface {}
 
 impl NeutronStateInterface {
-    fn add_tron(&self, state: &mut State, key: &TronKey, kind: u8) -> Result<(), Box<dyn Error>> {
+    fn add_tron(&self, state: &mut State, key: &TronKey, kind: u8) -> Result<(), Error> {
         let index = state.data.get_length(&path!("trons"))?;
         let path = Path::new(path!["trons", index.to_string()]);
         key.append(&path.push(path!["id"]), &mut state.meta);
@@ -275,14 +176,14 @@ impl NeutronStateInterface {
         state: &mut State,
         name: &str,
         key: &TronKey,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Error> {
         key.append(&Path::new(path!["tron_names"]), &mut state.meta);
         Ok(())
     }
 }
 
 impl Neutron {
-    fn init() -> Result<Box<Tron>, Box<dyn Error>> {
+    fn init() -> Result<Box<Tron>, Error> {
         Ok(Box::new(Neutron {}))
     }
 
@@ -292,68 +193,65 @@ impl Neutron {
 
     pub fn create_tron(
         &self,
-        context: TronContext,
-        state: Rc<State>,
-        create: &Message,
-    ) -> Result<(TronKey, State), Box<dyn Error>> {
-        /*
-                    let tron_key = TronKey::new(context.key.nucleus.clone(), context.sys()?.net.id_seq.next());
-                    let interface = NeutronStateInterface {};
-                    interface.add_tron(state, &tron_key, 0)?;
+        info: TronInfo,
+        context: &mut dyn TronContext,
+        state: Arc<Mutex<State>>,
+        create: Arc<Message>,
+    ) -> Result<(), Error> {
+        let mut neutron_state = state.lock()?;
 
-                    let create_meta = &create.payloads[0].buffer;
-                    if create_meta.is_set::<String>(&path![&"lookup_name"])?
-                    {
-                        let name = create_meta.get::<String>(&path![&"lookup_name"])?;
-                        interface.set_tron_name(state, name.as_str(), &tron_key);
-                    }
+        let tron_seq_id = neutron_state.data.get::<i64>(&path!["tron_seq_id"] )?;
+        let mut tron_seq = neutron_state.data.get::<i64>(&path!["tron_seq"] )?;
+        tron_seq = tron_seq+1;
+        neutron_state.data.set( &path!["tron_seq"], tron_seq );
 
-                    let tron_config = create_meta.get::<String>(&path![&"artifact"])?;
-                    let tron_config = Artifact::from(&tron_config)?;
-                    let tron_config = context.configs().tron_config_keeper.get(&tron_config)?;
+        let tron_key = TronKey::new(info.key.nucleus.clone(), Id::new(tron_seq_id,tron_seq));
+        let interface = NeutronStateInterface {};
+        interface.add_tron(neutron_state.deref_mut(), &tron_key, 0)?;
 
-                    let tron_state_artifact = match tron_config.messages
-                    {
-                        None => CORE_SCHEMA_EMPTY.clone(),
-                        Some(_) => match tron_config.messages.unwrap().create {
-                            None => CORE_SCHEMA_EMPTY.clone(),
-                            Some(_) => tron_config.messages.unwrap().create.unwrap().artifact
-                        }
-                    };
+        let create_meta = &create.payloads[0].buffer;
+        if create_meta.is_set::<String>(&path![&"lookup_name"])?
+        {
+            let name = create_meta.get::<String>(&path![&"lookup_name"])?;
+            interface.set_tron_name(neutron_state.deref_mut(), name.as_str(), &tron_key);
+        }
 
-                    let mut tron_state = State::new(context.configs(), tron_state_artifact.clone())?;
+        let tron_config = create_meta.get::<String>(&path![&"artifact"])?;
+        let tron_config = Artifact::from(&tron_config)?;
+        let tron_config = context.configs().tron_config_keeper.get(&tron_config)?;
 
-                    tron_state.meta.set(&path![&"artifact"], tron_config.source.to());
-                    tron_state.meta.set(&path![&"creation_timestamp"], context.timestamp);
-                    tron_state.meta.set(&path![&"creation_cycle"], context.revision.cycle);
+        let tron_state_artifact = match tron_config.content
+        {
+            None => CORE_SCHEMA_EMPTY.clone(),
+            Some(_) => {
+                tron_config.content.as_ref().unwrap().artifact.clone()
+            }
+        };
 
-                    let tron = init_tron(&tron_config)?;
-                    let tron = TronShell::new(tron);
-                    let tron_context = TronContext {
-        nucleus: context.nucleus,
-                        key: tron_key.clone(),
-                        revision: context.revision.clone(),
-                        tron_config: tron_config.clone(),
-                        timestamp: context.timestamp,
-                        sys: context.sys.clone()
-                    };
+        let mut tron_state = Arc::new(Mutex::new(State::new(context.configs(), tron_state_artifact.clone())?));
 
-                    tron.create(tron_context.clone(), &mut tron_state, &create )?;
+        {
+            let mut tron_state = tron_state.lock()?;
 
-                    Ok((tron_key, tron_state))
+            tron_state.meta.set(&path![&"artifact"], tron_config.source.to());
+            tron_state.meta.set(&path![&"creation_timestamp"], context.timestamp());
+            tron_state.meta.set(&path![&"creation_cycle"], context.revision().cycle);
+        }
 
-                     */
-        unimplemented!()
+
+        context.create(tron_key,tron_config.source.clone(), tron_state, create );
+
+        Ok(())
     }
 }
 
 impl Tron for Neutron {
     fn create(
         &self,
-        context: TronContext,
-        state: &mut State,
-        create: &Message,
-    ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>> {
+        context: TronInfo,
+        state: Arc<Mutex<State>>,
+        create: Arc<Message>,
+    ) -> Result<Option<Vec<MessageBuilder>>, Error> {
         /*
 
         let interface = NeutronStateInterface {};
@@ -392,32 +290,15 @@ impl Tron for Neutron {
           */
         unimplemented!()
     }
-    fn update(
-        &self,
-        phase: &str,
-    ) -> Result<
-        fn(
-            context: TronContext,
-            state: &State,
-        ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
-        Box<dyn Error>,
-    > {
-        Err("does not have an update for phase".into())
+
+    fn update(&self, phase: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
     }
 
-    fn port(
-        &self,
-        port: &str,
-    ) -> Result<
-        fn(
-            context: TronContext,
-            state: &State,
-            message: &Message,
-        ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
-        Box<dyn Error>,
-    > {
-        Err("no ports availabe from this tron".into())
+    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>, Arc<Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
     }
+
 
     fn update_phases(&self) -> Phases {
         Phases::None
@@ -434,7 +315,7 @@ impl CreatePayloadsBuilder {
     pub fn new<'configs> (
         configs: &'configs Configs,
         tron_config: &TronConfig,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, Error> {
 
         /*
         let meta_factory = configs.buffer_factory_keeper.get(&CORE_CREATE_META)?;
@@ -450,17 +331,17 @@ impl CreatePayloadsBuilder {
          */
         unimplemented!()
     }
-    pub fn set_sim_id(&mut self, sim_id: &Id) -> Result<(), Box<dyn Error>> {
+    pub fn set_sim_id(&mut self, sim_id: &Id) -> Result<(), Error> {
         sim_id.append(&Path::just("sim_id"), &mut self.constructor)?;
         Ok(())
     }
 
-    pub fn set_lookup_name(&mut self, lookup_name: &str) -> Result<(), Box<dyn Error>> {
+    pub fn set_lookup_name(&mut self, lookup_name: &str) -> Result<(), Error> {
         self.meta.set(&path![&"lookup_name"], lookup_name)?;
         Ok(())
     }
 
-    pub fn set_sim_config(&mut self, sim_config: &SimConfig) -> Result<(), Box<dyn Error>> {
+    pub fn set_sim_config(&mut self, sim_config: &SimConfig) -> Result<(), Error> {
         self.constructor
             .set(&path!["sim_config_artifact"], sim_config.source.to())?;
         Ok(())
@@ -469,7 +350,7 @@ impl CreatePayloadsBuilder {
     fn constructor(
         configs: &'static Configs,
         tron_config: &TronConfig,
-    ) -> Result<(Artifact, Buffer), Box<dyn Error>> {
+    ) -> Result<(Artifact, Buffer), Error> {
         /*
         if (&tron_config.messages).is_some() && (&tron_config.messages).unwrap().create.is_some() {
             let constructor_artifact = tron_config.messages.unwrap().create.unwrap().artifact.clone();
@@ -504,53 +385,11 @@ impl CreatePayloadsBuilder {
     }
 }
 
-struct SimTron {}
 
-impl SimTron {
-    pub fn init() -> Result<Box<dyn Tron>, Box<dyn Error>> {
-        unimplemented!()
-    }
-}
+pub fn init_tron(config: &TronConfig) -> Result<Box<dyn Tron>, Error> {
 
-impl Tron for SimTron {
-    fn create(
-        &self,
-        context: TronContext,
-        state: &mut State,
-        create: &Message,
-    ) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>> {
-        unimplemented!()
-    }
-
-    fn update(
-        &self,
-        phase: &str,
-    ) -> Result<
-        fn(TronContext, &State) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
-        Box<dyn Error>,
-    > {
-        unimplemented!()
-    }
-
-    fn port(
-        &self,
-        port: &str,
-    ) -> Result<
-        fn(TronContext, &State, &Message) -> Result<Option<Vec<MessageBuilder>>, Box<dyn Error>>,
-        Box<dyn Error>,
-    > {
-        unimplemented!()
-    }
-
-    fn update_phases(&self) -> Phases {
-        unimplemented!()
-    }
-}
-
-pub fn init_tron(config: &TronConfig) -> Result<Box<dyn Tron>, Box<dyn Error>> {
     let rtn: Box<Tron> = match config.kind.as_str() {
         "neutron" => Neutron::init()? as Box<Tron>,
-        "sim" => SimTron::init()? as Box<Tron>,
         _ => return Err(format!("we don't have a tron of kind {}", config.kind).into()),
     };
 

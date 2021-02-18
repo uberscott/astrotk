@@ -52,6 +52,20 @@ impl <'configs> Node<'configs> {
     {
         &self.router
     }
+
+    pub fn as_context(&'configs self)-> Box<&'configs NodeContext>
+    {
+       return Box::new(self);
+    }
+}
+
+impl <'configs> NodeContext for Node<'configs>{
+
+}
+
+trait NodeContext
+{
+
 }
 
 pub struct Local<'configs> {
@@ -59,7 +73,7 @@ pub struct Local<'configs> {
     configs: Configs<'configs>,
     wasm_module_keeper: Keeper<Module>,
     nuclei: Nuclei<'configs>,
-    node: Cell<Option<&'configs Node<'configs>>>
+    node: Cell<Option<&'configs Node<'configs>>>,
 }
 
 
@@ -67,6 +81,7 @@ impl <'configs> Local <'configs>{
     fn new() -> Self {
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
+
 
         let rtn  = Local {
             node: Cell::new(Option::None),
@@ -83,6 +98,7 @@ impl <'configs> Local <'configs>{
 
         rtn
     }
+
 
     pub fn nuclei<'get>(&'get self)->&'get Nuclei<'configs>
     {
