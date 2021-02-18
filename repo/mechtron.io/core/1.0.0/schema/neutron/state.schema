@@ -1,18 +1,18 @@
 struct({fields:{
 
-  tron: list( { of: {
+  tron: list( { of: 
      struct({fields:{
        seq_id : i64(),
        id: i64(),
        kind: string()
      }})
-  }}),
-  tron_names: map( { values: {
+  }),
+  tron_names: map( { value: 
     struct( {fields:{
       seq_id: i64(),
       id: i64()
     }})
-  }}),
+  }),
   simulation_nucleus_id: struct( {fields:{
                               seq_id: i64(),
                               id: i64()

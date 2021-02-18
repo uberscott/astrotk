@@ -102,7 +102,6 @@ impl <'configs> Local <'configs>{
         rtn
     }
 
-
     pub fn nuclei<'get>(&'get self)->&'get Nuclei<'configs>
     {
         //&self.nuclei.into_inner()

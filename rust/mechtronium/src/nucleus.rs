@@ -1209,7 +1209,6 @@ mod state
             }
 
             let mut rtn = vec!();
-//            let history = self.history.write()?;
 
             for revision in revisions {
 
