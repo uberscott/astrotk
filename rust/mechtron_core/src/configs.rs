@@ -80,17 +80,17 @@ impl<'config> Configs<'config> {
 
     pub fn cache_core(&mut self)->Result<(),Error>
     {
+        self.cache(&CORE_SCHEMA_EMPTY)?;
         self.cache(&CORE_SCHEMA_META_STATE)?;
         self.cache(&CORE_SCHEMA_META_CREATE)?;
 
-        self.cache(&CORE_SCHEMA_EMPTY)?;
-        self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
 
         self.cache(&CORE_SCHEMA_NEUTRON_CREATE)?;
         self.cache(&CORE_SCHEMA_NEUTRON_STATE)?;
 
         self.cache(&CORE_TRONCONFIG_NEUTRON)?;
         self.cache(&CORE_TRONCONFIG_SIMTRON)?;
+        self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
         Ok(())
     }
 }

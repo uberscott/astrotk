@@ -18,6 +18,8 @@ use mechtron_config::mechtron_config::{ActorConfigYaml, MechtronConfig};
 use std::ops::Deref;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
+use mechtron_core::artifact::Artifact;
+use mechtron_core::buffers::BufferFactories;
 
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global

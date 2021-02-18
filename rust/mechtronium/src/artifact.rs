@@ -101,3 +101,16 @@ impl ArtifactCache for FileSystemArtifactRepository {
         }
     }
 }
+
+
+#[cfg(test)]
+mod test
+{
+
+    #[test]
+    fn test()
+    {
+       assert!(true)
+    }
+
+}

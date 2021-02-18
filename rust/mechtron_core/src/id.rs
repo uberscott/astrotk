@@ -1,6 +1,6 @@
 use crate::buffers::{Buffer, Path, ReadOnlyBuffer};
-use std::error::Error;
 use std::sync::atomic::{AtomicI64, Ordering};
+use crate::error::Error;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone)]
 pub struct Id {
@@ -16,13 +16,13 @@ impl Id {
         }
     }
 
-    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Box<dyn Error>> {
+    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         buffer.set::<i64>(&path.with(path!["seq_id"]), self.seq_id)?;
         buffer.set::<i64>(&path.with(path!["id"]), self.id)?;
         Ok(())
     }
 
-    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Box<dyn Error>> {
+    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Error> {
         Ok(Id {
             seq_id: buffer.get(&path.with(path!["seq_id"]))?,
             id: buffer.get(&path.with(path!["id"]))?,
@@ -81,13 +81,13 @@ impl TronKey {
         }
     }
 
-    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Box<dyn Error>> {
+    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         self.nucleus.append(&path.push(path!["nucleus"]), buffer)?;
         self.tron.append(&path.push(path!["tron"]), buffer)?;
         Ok(())
     }
 
-    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Box<dyn Error>> {
+    pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Error> {
         Ok(TronKey {
             nucleus: Id::from(&path.push(path!["nucleus"]), buffer)?,
             tron: Id::from(&path.push(path!["tron"]), buffer)?,

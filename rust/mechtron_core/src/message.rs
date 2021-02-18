@@ -651,14 +651,14 @@ mod tests {
     use no_proto::buffer::NP_Buffer;
     use no_proto::memory::NP_Memory_Ref;
     use no_proto::NP_Factory;
-    use std::error::Error;
     use std::sync::Arc;
+    use crate::error::Error;
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
     struct BufferFactoriesImpl {}
 
-    impl BufferFactories for BufferFactoriesImpl {
+    impl BufferFactories<'_> for BufferFactoriesImpl {
         fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'static>>, Error> {
             Ok(Arc::new(NP_Factory::new(TEST_SCHEMA).unwrap()))
         }
@@ -722,7 +722,7 @@ mod tests {
         let path = Path::new(path!["from"]);
         from.append(&path, &mut buffer).unwrap();
 
-        let buffer = Buffer::read_only(buffer);
+        let buffer = buffer.read_only();
 
         let ser_from = message::From::from(&path, &buffer).unwrap();
 
@@ -741,7 +741,7 @@ mod tests {
             buffer: buffer.read_only(),
             artifact: artifact.clone(),
         };
-        let mut seq = IdSeq::new(0);
+        let seq = Arc::new(IdSeq::new(0));
 
         let from = message::From {
             tron: TronKey {
@@ -764,7 +764,7 @@ mod tests {
         };
 
         let mut message = Message::single_payload(
-            &mut seq,
+            seq.clone(),
             MessageKind::Create,
             from.clone(),
             to.clone(),

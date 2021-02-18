@@ -872,7 +872,7 @@ mod message
             let buffer = buffer.read_only();
             let payload = Payload {
                 buffer: buffer,
-                artifact: CORE_CREATE_META.clone(),
+                artifact: CORE_SCHEMA_META_CREATE.clone(),
             };
 
 
@@ -924,7 +924,7 @@ mod message
             let buffer = Buffer::new(buffer);
             let payload = PayloadBuilder {
                 buffer: buffer,
-                artifact: CORE_CREATE_META.clone(),
+                artifact: CORE_SCHEMA_META_CREATE.clone(),
             };
 
             builder.payloads = Option::Some(vec![payload]);

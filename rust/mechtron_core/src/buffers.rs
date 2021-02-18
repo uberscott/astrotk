@@ -7,9 +7,9 @@ use crate::artifact::Artifact;
 use no_proto::error::NP_Error;
 use no_proto::memory::{NP_Mem_New, NP_Memory, NP_Memory_Owned, NP_Memory_Ref};
 use no_proto::pointer::{NP_Scalar, NP_Value};
-use std::error::Error;
 use std::iter::FromIterator;
 use std::sync::Arc;
+use crate::error::Error;
 
 #[macro_export]
 macro_rules! path{
@@ -17,7 +17,7 @@ macro_rules! path{
 }
 
 pub trait BufferFactories<'factories> {
-    fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'factories>>, Box<dyn Error>>;
+    fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'factories>>, Error>;
 }
 
 fn cat(path: &[&str]) -> String {
@@ -41,7 +41,7 @@ impl Buffer {
         }
     }
 
-    pub fn get_length(&self, path: &Vec<String>) -> Result<usize, Box<dyn Error>> {
+    pub fn get_length(&self, path: &Vec<String>) -> Result<usize, Error> {
         let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
         match self.np_buffer.get_length(path) {
@@ -50,7 +50,7 @@ impl Buffer {
         }
     }
 
-    pub fn is_set<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<bool, Box<dyn Error>>
+    pub fn is_set<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<bool, Error>
     where
         X: NP_Value<'get> + NP_Scalar<'get>,
     {
@@ -65,7 +65,7 @@ impl Buffer {
         }
     }
 
-    pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Box<dyn Error>>
+    pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Error>
     where
         X: NP_Value<'get> + NP_Scalar<'get>,
     {
@@ -84,7 +84,7 @@ impl Buffer {
         &'set mut self,
         path: &Vec<String>,
         value: X,
-    ) -> Result<(), Box<dyn Error>>
+    ) -> Result<(), Error>
     where
         X: NP_Value<'set> + NP_Scalar<'set>,
     {
@@ -99,7 +99,7 @@ impl Buffer {
         }
     }
 
-    pub fn compact(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn compact(&mut self) -> Result<(), Error> {
         match self.np_buffer.compact(Option::None) {
             Ok(_) => Ok(()),
             Err(e) => Err("could not compact".into()),
@@ -137,7 +137,7 @@ impl ReadOnlyBuffer {
         buffer.np_buffer.finish().bytes()
     }
 
-    pub fn get_length(&self, path: &Vec<String>) -> Result<usize, Box<dyn Error>> {
+    pub fn get_length(&self, path: &Vec<String>) -> Result<usize, Error> {
         let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
         match self.np_buffer.get_length(path) {
@@ -146,7 +146,7 @@ impl ReadOnlyBuffer {
         }
     }
 
-    pub fn is_set<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<bool, Box<dyn Error>>
+    pub fn is_set<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<bool, Error>
     where
         X: NP_Value<'get> + NP_Scalar<'get>,
     {
@@ -158,7 +158,7 @@ impl ReadOnlyBuffer {
         }
     }
 
-    pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Box<dyn Error>>
+    pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Error>
     where
         X: NP_Value<'get> + NP_Scalar<'get>,
     {
@@ -312,7 +312,7 @@ mod tests {
         assert!(buffer.set::<u8>(&path!("age"), 27).is_ok());
         assert!(buffer.set::<u8>(&path!("blah"), 27).is_err());
 
-        let buffer = Buffer::read_only(buffer);
+        let buffer = Buffer::read_only(&buffer);
 
         assert_eq!("Henry", buffer.get::<String>(&path!("userId")).unwrap());
         assert_eq!(27, buffer.get::<u8>(&path!("age")).unwrap());
