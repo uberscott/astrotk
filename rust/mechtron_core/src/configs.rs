@@ -45,6 +45,7 @@ impl<'config> Configs<'config> {
 
     pub fn cache( &mut self, artifact: &Artifact )->Result<(),Error>
     {
+       println!("caching: {}",artifact.to());
         match &artifact.kind{
             None => {
                 self.artifacts.cache(artifact)?;

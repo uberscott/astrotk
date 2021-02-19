@@ -58,7 +58,7 @@ impl <'configs> Node<'configs> {
 
     pub fn shutdown(&self) {}
 
-    pub fn create_sim(&self, config: &SimConfig ) -> Result<Id, Error>
+    pub fn create_sim(&self ) -> Result<Id, Error>
     {
         let sim_id = self.net.seq.next();
 

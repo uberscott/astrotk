@@ -160,13 +160,10 @@ impl <'nucleus> Nucleus<'nucleus> {
         {
 
             let mut nucleus_cycle= NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone())?;
-//            let mut nucleus_cycle:NucleusCycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), nucleus_data)?;
 
-//            nucleus_cycle.bootstrap(lookup_name);
+            nucleus_cycle.bootstrap(lookup_name);
 
-            //let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
-            /*
-            let (tmp_states, tmp_messages) = vec!();
+            let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
             for state in tmp_states
             {
                 states.push(state);
@@ -176,7 +173,6 @@ impl <'nucleus> Nucleus<'nucleus> {
                 messages.push(message);
             }
 
-             */
         }
 
         for (key, state) in states {
@@ -300,7 +296,7 @@ impl<'cycle> NucleusCycle<'cycle> {
 
         let configs = self.configs();
         let tron_config_keeper = &configs.trons;
-        let config = tron_config_keeper.get(&CORE_TRONCONFIG_NEUTRON).unwrap();
+        let config = tron_config_keeper.get(&CORE_TRONCONFIG_NEUTRON)?;
         let info = TronInfo{
             config: config.clone(),
             key: neutron_key.clone()
@@ -1385,6 +1381,8 @@ mod test
     fn test_create_node()
     {
         let node = create_node();
+        let result = node.create_sim();
+        assert!( result.is_ok());
         node.shutdown();
     }
 
