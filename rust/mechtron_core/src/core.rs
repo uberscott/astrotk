@@ -16,7 +16,7 @@ lazy_static! {
     pub static ref CORE_SCHEMA_NEUTRON_CREATE: Artifact = CORE.path_and_kind(&"schema/neutron/create.schema", "schema");
     pub static ref CORE_SCHEMA_NEUTRON_STATE : Artifact = CORE.path_and_kind(&"schema/neutron/state.schema", "schema");
 
-    pub static ref CORE_TRONCONFIG_NEUTRON: Artifact = CORE.path_and_kind(&"tron/neutron.yaml", "interface");
-    pub static ref CORE_TRONCONFIG_SIMTRON: Artifact = CORE.path_and_kind(&"tron/sim.yaml", "interface");
+    pub static ref CORE_TRONCONFIG_NEUTRON: Artifact = CORE.path_and_kind(&"tron/neutron.yaml", "tron_config");
+    pub static ref CORE_TRONCONFIG_SIMTRON: Artifact = CORE.path_and_kind(&"tron/sim.yaml", "tron_config");
 }
 

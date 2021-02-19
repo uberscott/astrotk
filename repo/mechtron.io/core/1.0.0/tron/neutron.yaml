@@ -1,6 +1,18 @@
 kind: neutron
 name: Neutron
-content: 
+state: 
   artifact:
-    path: schema/neutron/content.json
+    path: schema/neutron/state.schema
      
+message:
+  inbound:
+    ports:
+    - name: ping
+      artifact:
+        path: schema/util/ping.schema
+  outbound:
+    ports:
+    - name: pong
+      artifact:
+        path: schema/util/pong.schema
+

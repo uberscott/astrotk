@@ -15,9 +15,10 @@
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/configs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/core.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/tron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/tron.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

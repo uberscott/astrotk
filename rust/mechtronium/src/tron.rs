@@ -7,7 +7,7 @@ use no_proto::memory::NP_Memory_Owned;
 use mechtron_core::artifact::Artifact;
 use mechtron_core::buffers;
 use mechtron_core::configs::{
-    Configs, CreateMessageConfig, MessagesConfig, SimConfig, TronConfig,
+    Configs, CreateMessageConfig, MessageConfig, SimConfig, TronConfig,
 };
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, NucleusKey, Revision, StateKey, TronKey};
@@ -24,6 +24,7 @@ pub trait Tron {
     fn create(
         &self,
         info: TronInfo,
+        context: &dyn TronContext,
         state: Arc<Mutex<State>>,
         create: &Message,
     ) -> Result<(Option<Vec<MessageBuilder>>), Error>;
@@ -117,7 +118,7 @@ impl TronShell {
         create: &Message,
     ) -> Result<Option<Vec<Message>>, Error> {
 
-        let mut builders = self.tron.create(info.clone(), state, create)?;
+        let mut builders = self.tron.create(info.clone(), context, state, create)?;
         return self.handle_builders(info.clone(), builders);
     }
 
@@ -162,7 +163,7 @@ pub struct Neutron {}
 pub struct NeutronStateInterface {}
 
 impl NeutronStateInterface {
-    fn add_tron(&self, state: &mut State, key: &TronKey, kind: u8) -> Result<(), Error> {
+    fn add_tron(&self, state: &mut MutexGuard<State>, key: &TronKey, kind: u8) -> Result<(), Error> {
         let index = state.data.get_length(&path!("trons"))?;
         let path = Path::new(path!["trons", index.to_string()]);
         key.append(&path.push(path!["id"]), &mut state.meta);
@@ -173,7 +174,7 @@ impl NeutronStateInterface {
 
     fn set_tron_name(
         &self,
-        state: &mut State,
+        state: &mut MutexGuard<State>,
         name: &str,
         key: &TronKey,
     ) -> Result<(), Error> {
@@ -207,13 +208,13 @@ impl Neutron {
 
         let tron_key = TronKey::new(info.key.nucleus.clone(), Id::new(tron_seq_id,tron_seq));
         let interface = NeutronStateInterface {};
-        interface.add_tron(neutron_state.deref_mut(), &tron_key, 0)?;
+        interface.add_tron(& mut neutron_state, &tron_key, 0)?;
 
         let create_meta = &create.payloads[0].buffer;
         if create_meta.is_set::<String>(&path![&"lookup_name"])?
         {
             let name = create_meta.get::<String>(&path![&"lookup_name"])?;
-            interface.set_tron_name(neutron_state.deref_mut(), name.as_str(), &tron_key);
+            interface.set_tron_name(& mut neutron_state, name.as_str(), &tron_key);
         }
 
         let tron_config = create_meta.get::<String>(&path![&"artifact"])?;
@@ -248,17 +249,19 @@ impl Neutron {
 impl Tron for Neutron {
     fn create(
         &self,
-        context: TronInfo,
+        info: TronInfo,
+        context: &dyn TronContext,
         state: Arc<Mutex<State>>,
         create: &Message,
     ) -> Result<Option<Vec<MessageBuilder>>, Error> {
-        /*
+
+        let mut state = state.lock()?;
 
         let interface = NeutronStateInterface {};
 
         //neutron adds itself to the tron manifest
-        interface.add_tron(state, &context.key, 0)?;
-        interface.set_tron_name(state, "neutron", &context.key)?;
+        interface.add_tron(&mut state, &info.key, 0)?;
+        interface.set_tron_name(&mut state, "neutron", &info.key)?;
 
         if create.payloads[1].buffer.is_set::<String>(&path![&"nucleus_lookup_name"])?
         {
@@ -269,12 +272,12 @@ impl Tron for Neutron {
             builder.to_phase = Option::Some(0);
             builder.kind = Option::Some(MessageKind::Update);
 
-            let factory = context.configs().buffer_factory_keeper.get(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
+            let factory = context.configs().schemas.get(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
             let buffer = factory.new_buffer(Option::None);
             let mut buffer = Buffer::new(buffer);
             let nucleus_lookup_name: String = create.payloads[1].buffer.get(&path!["nucleus_lookup_name"])?;
             buffer.set( &path!["name"],nucleus_lookup_name );
-            context.key.nucleus.append( &Path::just("id"), &mut buffer )?;
+            info.key.nucleus.append(&Path::just("id"), &mut buffer )?;
             let payload = PayloadBuilder{
                 buffer: buffer,
                 artifact: CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE.clone()
@@ -287,8 +290,6 @@ impl Tron for Neutron {
         else{
             Ok(Option::None)
         }
-          */
-        unimplemented!()
     }
 
     fn update(&self, phase: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
@@ -317,8 +318,7 @@ impl CreatePayloadsBuilder {
         tron_config: &TronConfig,
     ) -> Result<Self, Error> {
 
-        /*
-        let meta_factory = configs.buffer_factory_keeper.get(&CORE_CREATE_META)?;
+        let meta_factory = configs.schemas.get(&CORE_SCHEMA_META_CREATE)?;
         let mut meta = Buffer::new(meta_factory.new_buffer(Option::None));
         meta.set(&path![&"artifact"], tron_config.source.to())?;
         let (constructor_artifact, constructor) =
@@ -328,8 +328,6 @@ impl CreatePayloadsBuilder {
             constructor_artifact: constructor_artifact,
             constructor: constructor,
         })
-         */
-        unimplemented!()
     }
     pub fn set_sim_id(&mut self, sim_id: &Id) -> Result<(), Error> {
         sim_id.append(&Path::just("sim_id"), &mut self.constructor)?;
@@ -348,26 +346,23 @@ impl CreatePayloadsBuilder {
     }
 
     fn constructor(
-        configs: &'static Configs,
+        configs: &Configs,
         tron_config: &TronConfig,
     ) -> Result<(Artifact, Buffer), Error> {
-        /*
-        if (&tron_config.messages).is_some() && (&tron_config.messages).unwrap().create.is_some() {
-            let constructor_artifact = tron_config.messages.unwrap().create.unwrap().artifact.clone();
-            let factory = configs.buffer_factory_keeper.get(&constructor_artifact)?;
+        if tron_config.message.as_ref().is_some() && tron_config.message.as_ref().unwrap().create.as_ref().is_some() {
+            let constructor_artifact = tron_config.message.as_ref().unwrap().create.as_ref().unwrap().artifact.clone();
+            let factory = configs.schemas.get(&constructor_artifact)?;
             let constructor = factory.new_buffer(Option::None);
             let constructor = Buffer::new(constructor);
 
             Ok((constructor_artifact, constructor))
         } else {
             let constructor_artifact = CORE_SCHEMA_EMPTY.clone();
-            let factory = configs.buffer_factory_keeper.get(&CORE_SCHEMA_EMPTY)?;
+            let factory = configs.schemas.get(&CORE_SCHEMA_EMPTY)?;
             let constructor = factory.new_buffer(Option::None);
             let constructor = Buffer::new(constructor);
             Ok((constructor_artifact, constructor))
         }
-         */
-        unimplemented!()
     }
 
     pub fn payloads<'configs>(configs: &'configs Configs, builder: CreatePayloadsBuilder) -> Vec<Payload> {

@@ -165,8 +165,8 @@ impl<'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser {
         match result {
             Ok(rtn) => Ok(rtn),
             Err(e) => Err(format!(
-                "could not parse np_factory from artifact: {}",
-                artifact.to()
+                "could not parse np_factory from artifact: {} error: {:?}",
+                artifact.to(), e
             )
             .into()),
         }
@@ -222,7 +222,7 @@ pub struct TronConfig {
     pub nucleus_lookup_name: Option<String>,
     pub source: Artifact,
     pub state: Option<StateConfig>,
-    pub message: Option<MessagesConfig>,
+    pub message: Option<MessageConfig>,
 }
 
 struct TronConfigArtifactCacher;
@@ -230,7 +230,9 @@ struct TronConfigArtifactCacher;
 impl Cacher<TronConfig> for TronConfigArtifactCacher
 {
     fn artifacts(&self, config: Arc<TronConfig>  ) -> Result<Vec<Artifact>,Error> {
+println!("Caching Artifacts!!!");
         let mut rtn = vec!();
+        let config = &config;
         if config.state.is_some()
         {
             rtn.push( config.state.as_ref().unwrap().artifact.clone());
@@ -240,6 +242,22 @@ impl Cacher<TronConfig> for TronConfigArtifactCacher
             if config.message.as_ref().unwrap().create.is_some()
             {
                 rtn.push(config.message.as_ref().unwrap().create.as_ref().unwrap().artifact.clone());
+            }
+
+            if config.as_ref().message.as_ref().unwrap().inbound.is_some()
+            {
+                for inbound in config.as_ref().message.as_ref().unwrap().inbound.as_ref().unwrap()
+                {
+                    rtn.push( inbound.artifact.clone() );
+                }
+            }
+
+            if config.as_ref().message.as_ref().unwrap().outbound.is_some()
+            {
+                for outbound in config.message.as_ref().unwrap().outbound.as_ref().unwrap()
+                {
+                    rtn.push( outbound.artifact.clone() );
+                }
             }
         }
 
@@ -262,8 +280,10 @@ impl Cacher<SimConfig> for SimConfigArtifactCacher
 }
 
 #[derive(Clone)]
-pub struct MessagesConfig {
+pub struct MessageConfig {
     pub create: Option<CreateMessageConfig>,
+    pub inbound: Option<Vec<InboundMessageConfig>>,
+    pub outbound: Option<Vec<OutboundMessageConfig>>,
 }
 
 #[derive(Clone)]
@@ -276,11 +296,11 @@ pub struct CreateMessageConfig {
     pub artifact: Artifact,
 }
 
+
 #[derive(Clone)]
 pub struct InboundMessageConfig {
     pub name: String,
-    pub phase: Option<String>,
-    pub artifact: Vec<Artifact>,
+    pub artifact: Artifact,
 }
 
 #[derive(Clone)]
@@ -322,25 +342,34 @@ pub struct TronConfigRefYaml {
 pub struct TronConfigYaml {
     kind: String,
     name: String,
-    nucleus_lookup_name: Option<String>,
     state: Option<StateConfigYaml>,
-    messages: Option<MessagesConfigYaml>,
+    message: Option<MessageConfigYaml>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct MessagesConfigYaml {
+pub struct MessageConfigYaml {
     create: Option<CreateConfigYaml>,
-    inbound: Option<InboundConfigYaml>,
-    outbound: Option<Vec<OutMessageConfigYaml>>,
+    inbound: Option<PortsYaml<InboundConfigYaml>>,
+    outbound: Option<PortsYaml<OutMessageConfigYaml>>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct PortsYaml<T>
+{
+    ports: Vec<T>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct InboundConfigYaml {
-    ports: Vec<PortConfigYaml>,
+    name: String,
+    artifact: ArtifactYaml
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct OutboundConfigYaml {}
+pub struct OutboundConfigYaml {
+    name: String,
+    artifact: ArtifactYaml,
+}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct CreateConfigYaml {
@@ -363,7 +392,7 @@ pub struct PortConfigYaml {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct OutMessageConfigYaml {
     name: String,
-    artifact: ArtifactYaml,
+    artifact: ArtifactYaml
 }
 
 impl TronConfigYaml {
@@ -379,14 +408,48 @@ impl TronConfigYaml {
             source: artifact.clone(),
             name: self.name.clone(),
 
-            message: match &self.messages {
+            message: match &self.message {
                 None => Option::None,
-                Some(messages) => Option::Some(MessagesConfig {
+                Some(messages) => Option::Some(MessageConfig {
                     create: match &messages.create {
                         None => Option::None,
                         Some(create) => Option::Some(CreateMessageConfig {
                             artifact: create.artifact.to_artifact(default_bundle, Option::Some("schema"))?,
                         }),
+                    },
+                    inbound: match &messages.inbound{
+                        None => Option::None,
+                        Some(inbounds) => Option::Some(
+                            inbounds.ports.iter().map(|inbound|->Result<InboundMessageConfig,Error>{
+                               Ok(InboundMessageConfig{
+                                   name: inbound.name.clone(),
+                                   artifact: inbound.artifact.to_artifact(default_bundle, Option::Some("schema"))?
+                               })
+                            }).filter(|r|{
+                                if r.is_err(){
+                                    println!("error processing inbound" )
+                                }
+
+                                r.is_ok()}).map(|r|r.unwrap()).collect()
+                        ),
+                    },
+                    outbound: match &messages.outbound{
+                        None => Option::None,
+                        Some(inbounds) => Option::Some(
+                            inbounds.ports.iter().map(|outbound|->Result<OutboundMessageConfig,Error>{
+                                Ok(OutboundMessageConfig{
+                                    name: outbound.name.clone(),
+                                    artifact: outbound.artifact.to_artifact(default_bundle, Option::Some("schema"))?
+                                })
+                            }).filter(|r|
+
+                                                                      {
+                                if r.is_err(){
+                                    println!("error processing outbound" )
+                                }
+
+                                r.is_ok()}).map(|r|r.unwrap()).collect()
+                    ),
                     },
                 }),
             },
