@@ -1,140 +1,105 @@
-use crate::artifact::FileSystemArtifactRepository;
-use crate::router::{GlobalRouter, Router};
-use crate::nucleus::{Nuclei, Nucleus};
-use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{Configs, Keeper, Parser};
-use mechtron_core::id::{Id, IdSeq};
 use std::alloc::System;
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use wasmer::{Cranelift, Module, Store, JIT};
-use std::cell::{Cell, RefCell};
-use crate::error::Error;
-use std::borrow::{BorrowMut, Borrow};
+
+use wasmer::{Cranelift, JIT, Module, Store};
+
+use mechtron_core::artifact::Artifact;
+use mechtron_core::configs::{Configs, Keeper, Parser, SimConfig};
+use mechtron_core::id::{Id, IdSeq};
 use mechtron_core::message::Message;
+
+use crate::artifact::FileSystemArtifactRepository;
+use crate::cache::Cache;
+use crate::error::Error;
+use crate::nucleus::{Nuclei, Nucleus};
+use crate::router::{GlobalRouter, LocalRouter, Router};
 
 pub struct Node<'configs> {
     pub local: Local<'configs>,
     pub net: Arc<Network>,
+    pub cache: Arc<Cache<'configs>>
 }
+
 
 impl <'configs> Node<'configs> {
 
     pub fn new<'get>() -> Node<'get> {
+        let seq = Arc::new(IdSeq::new(0));
         let network = Arc::new(Network::new());
+        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
+        let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
+        let configs = Configs::new(repo.clone());
+        let wasms = Keeper::new(
+            repo.clone(),
+            Box::new(WasmModuleParser {
+                wasm_store: wasm_store.clone(),
+            },
+            ),
+            Option::None);
+        let local_router = Arc::new(LocalRouter {});
+
+        let cache = Arc::new(Cache {
+            wasm_store: wasm_store,
+            configs: configs,
+            wasms: wasms,
+        });
+
+
         let mut rtn = Node {
-            local: Local::new(network.clone() ),
-            net: network.clone()
+            cache: cache.clone(),
+            local: Local::new(cache.clone(), seq.clone(), local_router.clone()),
+            net: network.clone(),
         };
         rtn
     }
 
+    pub fn shutdown(&self) {}
 
-    pub fn local<'get>(&'get self) -> &'get Local<'configs> {
-        &self.local
+    pub fn create_sim(&self, config: &SimConfig ) -> Result<Id, Error>
+    {
+        let sim_id = self.net.seq.next();
+
+        self.local.nuclei.create(sim_id, Option::Some("simulation".to_string()));
+
+        Ok(sim_id)
     }
-
-    pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
-        &self.local().configs()
-    }
-
-    pub fn net(&self) -> &Network {
-        &self.net
-    }
-
 }
 
-impl <'configs> Drop for Node<'configs>
+impl<'configs> Drop for Node<'configs>
 {
     fn drop(&mut self) {
+        println!("DROPING NODE!");
         self.local.destroy();
     }
 }
 
-impl <'configs> NodeContext for Node<'configs>{
-
-}
-
-trait NodeContext
-{
-
-}
-
 pub struct Local<'configs> {
-    wasm_store: Arc<Store>,
-    configs: Configs<'configs>,
-    wasms: Keeper<Module>,
     nuclei: Nuclei<'configs>,
-    net: Arc<Network>
+    router: Arc<dyn Router>
 }
 
 impl <'configs> Local <'configs>{
-    fn new(network: Arc<Network>) -> Self {
-        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
-        let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
-
-
-        let rtn  = Local {
-            net: network,
-            wasm_store: wasm_store.clone(),
-            configs: Configs::new(repo.clone() ),
-            wasms: Keeper::new(
-                repo.clone(),
-                Box::new(WasmModuleParser {
-                    wasm_store: wasm_store.clone(),
-                },
-                ),
-                Option::None
-            ),
-            nuclei: Nuclei::new(),
+    fn new(cache: Arc<Cache<'configs>>, seq: Arc<IdSeq>, router: Arc<LocalRouter>) -> Self {
+        let rtn = Local {
+            nuclei: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
+            router: router.clone(),
         };
 
         rtn
     }
 
-    pub fn nuclei<'get>(&'get self)->&'get Nuclei<'configs>
-    {
-        //&self.nuclei.into_inner()
-        unimplemented!()
-    }
-
-    pub fn node(&'configs self) -> Arc<Node<'configs>>
-    {
-    //    self.node.swap()
-        unimplemented!()
-    }
-
-    fn init(&'configs self, node: &'configs Node<'configs>) ->Result<(),Error> {
-        self.nuclei.init(self);
-        Ok(())
-    }
-
-    fn cache_core(&mut self)->Result<(),Error>
-    {
-        self.configs.cache_core()?;
-        Ok(())
-    }
-
-    pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
-        &self.configs
-    }
-
-    pub fn router<'get>(&'get self)->&'get (dyn Router+'configs)
-    {
-        return self
-    }
-
-    pub fn destroy(& mut self)
+    pub fn destroy(&mut self)
     {
 //        self.router = Option::None;
     }
 }
 
-impl <'configs> Router for Local<'configs>
+impl<'configs> Router for Local<'configs>
 {
-    fn send(&self, message: Arc<Message>) {
-        unimplemented!()
-    }
+    fn send(&self, message: Arc<Message>) {}
 }
 
 #[derive(Clone)]
@@ -142,12 +107,11 @@ pub struct NucleusContext<'context> {
     sys: Arc<Node<'context>>,
 }
 
-impl <'context> NucleusContext <'context>{
+impl<'context> NucleusContext<'context> {
     pub fn new(sys: Arc<Node<'context>>) -> Self {
         NucleusContext { sys: sys }
     }
     pub fn sys<'get>(&'get self) -> Arc<Node<'context>> {
-
         self.sys.clone()
     }
 }
@@ -156,6 +120,13 @@ pub struct Network {
     seq: Arc<IdSeq>,
 }
 
+pub struct WasmStuff
+{
+    pub wasm_store: Arc<Store>,
+    pub wasms: Keeper<Module>,
+}
+
+
 impl Network {
     fn new() -> Self {
         Network {
@@ -163,7 +134,7 @@ impl Network {
         }
     }
 
-    pub fn seq(&self)-> Arc<IdSeq>
+    pub fn seq(&self) -> Arc<IdSeq>
     {
         self.seq.clone()
     }

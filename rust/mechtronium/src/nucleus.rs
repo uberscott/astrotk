@@ -1,5 +1,5 @@
 use std::{fmt, io};
-use std::borrow::BorrowMut;
+use std::borrow::{BorrowMut, Borrow};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
@@ -20,50 +20,31 @@ use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payloa
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State};
 
 use crate::error::Error;
-use crate::node::{Local, Node, NucleusContext};
+use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{PhasicStateStructure, StateHistory};
 use crate::router::Router;
 use crate::tron::{CreatePayloadsBuilder, init_tron, Neutron, Tron, TronInfo, TronShell};
-use no_proto::idl::JS_AST::number;
+use crate::cache::Cache;
 
 pub struct Nuclei<'nuclei> {
-    local: Cell<Option<&'nuclei Local<'nuclei>>>,
     nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
+    context: NucleusContext<'nuclei>
 }
 
 impl<'nuclei> Nuclei<'nuclei> {
-    pub fn new() -> Self {
+
+    pub fn new(cache: Arc<Cache<'nuclei>>,
+               seq: Arc<IdSeq>,
+               router: Arc<dyn Router>) -> Self {
         Nuclei {
             nuclei: RwLock::new(HashMap::new()),
-            local: Cell::new(Option::None)
+            context: NucleusContext{
+                cache: cache,
+                seq: seq,
+                router: router
+            }
         }
-    }
-
-    pub fn init(&self, local: &'nuclei Local<'nuclei>)->Result<(),Error> {
-        self.local.set( Option::Some(local));
-        Ok(())
-    }
-
-    fn router<'get>(&'get self)->&'get (dyn Router+'nuclei)
-    {
-        self.local()
-    }
-
-
-    fn local(&self)->&'nuclei Local<'nuclei>
-    {
-        self.local.get().expect("nucleus must be initialized before it can be used: Nucleus.init()")
-    }
-
-    fn configs(&self)->&'nuclei Configs<'nuclei>
-    {
-        self.local().configs()
-    }
-
-    fn node(&self)->Arc<Node<'nuclei>>
-    {
-        self.local().node()
     }
 
     pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus<'nuclei>>, Error> {
@@ -80,23 +61,21 @@ impl<'nuclei> Nuclei<'nuclei> {
         return Ok(nucleus.clone());
     }
 
-    pub fn add(&'nuclei self, id:Id, sim_id: Id, lookup_name: Option<String>) -> Result<(), Error> {
+
+    pub fn create(&self, sim_id: Id, lookup_name: Option<String>) -> Result<Id, Error> {
+        let id = self.context.seq.next();
+        let mut nucleus:Nucleus<'nuclei> = Nucleus::new( id, sim_id, self.context.clone() )?;
+
+        nucleus.bootstrap(lookup_name)?;
+
         let mut sources = self.nuclei.write()?;
-        let nucleus = Nucleus::new( id, sim_id, lookup_name, self )?;
-        sources.insert(nucleus.id.clone(), Arc::new(nucleus));
-        Ok(())
+        sources.insert(nucleus.info.id.clone(),Arc::new(nucleus) );
+        Ok(id)
     }
 }
 
-pub struct Nucleus<'nucleus> {
-    id: Id,
-    sim_id: Id,
-    state: StateHistory,
-    messaging: CyclicMessagingStructure,
-    head: Revision,
-    nuclei: &'nucleus Nuclei<'nucleus>,
-    lookup_name: Option<String>
-}
+
+
 
 fn timestamp() -> Result<u64, Error> {
     let since_the_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
@@ -106,67 +85,29 @@ fn timestamp() -> Result<u64, Error> {
     return Ok(timestamp);
 }
 
-impl <'nucleus> Nucleus<'nucleus> {
-    fn new(
-        id: Id,
-        sim_id: Id,
-        lookup_name: Option<String>,
-        nuclei: &'nucleus Nuclei<'nucleus>
-    ) -> Result<Self, Error> {
+#[derive(Clone)]
+pub struct NucleusInfo
+{
+    pub id : Id,
+    pub sim_id: Id
+}
 
-        let mut nucleus = Nucleus {
-            id: id,
-            sim_id: sim_id,
-            state: StateHistory::new(),
-            messaging: CyclicMessagingStructure::new(),
-            head: Revision { cycle: 0 },
-            lookup_name: lookup_name,
-            nuclei: nuclei
-        };
+#[derive(Clone)]
+pub struct NucleusContext<'context>
+{
+    pub cache: Arc<Cache<'context>>,
+    pub seq: Arc<IdSeq>,
+    pub router: Arc<dyn Router>,
+}
 
-        Ok(nucleus)
-    }
-
-
-    fn bootstrap(&mut self) -> Result<(), Error> {
-        let mut states = vec!();
-        let mut messages= vec!();
-        {
-            let mut nucleus_cycle = NucleusCycle::init(self.id.clone(), self, self.head.clone())?;
-
-            nucleus_cycle.bootstrap();
-
-            let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
-            for state in tmp_states
-            {
-                states.push(state);
-            }
-            for message in tmp_messages
-            {
-                messages.push(message);
-            }
-        }
-
-        for (key, state) in states {
-            self.state.intake(state, key)?;
-        }
-
-        for message in messages {
-            let router = self.nuclei.router();
-            router.send(message);
-        }
-
-        self.head.cycle = self.head.cycle+1;
-        println!("NUCLEUS CREATED");
-        Ok(())
-    }
-
+impl <'context> NucleusContext<'context>
+{
     pub fn tron_info_for(
         &self,
         key: TronKey,
         artifact: &Artifact,
     ) -> Result<TronInfo, Error> {
-        let configs = self.configs();
+        let configs = &self.cache.configs;
         let tron_config_keeper = &configs.trons;
         let config = tron_config_keeper.get(&artifact)?;
 
@@ -176,33 +117,84 @@ impl <'nucleus> Nucleus<'nucleus> {
             config: config,
         })
     }
+}
 
+pub struct Nucleus<'nucleus> {
+    info: NucleusInfo,
+    state: Arc<StateHistory>,
+    messaging: CyclicMessagingStructure,
+    head: Revision,
+    context: NucleusContext<'nucleus>
+}
 
-    fn local(&self) -> &'nucleus Local<'nucleus>
-    {
-        self.nuclei.local()
-    }
+impl <'nucleus> Nucleus<'nucleus> {
+    fn new(
+        id: Id,
+        sim_id: Id,
+        context: NucleusContext<'nucleus>
+    ) -> Result<Self, Error> {
 
-    fn configs(&self)->&'nucleus Configs<'nucleus>
-    {
-        self.nuclei.local().configs()
-    }
+        let mut nucleus = Nucleus {
+            info: NucleusInfo{
+                id: id,
+                sim_id: sim_id
+            },
+            state: Arc::new(StateHistory::new()),
+            messaging: CyclicMessagingStructure::new(),
+            head: Revision { cycle: 0 },
+            context: context
+        };
 
-    fn router<'get>(&'get self)->&'get (dyn Router+'nucleus)
-    {
-        self.nuclei.router()
-    }
-
-    fn seq(&self)->Arc<IdSeq>
-    {
-        self.nuclei.local().node().net().seq()
+        Ok(nucleus)
     }
 
     pub fn intake_message(&mut self, message: Message) {
         self.messaging.intake(message, CycleMessagingContext{ head: self.head.cycle  });
     }
 
-    pub fn revise(&mut self, from: Revision, to: Revision) -> Result<(), Error> {
+
+
+    fn bootstrap(&self, lookup_name: Option<String>) -> Result<(), Error> {
+        let mut states = vec!();
+        let mut messages= vec!();
+        {
+
+            let mut nucleus_cycle= NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone())?;
+//            let mut nucleus_cycle:NucleusCycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), nucleus_data)?;
+
+//            nucleus_cycle.bootstrap(lookup_name);
+
+            //let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
+            /*
+            let (tmp_states, tmp_messages) = vec!();
+            for state in tmp_states
+            {
+                states.push(state);
+            }
+            for message in tmp_messages
+            {
+                messages.push(message);
+            }
+
+             */
+        }
+
+        for (key, state) in states {
+                self.state.intake(state, key)?;
+        }
+
+        for message in messages {
+            let router = self.context.router.clone();
+            router.send(message);
+        }
+
+//        self.head.cycle = self.head.cycle+1;
+        println!("NUCLEUS CREATED");
+        Ok(())
+    }
+
+
+    pub fn revise(&'nucleus mut self, from: Revision, to: Revision) -> Result<(), Error> {
         if from.cycle != to.cycle - 1 {
             return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
         }
@@ -210,7 +202,8 @@ impl <'nucleus> Nucleus<'nucleus> {
         let mut states = vec!();
         let mut messages= vec!();
         {
-            let mut nucleus_cycle = NucleusCycle::init(self.id.clone(), self, to.clone())?;
+
+            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), to.clone(), self.state.clone())?;
 
             for message in self.messaging.query(to.cycle)? {
                 nucleus_cycle.intake_message(message)?;
@@ -246,7 +239,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         }
 
         for message in messages {
-            let router = self.router();
+            let router = &self.context.router;
             router.send(message );
         }
 
@@ -254,31 +247,40 @@ impl <'nucleus> Nucleus<'nucleus> {
     }
 }
 
+struct NucleusData<'cycle>
+{
+    state: &'cycle StateHistory,
+    messaging: &'cycle CyclicMessagingStructure
+}
 
-struct NucleusCycle<'cycle,'nucleus> {
-    nucleus: &'cycle Nucleus<'nucleus>,
-    id: Id,
+struct NucleusCycle<'cycle> {
+    info: NucleusInfo,
     state: PhasicStateStructure,
     messaging: PhasicMessagingStructure,
     outbound: OutboundMessaging,
     phase: u8,
     revision: Revision,
+    context: NucleusContext<'cycle>,
+    history: Arc<StateHistory>
 }
 
-impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
-    fn init<'error>(
-        id: Id,
-        nucleus: &'cycle Nucleus<'nucleus>,
-        revision: Revision
+impl<'cycle> NucleusCycle<'cycle> {
+    fn init(
+        info: NucleusInfo,
+        context: NucleusContext<'cycle>,
+        revision: Revision,
+        history: Arc<StateHistory>
+
     ) -> Result<Self, Error> {
         Ok(NucleusCycle {
-            nucleus: nucleus,
-            id: id,
+            context: context,
+            info: info,
             state: PhasicStateStructure::new(),
             messaging: PhasicMessagingStructure::new(),
             outbound: OutboundMessaging::new(),
             revision: revision,
             phase: 0,
+            history:history
         })
     }
 
@@ -289,12 +291,12 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
     }
 
 
-    fn bootstrap(&mut self) -> Result<(), Error> {
-        let mut seq = self.nucleus.seq();
+    fn bootstrap(&mut self, lookup_name: Option<String>) -> Result<(), Error> {
+        let mut seq = self.context.seq.clone();
 
         let timestamp = timestamp()?;
 
-        let neutron_key = TronKey::new(self.id.clone(), Id::new(self.id.seq_id, 0));
+        let neutron_key = TronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0));
 
         let configs = self.configs();
         let tron_config_keeper = &configs.trons;
@@ -308,10 +310,10 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
 
         let mut neutron_create_payload_builder =
             CreatePayloadsBuilder::new(configs, &info.config)?;
-        neutron_create_payload_builder.set_sim_id(&self.nucleus.sim_id);
+        neutron_create_payload_builder.set_sim_id(&self.info.sim_id);
 
-        if self.nucleus.lookup_name.is_some() {
-            neutron_create_payload_builder.set_lookup_name(&self.nucleus.lookup_name.as_ref().unwrap());
+        if lookup_name.is_some() {
+            neutron_create_payload_builder.set_lookup_name(&lookup_name.as_ref().unwrap());
         }
 
         let create = Message::multi_payload(
@@ -385,7 +387,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
         let mut rtn = self.state.get(key)?;
         let mut state = rtn.lock()?;
         let artifact = state.get_artifact()?;
-        let tron_config = self.nucleus.configs().trons.get(&artifact)?;
+        let tron_config = self.context.cache.configs.trons.get(&artifact)?;
         let tron_shell = TronShell::new(init_tron(&tron_config)?);
 
         let context = TronInfo {
@@ -423,7 +425,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
 
         let mut neutron_state = self.state.get(&neutron_state_key.tron)?;
 
-        let info = self.nucleus.tron_info_for(message.to.tron.clone(), &CORE_TRONCONFIG_NEUTRON)?;
+        let info = self.context.tron_info_for(message.to.tron.clone(), &CORE_TRONCONFIG_NEUTRON)?;
         let neutron = Neutron {};
         neutron.create_tron(info, self, neutron_state, message);
 
@@ -442,9 +444,9 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
     }
 }
 
-pub trait TronContext
+pub trait TronContext<'cycle>
 {
-    fn configs(&self) -> &Configs;
+    fn configs<'get>(&'get self) -> &'get Configs<'cycle>;
     fn get_state(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error>;
     fn lookup_nucleus(&self, context: &TronInfo, name: &str) -> Result<Id, Error>;
     fn lookup_tron(&self, context: &TronInfo, nucleus_id: &Id, name: &str) -> Result<TronKey, Error>;
@@ -452,15 +454,16 @@ pub trait TronContext
     fn timestamp(&self) -> u64;
 }
 
-pub trait NeutronContext: TronContext
+pub trait NeutronContext<'cycle>: TronContext<'cycle>
 {
     fn create(&mut self, key:TronKey, config: Artifact, state: Arc<Mutex<State>>, create: &Message ) ->Result<(),Error>;
 }
 
-impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
+impl<'cycle> TronContext<'cycle> for NucleusCycle<'cycle>
 {
-    fn configs(&self) -> &Configs {
-        unimplemented!()
+
+    fn configs<'get>(&'get self) -> &'get Configs<'cycle> {
+        self.context.cache.configs.borrow()
     }
 
 
@@ -468,7 +471,7 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
         if key.revision.cycle >= self.revision.cycle {
             return Err(format!("attempted to read the state of tron {:?} in a present or future cycle, which is not allowed", key).into());
         }
-        let state = &self.nucleus.state;
+        let state = &self.history;
         let state = state.read_only(key)?;
         Ok(state)
     }
@@ -485,7 +488,7 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
             },
         };
 
-        let neutron_state = self.nucleus.state.get(&state_key)?;
+        let neutron_state = self.history.get(&state_key)?;
 
         let simulation_nucleus_id = Id::new(
             neutron_state
@@ -507,7 +510,7 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
                 cycle: self.revision.cycle - 1,
             },
         };
-        let simtron_state = self.nucleus.state.get(&state_key)?;
+        let simtron_state = self.history.get(&state_key)?;
 
         let nucleus_id = Id::new(
             simtron_state
@@ -537,7 +540,7 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
                 cycle: self.revision.cycle - 1,
             },
         };
-        let neutron_state = self.nucleus.state.get(&state_key)?;
+        let neutron_state = self.history.get(&state_key)?;
         let tron_id = Id::new(
             neutron_state
                 .data
@@ -565,7 +568,7 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
     }
 }
 
-impl<'cycle, 'nucleus> NeutronContext for NucleusCycle<'cycle, 'nucleus>
+impl<'cycle> NeutronContext<'cycle> for NucleusCycle<'cycle>
 {
     fn create(&mut self, key: TronKey, config: Artifact, mut state: Arc<Mutex<State>>, create: &Message) -> Result<(), Error>
 
@@ -591,7 +594,7 @@ impl<'cycle, 'nucleus> NeutronContext for NucleusCycle<'cycle, 'nucleus>
 
 
 
-impl<'cycle, 'nucleus> Router for NucleusCycle<'cycle, 'nucleus> {
+impl<'cycle> Router for NucleusCycle<'cycle> {
     fn send(&self, message: Arc<Message>) {
         unimplemented!()
         /*
@@ -1196,7 +1199,7 @@ mod state
             }
         }
 
-        pub fn intake(&mut self, state: Arc<Mutex<State>>, key: StateKey) -> Result<(), Error> {
+        pub fn intake(&self, state: Arc<Mutex<State>>, key: StateKey) -> Result<(), Error> {
             let state = state.lock()?;
             let state = state.read_only()?;
             let mut history = self.history.write()?;
@@ -1370,6 +1373,7 @@ mod test
     use crate::node::Node;
     use std::sync::Arc;
     use std::cell::RefCell;
+    use mechtron_core::id::Id;
 
     fn create_node<'get>() ->Node<'get>
     {
@@ -1380,9 +1384,8 @@ mod test
     #[test]
     fn test_create_node()
     {
-        let mut node = create_node();
-        node.local();
-
+        let node = create_node();
+        node.shutdown();
     }
 
 }
