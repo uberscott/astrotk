@@ -1,6 +1,6 @@
 use std::{fmt, io};
 use std::borrow::BorrowMut;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::rc::Rc;
@@ -25,6 +25,7 @@ use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, O
 use crate::nucleus::state::{PhasicStateStructure, StateHistory};
 use crate::router::Router;
 use crate::tron::{CreatePayloadsBuilder, init_tron, Neutron, Tron, TronInfo, TronShell};
+use no_proto::idl::JS_AST::number;
 
 pub struct Nuclei<'nuclei> {
     local: Cell<Option<&'nuclei Local<'nuclei>>>,
@@ -44,6 +45,12 @@ impl<'nuclei> Nuclei<'nuclei> {
         Ok(())
     }
 
+    fn router<'get>(&'get self)->&'get (dyn Router+'nuclei)
+    {
+        self.local()
+    }
+
+
     fn local(&self)->&'nuclei Local<'nuclei>
     {
         self.local.get().expect("nucleus must be initialized before it can be used: Nucleus.init()")
@@ -54,7 +61,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         self.local().configs()
     }
 
-    fn node(&self)->&'nuclei Node<'nuclei>
+    fn node(&self)->Arc<Node<'nuclei>>
     {
         self.local().node()
     }
@@ -145,9 +152,8 @@ impl <'nucleus> Nucleus<'nucleus> {
         }
 
         for message in messages {
-            let mut node = self.node();
-            let router = node.router();
-            router.send(message );
+            let router = self.nuclei.router();
+            router.send(message);
         }
 
         self.head.cycle = self.head.cycle+1;
@@ -182,9 +188,9 @@ impl <'nucleus> Nucleus<'nucleus> {
         self.nuclei.local().configs()
     }
 
-    fn node(&self)->&'nucleus Node<'nucleus>
+    fn router<'get>(&'get self)->&'get (dyn Router+'nucleus)
     {
-        &self.nuclei.local().node()
+        self.nuclei.router()
     }
 
     fn seq(&self)->Arc<IdSeq>
@@ -240,15 +246,12 @@ impl <'nucleus> Nucleus<'nucleus> {
         }
 
         for message in messages {
-            let mut node = self.node();
-            let router = node.router();
+            let router = self.router();
             router.send(message );
         }
 
         Ok(())
     }
-
-
 }
 
 
@@ -335,7 +338,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
 
         let neutron_config = configs.trons.get(&CORE_TRONCONFIG_NEUTRON)?;
         let neutron = TronShell::new(init_tron(&info.config)?);
-        neutron.create(info.clone(), self, state.clone(), Arc::new(create)  );
+        neutron.create(info.clone(), self, state.clone(), &create  );
 
         self.state.add(info.key.clone(), state);
 
@@ -374,7 +377,6 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
             Err(e) => self.panic(Box::new(e))
         }
     }
-
 
     fn tron(
         &mut self,
@@ -423,7 +425,7 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
 
         let info = self.nucleus.tron_info_for(message.to.tron.clone(), &CORE_TRONCONFIG_NEUTRON)?;
         let neutron = Neutron {};
-//        neutron.create_tron(info, neutron_state, message);
+        neutron.create_tron(info, self, neutron_state, message);
 
         Ok(())
     }
@@ -440,13 +442,6 @@ impl<'cycle,'nucleus> NucleusCycle<'cycle,'nucleus> {
     }
 }
 
-pub enum ApiKind
-{
-    Create,
-    Read,
-    Lookup
-}
-
 pub trait TronContext
 {
     fn configs(&self) -> &Configs;
@@ -455,7 +450,11 @@ pub trait TronContext
     fn lookup_tron(&self, context: &TronInfo, nucleus_id: &Id, name: &str) -> Result<TronKey, Error>;
     fn revision(&self) -> &Revision;
     fn timestamp(&self) -> u64;
-    fn create(&mut self, key:TronKey, config: Artifact, state: Arc<Mutex<State>>, create: Arc<Message> ) ->Result<(),Error>;
+}
+
+pub trait NeutronContext: TronContext
+{
+    fn create(&mut self, key:TronKey, config: Artifact, state: Arc<Mutex<State>>, create: &Message ) ->Result<(),Error>;
 }
 
 impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
@@ -556,24 +555,6 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
         Ok(tron_key)
     }
 
-    fn create(&mut self, key:TronKey, config: Artifact, mut state: Arc<Mutex<State>>, create: Arc<Message> ) ->Result<(),Error>
-
-    {
-        let config = self.configs().trons.get(&config)?;
-        let tron = init_tron(&config)?;
-        let tron = TronShell::new(tron);
-
-        let info = TronInfo{
-            config: config,
-            key: key
-        };
-
-        tron.create(info, self, state.clone(), create )?;
-
-        self.state.add( key, state );
-
-        Ok(())
-    }
 
     fn revision(&self) -> &Revision {
         &self.revision
@@ -582,8 +563,28 @@ impl<'cycle, 'nucleus> TronContext for NucleusCycle<'cycle, 'nucleus>
     fn timestamp(&self) -> u64 {
         0
     }
+}
 
+impl<'cycle, 'nucleus> NeutronContext for NucleusCycle<'cycle, 'nucleus>
+{
+    fn create(&mut self, key: TronKey, config: Artifact, mut state: Arc<Mutex<State>>, create: &Message) -> Result<(), Error>
 
+    {
+        let config = self.configs().trons.get(&config)?;
+        let tron = init_tron(&config)?;
+        let tron = TronShell::new(tron);
+
+        let info = TronInfo {
+            config: config,
+            key: key
+        };
+
+        tron.create(info, self, state.clone(), create)?;
+
+        self.state.add(key, state);
+
+        Ok(())
+    }
 }
 
 
@@ -1119,7 +1120,25 @@ mod message
             assert!(cyclic_messaging.drain(&2).unwrap().is_none());
         }
     }
+
+    #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+    pub enum IntraPhasicStep
+    {
+        Message,
+        Update,
+        Create,
+        Destroy
+    }
+
+
+    #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+    struct IntraPhasicKey
+    {
+        step: IntraPhasicStep,
+        phase: u8
+    }
 }
+
 
 mod state
 {
@@ -1343,12 +1362,30 @@ mod state
 
 }
 
-pub enum IntraPhasicStep
+
+
+#[cfg(test)]
+mod test
 {
-    Create,
+    use crate::node::Node;
+    use std::sync::Arc;
+    use std::cell::RefCell;
+
+    fn create_node<'get>() ->Node<'get>
+    {
+        let node = Node::new();
+        node
+    }
+
+    #[test]
+    fn test_create_node()
+    {
+        let mut node = create_node();
+        node.local();
+
+    }
 
 }
-
 
 
 

@@ -38,6 +38,8 @@ impl<'config> Configs<'config> {
             ),
         };
 
+        configs.cache_core();
+
         return configs;
     }
 

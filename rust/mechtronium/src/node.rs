@@ -8,55 +8,46 @@ use std::alloc::System;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, Module, Store, JIT};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use crate::error::Error;
+use std::borrow::{BorrowMut, Borrow};
+use mechtron_core::message::Message;
 
 pub struct Node<'configs> {
     pub local: Local<'configs>,
-    pub net: Network,
-    pub router: GlobalRouter<'configs>,
+    pub net: Arc<Network>,
 }
 
 impl <'configs> Node<'configs> {
 
-
-    fn new() -> Self {
-        let rtn = Node {
-            local: Local::new(),
-            net: Network::new(),
-            router: GlobalRouter::new(),
+    pub fn new<'get>() -> Node<'get> {
+        let network = Arc::new(Network::new());
+        let mut rtn = Node {
+            local: Local::new(network.clone() ),
+            net: network.clone()
         };
-
-        //rtn.init()
-
         rtn
     }
 
-    fn init(&'configs mut self) {
-        self.local.configs.cache_core();
-        self.local.init(self);
-    }
 
     pub fn local<'get>(&'get self) -> &'get Local<'configs> {
         &self.local
     }
 
     pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
-        &self.local.configs()
+        &self.local().configs()
     }
 
     pub fn net(&self) -> &Network {
         &self.net
     }
 
-    pub fn router<'get>(&'get self) -> &'get dyn Router
-    {
-        &self.router
-    }
+}
 
-    pub fn as_context(&'configs self)-> Box<&'configs dyn NodeContext>
-    {
-       return Box::new(self);
+impl <'configs> Drop for Node<'configs>
+{
+    fn drop(&mut self) {
+        self.local.destroy();
     }
 }
 
@@ -74,18 +65,17 @@ pub struct Local<'configs> {
     configs: Configs<'configs>,
     wasms: Keeper<Module>,
     nuclei: Nuclei<'configs>,
-    node: Cell<Option<&'configs Node<'configs>>>,
+    net: Arc<Network>
 }
 
-
 impl <'configs> Local <'configs>{
-    fn new() -> Self {
+    fn new(network: Arc<Network>) -> Self {
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
 
 
         let rtn  = Local {
-            node: Cell::new(Option::None),
+            net: network,
             wasm_store: wasm_store.clone(),
             configs: Configs::new(repo.clone() ),
             wasms: Keeper::new(
@@ -96,7 +86,7 @@ impl <'configs> Local <'configs>{
                 ),
                 Option::None
             ),
-            nuclei: Nuclei::new()
+            nuclei: Nuclei::new(),
         };
 
         rtn
@@ -108,13 +98,13 @@ impl <'configs> Local <'configs>{
         unimplemented!()
     }
 
-    pub fn node(&'configs self) -> &Node<'configs>
+    pub fn node(&'configs self) -> Arc<Node<'configs>>
     {
-        self.node.get().unwrap()
+    //    self.node.swap()
+        unimplemented!()
     }
 
     fn init(&'configs self, node: &'configs Node<'configs>) ->Result<(),Error> {
-        self.node.set(Option::Some(node) );
         self.nuclei.init(self);
         Ok(())
     }
@@ -127,6 +117,23 @@ impl <'configs> Local <'configs>{
 
     pub fn configs<'get>(&'get self) -> &'get Configs<'configs> {
         &self.configs
+    }
+
+    pub fn router<'get>(&'get self)->&'get (dyn Router+'configs)
+    {
+        return self
+    }
+
+    pub fn destroy(& mut self)
+    {
+//        self.router = Option::None;
+    }
+}
+
+impl <'configs> Router for Local<'configs>
+{
+    fn send(&self, message: Arc<Message>) {
+        unimplemented!()
     }
 }
 

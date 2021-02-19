@@ -15,7 +15,7 @@ use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, Payl
 use mechtron_core::state::{ReadOnlyState, State};
 
 use crate::node::Node;
-use crate::nucleus::{Nucleus, TronContext, ApiKind};
+use crate::nucleus::{Nucleus, TronContext, NeutronContext};
 use mechtron_core::buffers::{Buffer, Path};
 use crate::error::Error;
 use std::ops::DerefMut;
@@ -25,7 +25,7 @@ pub trait Tron {
         &self,
         info: TronInfo,
         state: Arc<Mutex<State>>,
-        create: Arc<Message>,
+        create: &Message,
     ) -> Result<(Option<Vec<MessageBuilder>>), Error>;
 
     fn update(
@@ -48,7 +48,7 @@ pub trait Tron {
             info: TronInfo,
             context: &dyn TronContext,
             state: Arc<Mutex<State>>,
-            message: Arc<Message>,
+            messages: Vec<&Message>,
         ) -> Result<Option<Vec<MessageBuilder>>, Error>,
         Error,
     >;
@@ -114,7 +114,7 @@ impl TronShell {
         info: TronInfo,
         context: &dyn TronContext,
         state:  Arc<Mutex<State>>,
-        create: Arc<Message>,
+        create: &Message,
     ) -> Result<Option<Vec<Message>>, Error> {
 
         let mut builders = self.tron.create(info.clone(), state, create)?;
@@ -126,10 +126,10 @@ impl TronShell {
         info: TronInfo,
         context: &dyn TronContext,
         state: Arc<Mutex<State>>,
-        message: Arc<Message>,
+        messages: Vec<&Message>,
     ) -> Result<Option<Vec<Message>>, Error> {
         let func = self.tron.port(&"blah")?;
-        let builders = func(info.clone(), context, state, message)?;
+        let builders = func(info.clone(), context, state, messages)?;
 
         return self.handle_builders(info , builders);
     }
@@ -194,9 +194,9 @@ impl Neutron {
     pub fn create_tron(
         &self,
         info: TronInfo,
-        context: &mut dyn TronContext,
+        context: &mut dyn NeutronContext,
         state: Arc<Mutex<State>>,
-        create: Arc<Message>,
+        create: &Message,
     ) -> Result<(), Error> {
         let mut neutron_state = state.lock()?;
 
@@ -250,7 +250,7 @@ impl Tron for Neutron {
         &self,
         context: TronInfo,
         state: Arc<Mutex<State>>,
-        create: Arc<Message>,
+        create: &Message,
     ) -> Result<Option<Vec<MessageBuilder>>, Error> {
         /*
 
@@ -295,7 +295,7 @@ impl Tron for Neutron {
         unimplemented!()
     }
 
-    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>, Arc<Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>, Vec<&Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
         unimplemented!()
     }
 
