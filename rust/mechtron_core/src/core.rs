@@ -21,5 +21,7 @@ lazy_static! {
 
     pub static ref CORE_SCHEMA_PING: Artifact = CORE.path_and_kind(&"schema/util/ping.schema", "schema");
     pub static ref CORE_SCHEMA_PONG: Artifact = CORE.path_and_kind(&"schema/util/pong.schema", "schema");
+    pub static ref CORE_SCHEMA_TEXT : Artifact = CORE.path_and_kind(&"schema/util/text.schema", "schema");
+    pub static ref CORE_SCHEMA_OK : Artifact = CORE.path_and_kind(&"schema/util/ok.schema", "schema");
 }
 

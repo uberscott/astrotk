@@ -95,6 +95,8 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
         self.cache(&CORE_SCHEMA_PING)?;
         self.cache(&CORE_SCHEMA_PONG)?;
+        self.cache(&CORE_SCHEMA_TEXT)?;
+        self.cache(&CORE_SCHEMA_OK)?;
         Ok(())
     }
 }

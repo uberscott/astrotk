@@ -91,7 +91,6 @@ impl <'configs> Node<'configs> {
 impl<'configs> Drop for Node<'configs>
 {
     fn drop(&mut self) {
-        println!("DROPING NODE!");
         self.local = Option::None;
     }
 }

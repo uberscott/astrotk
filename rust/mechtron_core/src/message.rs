@@ -1,20 +1,23 @@
-use crate::artifact::Artifact;
-use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
-use crate::configs::Configs;
-use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, TronKey};
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use bytes::Bytes;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::collection::map::NP_Map;
 use no_proto::collection::struc::NP_Struct;
 use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
-use no_proto::pointer::option::NP_Enum;
-use no_proto::pointer::{NP_Scalar, NP_Value};
 use no_proto::NP_Factory;
-use std::collections::HashMap;
-use std::sync::Arc;
+use no_proto::pointer::{NP_Scalar, NP_Value};
+use no_proto::pointer::option::NP_Enum;
 use uuid::Uuid;
+
+use crate::artifact::Artifact;
+use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
+use crate::configs::Configs;
 use crate::error::Error;
+use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, TronKey};
+use crate::util::{TextPayloadBuilder, OkPayloadBuilder};
 
 static ID: &'static str = r#"
 struct({fields: {
@@ -45,6 +48,23 @@ struct({fields: {
     timestamp: u64()
   }}),
   to: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    port: string(),
+    cycle: i64(),
+    phase: u8(),
+    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
+    target: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
+  }}),
+  callback: struct({fields: {
     tron: struct({fields: {
       nucleus: struct({fields: {
         seq_id: i64(),
@@ -347,6 +367,7 @@ pub struct MessageBuilder {
     pub payloads: Option<Vec<PayloadBuilder>>,
     pub meta: Option<HashMap<String, String>>,
     pub transaction: Option<Id>,
+    pub callback: Option<To>,
 }
 
 impl MessageBuilder {
@@ -367,6 +388,7 @@ impl MessageBuilder {
             payloads: None,
             meta: None,
             transaction: None,
+            callback: None
         }
     }
 
@@ -403,7 +425,11 @@ impl MessageBuilder {
             return Err("message builder to_port must be set".into());
         }
 
-
+        if self.kind == Option::Some(MessageKind::Request) &&
+            self.callback.is_none()
+        {
+            return Err("message builder callback must be set if message kind is Request".into());
+        }
 
         Ok(())
     }
@@ -448,6 +474,7 @@ impl MessageBuilder {
             payloads: vec![],
             meta: self.meta.clone(),
             transaction: self.transaction.clone(),
+            callback: self.callback.clone()
         })
     }
 
@@ -549,6 +576,7 @@ pub struct Message {
     pub kind: MessageKind,
     pub from: From,
     pub to: To,
+    pub callback: Option<To>,
     pub payloads: Vec<Payload>,
     pub meta: Option<HashMap<String, String>>,
     pub transaction: Option<Id>,
@@ -572,7 +600,7 @@ impl Message {
         to: To,
         payloads: Vec<Payload>,
     ) -> Self {
-        Message::longform(seq, kind, from, to, payloads, Option::None, Option::None)
+        Message::longform(seq, kind, from, to, Option::None, payloads, Option::None, Option::None)
     }
 
     pub fn longform(
@@ -580,6 +608,7 @@ impl Message {
         kind: MessageKind,
         from: From,
         to: To,
+        callback: Option<To>,
         payloads: Vec<Payload>,
         meta: Option<HashMap<String, String>>,
         transaction: Option<Id>,
@@ -592,6 +621,7 @@ impl Message {
             payloads: payloads,
             meta: meta,
             transaction: transaction,
+            callback: callback
         }
     }
 
@@ -618,6 +648,10 @@ impl Message {
             .append(&path.push(path!["from"]), &mut buffer)?;
 
         message.to.append(&path.push(path!["to"]), &mut buffer)?;
+        if message.callback.is_some()
+        {
+            message.to.append(&path.push(path!["callback"]), &mut buffer)?;
+        }
 
         let mut payload_index = 0;
         for payload in message.payloads {
@@ -660,6 +694,13 @@ impl Message {
 
         let from = From::from(&Path::new(path!["from"]), &buffer)?;
         let to = To::from(&Path::new(path!["to"]), &buffer)?;
+        let callback = match buffer.is_set::<String>(&path!["callback","port"]) {
+            Ok(value) => match value {
+                true => Option::Some(To::from(&Path::new(path!["callback"]), &buffer)?),
+                false => Option::None
+            }
+            Err(_) => Option::None
+        };
 
         let payload_count = buffer.get_length(&path!("payloads"))?;
         let mut payloads = vec![];
@@ -673,10 +714,92 @@ impl Message {
             kind: kind,
             from: from,
             to: to,
+            callback: callback,
             payloads: payloads,
             meta: Option::None,
             transaction: Option::None,
         })
+    }
+
+    pub fn reject(message: Arc<Message>, from: From,reason: &str,  seq: Arc<IdSeq>,configs: &Configs, ) -> Result<Message, Error>
+    {
+        let rtn = Message::single_payload(seq,
+                                           MessageKind::Reject,
+                                          from,
+                                          match &message.callback
+                                          {
+                                              None => {
+                                                  To {
+                                                      tron: message.from.tron.clone(),
+                                                      port: "reject".to_string(),
+                                                      cycle: Cycle::Next,
+                                                      phase: 0,
+                                                      delivery: DeliveryMoment::Cyclic,
+                                                      target: DeliveryTarget::Kernel,
+                                                  }
+                                              }
+                                              Some(callback) => callback.clone(),
+                                          },
+                                   TextPayloadBuilder::new(reason, configs)?,
+        );
+
+        Ok(rtn)
+    }
+
+    pub fn respond(message: Arc<Message>, from: From, payloads: Vec<Payload>, seq: Arc<IdSeq>) -> Result<Message, Error>
+    {
+        let rtn = Message::longform(seq,
+                                    MessageKind::Response,
+                                    from,
+                                    match &message.callback
+                                    {
+                                        None => {
+                                            To {
+                                                tron: message.from.tron.clone(),
+                                                port: message.to.port.clone(),
+                                                cycle: Cycle::Next,
+                                                phase: 0,
+                                                delivery: DeliveryMoment::Cyclic,
+                                                target: DeliveryTarget::Kernel,
+                                            }
+                                        }
+                                        Some(callback) => callback.clone(),
+                                    },
+                                    Option::None,
+                                    payloads,
+                                    Option::None,
+                                    Option::Some(message.id)
+        );
+
+        Ok(rtn)
+    }
+
+
+    pub fn ok(message: Arc<Message>, from: From,  ok:bool, seq: Arc<IdSeq>,configs: &Configs) -> Result<Message, Error>
+    {
+        let payload = OkPayloadBuilder::new(ok,configs)?;
+
+        let rtn = Message::single_payload(seq,
+                                           MessageKind::Reject,
+                                          from,
+                                          match &message.callback
+                                          {
+                                              None => {
+                                                  To {
+                                                      tron: message.from.tron.clone(),
+                                                      port: "reject".to_string(),
+                                                      cycle: Cycle::Next,
+                                                      phase: 0,
+                                                      delivery: DeliveryMoment::Cyclic,
+                                                      target: DeliveryTarget::Kernel,
+                                                  }
+                                              }
+                                              Some(callback) => callback.clone(),
+                                          },payload
+        );
+
+
+        Ok(rtn)
     }
 }
 
@@ -691,16 +814,18 @@ fn cat(path: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::artifact::Artifact;
-    use crate::buffers::{Buffer, BufferFactories, Path};
-    use crate::id::{Id, IdSeq, TronKey};
-    use crate::message;
-    use crate::message::{Cycle, DeliveryMoment, From, Message, MessageKind, Payload, PayloadBuilder, To, ID, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, DeliveryTarget};
+    use std::sync::Arc;
+
     use no_proto::buffer::NP_Buffer;
     use no_proto::memory::NP_Memory_Ref;
     use no_proto::NP_Factory;
-    use std::sync::Arc;
+
+    use crate::artifact::Artifact;
+    use crate::buffers::{Buffer, BufferFactories, Path};
     use crate::error::Error;
+    use crate::id::{Id, IdSeq, TronKey};
+    use crate::message;
+    use crate::message::{Cycle, DeliveryMoment, DeliveryTarget, From, ID, Message, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, MessageKind, Payload, PayloadBuilder, To};
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
