@@ -10,6 +10,8 @@ use no_proto::pointer::{NP_Scalar, NP_Value};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use crate::error::Error;
+use no_proto::schema::NP_Struct_Data;
+use no_proto::collection::struc::NP_Struct;
 
 #[macro_export]
 macro_rules! path{
@@ -66,6 +68,7 @@ impl Buffer {
                 Err(format!("could not get {}", cat(path)).into())
             }
         }
+
     }
 
     pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Error>
