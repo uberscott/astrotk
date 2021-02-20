@@ -14,11 +14,11 @@ use mechtron_core::message::Message;
 use crate::artifact::FileSystemArtifactRepository;
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::nucleus::{Nuclei, Nucleus};
-use crate::router::{GlobalRouter, LocalRouter, Router};
+use crate::nucleus::{Nuclei, Nucleus, NucleiContainer};
+use crate::router::{Router, LocalRouter, NetworkRouter, SharedRouter, HasNucleus};
 
 pub struct Node<'configs> {
-    pub local: Local<'configs>,
+    pub local: Option<Arc<Local<'configs>>>,
     pub net: Arc<Network>,
     pub cache: Arc<Cache<'configs>>
 }
@@ -26,7 +26,12 @@ pub struct Node<'configs> {
 
 impl <'configs> Node<'configs> {
 
-    pub fn new<'get>() -> Node<'get> {
+    pub fn new() -> Node<'static> {
+        let inter_local_router = Arc::new(SharedRouter::new());
+        let inter_gateway_router= Arc::new(SharedRouter::new());
+        let local_router = Arc::new(LocalRouter::new(inter_local_router.clone()));
+        let network_router = Arc::new(NetworkRouter::new(inter_gateway_router.clone() )  );
+
         let seq = Arc::new(IdSeq::new(0));
         let network = Arc::new(Network::new());
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
@@ -39,7 +44,6 @@ impl <'configs> Node<'configs> {
             },
             ),
             Option::None);
-        let local_router = Arc::new(LocalRouter {});
 
         let cache = Arc::new(Cache {
             wasm_store: wasm_store,
@@ -47,10 +51,16 @@ impl <'configs> Node<'configs> {
             wasms: wasms,
         });
 
+        let local =Arc::new(Local::new(cache.clone(), seq.clone(), inter_local_router.clone()));
+
+        inter_local_router.set_local( local.clone() );
+        inter_local_router.set_remote( local_router.clone() );
+        inter_gateway_router.set_local( local_router.clone() );
+        inter_gateway_router.set_remote( network_router.clone() );
 
         let mut rtn = Node {
             cache: cache.clone(),
-            local: Local::new(cache.clone(), seq.clone(), local_router.clone()),
+            local: Option::Some(local),
             net: network.clone(),
         };
         rtn
@@ -61,9 +71,7 @@ impl <'configs> Node<'configs> {
     pub fn create_sim(&self ) -> Result<Id, Error>
     {
         let sim_id = self.net.seq.next();
-
-        self.local.nuclei.create(sim_id, Option::Some("simulation".to_string()));
-
+        self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()));
         Ok(sim_id)
     }
 }
@@ -72,34 +80,74 @@ impl<'configs> Drop for Node<'configs>
 {
     fn drop(&mut self) {
         println!("DROPING NODE!");
-        self.local.destroy();
+        if self.local.is_some()
+        {
+            self.local.as_ref().unwrap().destroy();
+        }
+        self.local = Option::None;
     }
 }
 
 pub struct Local<'configs> {
     nuclei: Nuclei<'configs>,
-    router: Arc<dyn Router>
+    router: Cell<Option<Arc<dyn Router+'static>>>
+}
+
+
+impl <'configs> NucleiContainer for Local<'configs>
+{
+    fn has_nucleus(&self, id: &Id) -> bool {
+        self.nuclei.has_nucleus(id)
+    }
 }
 
 impl <'configs> Local <'configs>{
-    fn new(cache: Arc<Cache<'configs>>, seq: Arc<IdSeq>, router: Arc<LocalRouter>) -> Self {
+    fn new(cache: Arc<Cache<'configs>>, seq: Arc<IdSeq>, router: Arc<dyn Router+'static>) -> Self {
         let rtn = Local {
-            nuclei: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
-            router: router.clone(),
+            nuclei: Nuclei::new(cache, seq, router.clone()),
+            router: Cell::new(Option::Some(router)),
         };
 
         rtn
     }
 
-    pub fn destroy(&mut self)
+    pub fn has_nucleus(&self, id: &Id)->bool
     {
-//        self.router = Option::None;
+        self.nuclei.has_nucleus(id)
+    }
+
+    pub fn destroy(&self)
+    {
+        self.router.replace(Option::None);
     }
 }
 
 impl<'configs> Router for Local<'configs>
 {
-    fn send(&self, message: Arc<Message>) {}
+    fn send(&self, message: Arc<Message>) {
+
+    }
+
+    fn receive(&self, message: Arc<Message>) {
+        let mut result = self.nuclei.get( &message.to.tron.nucleus);
+
+        if result.is_err()
+        {
+            println!("cannot find nucleus with id: {:?}",message.to.tron.nucleus);
+        }
+        else {
+            let mut nucleus = result.unwrap();
+            nucleus.intake_message(message);
+        }
+    }
+
+    fn has_nucleus_local(&self, nucleus: &Id) -> HasNucleus {
+        unimplemented!()
+    }
+
+    fn has_nucleus_remote(&self, nucleus: &Id) -> HasNucleus {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone)]

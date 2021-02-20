@@ -23,9 +23,14 @@ use crate::error::Error;
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{PhasicStateStructure, StateHistory};
-use crate::router::Router;
+use crate::router::{Router, HasNucleus};
 use crate::tron::{CreatePayloadsBuilder, init_tron, Neutron, Tron, TronInfo, TronShell};
 use crate::cache::Cache;
+
+pub trait NucleiContainer
+{
+    fn has_nucleus(&self, id: &Id) -> bool;
+}
 
 pub struct Nuclei<'nuclei> {
     nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
@@ -36,7 +41,7 @@ impl<'nuclei> Nuclei<'nuclei> {
 
     pub fn new(cache: Arc<Cache<'nuclei>>,
                seq: Arc<IdSeq>,
-               router: Arc<dyn Router>) -> Self {
+               router: Arc<dyn Router+'static>) -> Self {
         Nuclei {
             nuclei: RwLock::new(HashMap::new()),
             context: NucleusContext{
@@ -45,6 +50,16 @@ impl<'nuclei> Nuclei<'nuclei> {
                 router: router
             }
         }
+    }
+
+    pub fn has_nucleus(&self, id: &Id) -> bool {
+        let nuclei = self.nuclei.read();
+        if nuclei.is_err()
+        {
+            return false;
+        }
+        let nuclei = nuclei.unwrap();
+        nuclei.contains_key(id)
     }
 
     pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus<'nuclei>>, Error> {
@@ -97,7 +112,7 @@ pub struct NucleusContext<'context>
 {
     pub cache: Arc<Cache<'context>>,
     pub seq: Arc<IdSeq>,
-    pub router: Arc<dyn Router>,
+    pub router: Arc<dyn Router+'static>,
 }
 
 impl <'context> NucleusContext<'context>
@@ -148,7 +163,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         Ok(nucleus)
     }
 
-    pub fn intake_message(&mut self, message: Message) {
+    pub fn intake_message(&self, message: Arc<Message>) {
         self.messaging.intake(message, CycleMessagingContext{ head: self.head.cycle  });
     }
 
@@ -235,7 +250,7 @@ impl <'nucleus> Nucleus<'nucleus> {
         }
 
         for message in messages {
-            let router = &self.context.router;
+            let router = &mut self.context.router;
             router.send(message );
         }
 
@@ -631,6 +646,18 @@ impl<'cycle> Router for NucleusCycle<'cycle> {
 
          */
     }
+
+    fn receive(&self, message: Arc<Message>) {
+        unimplemented!()
+    }
+
+    fn has_nucleus_local(&self, nucleus: &Id) -> HasNucleus {
+        unimplemented!()
+    }
+
+    fn has_nucleus_remote(&self, nucleus: &Id) -> HasNucleus {
+        unimplemented!()
+    }
 }
 
 
@@ -660,8 +687,8 @@ mod message
         }
 
         pub fn intake(
-            &mut self,
-            message: Message,
+            &self,
+            message: Arc<Message>,
             context: CycleMessagingContext,
         ) -> Result<(), Error> {
             let delivery = MessageDelivery::new(message, context.clone());
@@ -837,11 +864,11 @@ mod message
     }
 
     impl MessageDelivery {
-        fn new(message: Message, context: CycleMessagingContext) -> Self {
+        fn new(message: Arc<Message>, context: CycleMessagingContext) -> Self {
             MessageDelivery {
                 received: Instant::now(),
                 cycle: context.head.clone(),
-                message: Arc::new(message),
+                message: message,
             }
         }
     }
@@ -965,7 +992,7 @@ mod message
             let configs_ref = &mut configs;
             let mut builder = message_builder(configs_ref);
             builder.to_cycle_kind = Option::Some(Cycle::Next);
-            let message = builder.build(&mut IdSeq::new(0)).unwrap();
+            let message = Arc::new(builder.build(&mut IdSeq::new(0)).unwrap());
             let context = CycleMessagingContext{
                 head: 0
             };
@@ -987,7 +1014,7 @@ mod message
             let configs_ref = &mut configs;
             let mut builder = message_builder(configs_ref);
             builder.to_cycle_kind = Option::Some(Cycle::Exact(0));
-            let message = builder.build(&mut IdSeq::new(0)).unwrap();
+            let message = Arc::new(builder.build(&mut IdSeq::new(0)).unwrap());
             let context =CycleMessagingContext{
                 head: 0
             };
@@ -1010,7 +1037,7 @@ mod message
             let message = builder.build(&mut IdSeq::new(0)).unwrap();
             let context =  CycleMessagingContext{head:0};
 
-            messaging.intake(message, context);
+            messaging.intake(Arc::new(message), context);
         }
 
 
@@ -1371,7 +1398,7 @@ mod test
     use std::cell::RefCell;
     use mechtron_core::id::Id;
 
-    fn create_node<'get>() ->Node<'get>
+    fn create_node() ->Node<'static>
     {
         let node = Node::new();
         node
