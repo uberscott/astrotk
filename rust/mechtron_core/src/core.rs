@@ -18,5 +18,8 @@ lazy_static! {
 
     pub static ref CORE_TRONCONFIG_NEUTRON: Artifact = CORE.path_and_kind(&"tron/neutron.yaml", "tron_config");
     pub static ref CORE_TRONCONFIG_SIMTRON: Artifact = CORE.path_and_kind(&"tron/sim.yaml", "tron_config");
+
+    pub static ref CORE_SCHEMA_PING: Artifact = CORE.path_and_kind(&"schema/util/ping.schema", "schema");
+    pub static ref CORE_SCHEMA_PONG: Artifact = CORE.path_and_kind(&"schema/util/pong.schema", "schema");
 }
 

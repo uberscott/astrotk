@@ -326,8 +326,8 @@ pub enum DeliveryMoment {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum DeliveryTarget {
-    Shell,
-    Kernel
+    Kernel,
+    Shell
 }
 
 #[derive(Clone)]

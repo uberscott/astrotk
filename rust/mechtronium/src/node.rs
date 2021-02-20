@@ -19,7 +19,7 @@ use crate::router::{Router, LocalRouter, NetworkRouter, SharedRouter, HasNucleus
 
 pub struct Node<'configs> {
     pub local: Option<Arc<Local<'configs>>>,
-    pub net: Arc<Network>,
+    pub net: Arc<Network<'configs>>,
     pub cache: Arc<Cache<'configs>>
 }
 
@@ -33,7 +33,7 @@ impl <'configs> Node<'configs> {
         let network_router = Arc::new(NetworkRouter::new(inter_gateway_router.clone() )  );
 
         let seq = Arc::new(IdSeq::new(0));
-        let network = Arc::new(Network::new());
+        let network = Arc::new(Network::new(network_router.clone()));
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
         let configs = Configs::new(repo.clone());
@@ -68,36 +68,37 @@ impl <'configs> Node<'configs> {
 
     pub fn shutdown(&self) {}
 
-    pub fn create_sim(&self) -> Result<Id, Error>
+    pub fn create_sim(&self) -> Result<(Id,Id), Error>
     {
         let sim_id = self.net.seq.next();
-        self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()));
-        Ok(sim_id)
+        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()))?;
+        Ok((sim_id,nucleus_id))
     }
 
-    pub fn create_nucleus(&self, ) -> Result<Id, Error>
+    pub fn create_nucleus(&self, sim_id: &Id) -> Result<Id, Error>
     {
-        let sim_id = self.net.seq.next();
-        self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()));
-        Ok(sim_id)
+        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id.clone(), Option::Some("simulation".to_string()))?;
+        Ok(nucleus_id)
     }
+
+    pub fn send( &self, message: Message )
+    {
+        self.net.router().send( Arc::new(message))
+    }
+
 }
 
 impl<'configs> Drop for Node<'configs>
 {
     fn drop(&mut self) {
         println!("DROPING NODE!");
-        if self.local.is_some()
-        {
-            self.local.as_ref().unwrap().destroy();
-        }
         self.local = Option::None;
     }
 }
 
 pub struct Local<'configs> {
     nuclei: Nuclei<'configs>,
-    router: Cell<Option<Arc<dyn Router+'static>>>
+    router: Arc<dyn Router+'static>
 }
 
 
@@ -112,7 +113,7 @@ impl <'configs> Local <'configs>{
     fn new(cache: Arc<Cache<'configs>>, seq: Arc<IdSeq>, router: Arc<dyn Router+'static>) -> Self {
         let rtn = Local {
             nuclei: Nuclei::new(cache, seq, router.clone()),
-            router: Cell::new(Option::Some(router)),
+            router: router,
         };
 
         rtn
@@ -123,16 +124,12 @@ impl <'configs> Local <'configs>{
         self.nuclei.has_nucleus(id)
     }
 
-    pub fn destroy(&self)
-    {
-        self.router.replace(Option::None);
-    }
 }
 
 impl<'configs> Router for Local<'configs>
 {
     fn send(&self, message: Arc<Message>) {
-
+        self.router.send(message)
     }
 
     fn receive(&self, message: Arc<Message>) {
@@ -171,9 +168,6 @@ impl<'context> NucleusContext<'context> {
     }
 }
 
-pub struct Network {
-    seq: Arc<IdSeq>,
-}
 
 pub struct WasmStuff
 {
@@ -181,17 +175,27 @@ pub struct WasmStuff
     pub wasms: Keeper<Module>,
 }
 
+pub struct Network<'net> {
+    seq: Arc<IdSeq>,
+    router: Arc<NetworkRouter<'net>>,
+}
 
-impl Network {
-    fn new() -> Self {
+impl <'net> Network<'net> {
+    fn new(router: Arc<NetworkRouter<'net>>) -> Self {
         Network {
             seq: Arc::new(IdSeq::new(0)),
+            router: router
         }
     }
 
     pub fn seq(&self) -> Arc<IdSeq>
     {
         self.seq.clone()
+    }
+
+    pub fn router(&self)->Arc<dyn Router+'net>
+    {
+        self.router.clone()
     }
 }
 struct WasmModuleParser {

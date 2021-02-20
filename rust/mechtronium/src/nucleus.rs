@@ -16,7 +16,7 @@ use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq, StateKey};
 use mechtron_core::id::Revision;
 use mechtron_core::id::TronKey;
-use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To};
+use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To, DeliveryTarget};
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State};
 
 use crate::error::Error;
@@ -341,6 +341,7 @@ impl<'cycle> NucleusCycle<'cycle> {
                 cycle: Cycle::Next,
                 phase: 0,
                 delivery: DeliveryMoment::Cyclic,
+                target: DeliveryTarget::Kernel,
             },
             CreatePayloadsBuilder::payloads(configs, neutron_create_payload_builder),
         );
@@ -882,7 +883,7 @@ mod message
         use mechtron_core::configs::Configs;
         use mechtron_core::core::*;
         use mechtron_core::id::{Id, IdSeq, TronKey};
-        use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To};
+        use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To, DeliveryTarget};
         use mechtron_core::message::DeliveryMoment::Cyclic;
 
         use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
@@ -918,6 +919,7 @@ mod message
                                         cycle: Cycle::Present,
                                         phase: 0,
                                         delivery: DeliveryMoment::Cyclic,
+                                        target: DeliveryTarget::Kernel
                                     },
                                     payload,
             )
@@ -1396,7 +1398,9 @@ mod test
     use crate::node::Node;
     use std::sync::Arc;
     use std::cell::RefCell;
-    use mechtron_core::id::Id;
+    use mechtron_core::id::{Id, TronKey};
+    use mechtron_core::message::*;
+    use mechtron_core::util::PingPayloadBuilder;
 
     fn create_node() ->Node<'static>
     {
@@ -1408,8 +1412,33 @@ mod test
     fn test_create_node()
     {
         let node = create_node();
-        let result = node.create_nucleus();
-        assert!( result.is_ok());
+        let (sim_id,nucleus1)= node.create_sim().unwrap();
+        let nucleus2 = node.create_nucleus(&sim_id).unwrap();
+        println!("nucleus 1 {:?}", nucleus1);
+        println!("nucleus 2 {:?}", nucleus2);
+
+        let ping = PingPayloadBuilder::new(&node.cache.configs).unwrap();
+        let ping = PingPayloadBuilder::to_payload(ping );
+        let message = Message::single_payload(node.net.seq().clone(),
+                                                       MessageKind::Update,
+                                                       From{ tron : TronKey{ nucleus: nucleus2.clone(), tron: Id{ seq_id: 0, id: 0 } },
+                                                                   cycle: 0,
+                                                                   timestamp: 0 },
+             To{
+                 tron: TronKey {
+                     nucleus: nucleus1, tron: Id{ seq_id: 0, id: 0 }
+                 },
+                 port: "ping".to_string(),
+                 cycle: Cycle::Present,
+                 phase: 0,
+                 delivery: DeliveryMoment::ExtraCyclic,
+                 target: DeliveryTarget::Shell
+             },
+             ping
+        );
+
+        node.send(message);
+
         node.shutdown();
     }
 

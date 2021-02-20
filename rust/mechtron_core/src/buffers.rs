@@ -221,7 +221,6 @@ impl Path {
         let mut more = more;
 
         rtn.append(&mut more);
-println!("{:?}",rtn);
         return rtn;
     }
 

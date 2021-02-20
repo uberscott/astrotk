@@ -45,7 +45,6 @@ impl<'config> Configs<'config> {
 
     pub fn cache( &mut self, artifact: &Artifact )->Result<(),Error>
     {
-       println!("caching: {}",artifact.to());
         match &artifact.kind{
             None => {
                 self.artifacts.cache(artifact)?;
@@ -94,6 +93,8 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_TRONCONFIG_NEUTRON)?;
         self.cache(&CORE_TRONCONFIG_SIMTRON)?;
         self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
+        self.cache(&CORE_SCHEMA_PING)?;
+        self.cache(&CORE_SCHEMA_PONG)?;
         Ok(())
     }
 }
@@ -125,6 +126,8 @@ impl<V> Keeper<V> {
         if cache.contains_key(artifact) {
             return Ok(());
         }
+
+        println!("caching: {}",artifact.to());
 
         self.repo.cache(&artifact)?;
 

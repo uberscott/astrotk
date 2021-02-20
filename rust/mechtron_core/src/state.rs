@@ -23,7 +23,7 @@ impl State {
         let meta = Buffer::new(
             configs
                 .schemas
-                .get(&CORE_SCHEMA_META_CREATE)?
+                .get(&CORE_SCHEMA_META_STATE)?
                 .new_buffer(Option::None),
         );
         let data = Buffer::new(

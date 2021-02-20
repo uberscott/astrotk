@@ -19,6 +19,7 @@ use crate::nucleus::{Nucleus, TronContext, NeutronContext};
 use mechtron_core::buffers::{Buffer, Path};
 use crate::error::Error;
 use std::ops::DerefMut;
+use std::collections::{HashMap, HashSet};
 
 pub trait Tron {
     fn create(
@@ -49,10 +50,24 @@ pub trait Tron {
             info: TronInfo,
             context: &dyn TronContext,
             state: Arc<Mutex<State>>,
-            messages: Vec<&Message>,
+            messages: &Vec<&Message>,
         ) -> Result<Option<Vec<MessageBuilder>>, Error>,
         Error,
     >;
+
+    fn extra(
+        &self,
+        port: &str,
+    ) -> Result<
+        fn(
+            info: TronInfo,
+            context: &dyn TronContext,
+            state: &ReadOnlyState,
+            message: &Message,
+        ) -> Result<Option<Vec<MessageBuilder>>, Error>,
+        Error,
+    >;
+
 
     fn update_phases(&self) -> Phases;
 }
@@ -119,27 +134,84 @@ impl TronShell {
     ) -> Result<Option<Vec<Message>>, Error> {
 
         let mut builders = self.tron.create(info.clone(), context, state, create)?;
-        return self.handle_builders(info.clone(), builders);
+        let rtn = self.handle_builders(info.clone(), builders)?;
+        if rtn.is_empty()  {
+            Ok(Option::None)
+        }
+        else {
+            Ok(Option::Some(rtn))
+        }
     }
 
-    pub fn receive(
+
+    pub fn extra(
+        &mut self,
+        info: TronInfo,
+        context: &dyn TronContext,
+        state: &ReadOnlyState,
+        message: &Message,
+    ) -> Result<Option<Vec<Message>>, Error>
+    {
+        let func = self.tron.extra(&message.to.port)?;
+        let builders = func( info.clone(),context,state,message )?;
+        let rtn = self.handle_builders(info.clone(), builders )?;
+        if rtn.is_empty()
+        {
+            Ok(Option::None)
+        }
+        else {
+            Ok(Option::Some(rtn))
+        }
+    }
+
+    pub fn incomming(
         &mut self,
         info: TronInfo,
         context: &dyn TronContext,
         state: Arc<Mutex<State>>,
         messages: Vec<&Message>,
     ) -> Result<Option<Vec<Message>>, Error> {
-        let func = self.tron.port(&"blah")?;
-        let builders = func(info.clone(), context, state, messages)?;
+        let mut hash = HashMap::new();
+        for message in messages
+        {
+            if !hash.contains_key(&message.to.port )
+            {
+                hash.insert(message.to.port.clone(), vec!() );
+            }
+            let messages = hash.get_mut(&message.to.port ).unwrap();
+            messages.push(message);
+        }
+        let mut ports = vec!();
+        for port in hash.keys()
+        {
+            ports.push(port);
+        }
 
-        return self.handle_builders(info , builders);
+        let mut rtn = vec!();
+
+        ports.sort();
+        for port in ports
+        {
+            let messages = hash.get(port).unwrap();
+            let func = self.tron.port(port)?;
+            let builders = func( info.clone(),context,state.clone(),messages )?;
+            rtn.append( &mut self.handle_builders(info.clone(),builders )?)
+        }
+
+        if rtn.is_empty()
+        {
+            Ok(Option::None)
+        }
+        else {
+            Ok(Option::Some(rtn))
+        }
     }
 
     pub fn handle_builders(
         &self,
         info : TronInfo,
         builders: Option<Vec<MessageBuilder>>,
-    ) -> Result<Option<Vec<Message>>, Error> {
+    ) -> Result<Vec<Message>, Error> {
         /*            match builders {
                        None => Ok(Option::None),
                        Some(builders) =>
@@ -296,7 +368,11 @@ impl Tron for Neutron {
         unimplemented!()
     }
 
-    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>, Vec<&Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, Arc<Mutex<State>>, &Vec<&Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+
+    fn extra(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, &ReadOnlyState, &Message) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
         unimplemented!()
     }
 
