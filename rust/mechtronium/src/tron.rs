@@ -11,7 +11,7 @@ use mechtron_core::configs::{
 };
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, NucleusKey, Revision, StateKey, TronKey};
-use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, PayloadBuilder};
+use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, DeliveryTarget};
 use mechtron_core::state::{ReadOnlyState, State};
 
 use crate::node::Node;
@@ -20,6 +20,8 @@ use mechtron_core::buffers::{Buffer, Path};
 use crate::error::Error;
 use std::ops::DerefMut;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+use mechtron_core::util::PongPayloadBuilder;
 
 pub trait Tron {
     fn create(
@@ -117,6 +119,45 @@ impl TronShell {
         TronShell { tron: tron }
     }
 
+    fn warn<E:Debug>( &self, error: E )
+    {
+       println!("WARN: TronShell got unexpected error {:?}",error);
+    }
+
+    fn panic<E:Debug>( &self, error: E )
+    {
+        println!("PANIC: TronShell got unexpected error {:?}",error);
+    }
+
+    fn reject( &self,message: &Message, info: TronInfo, context: &TronContext )->Message
+    {
+        // we unrwrap it because if REJECT message isn't available, then nothing should work
+        message.reject(mechtron_core::message::From {
+            tron: info.key.clone(),
+            cycle: context.revision().cycle.clone(),
+            timestamp: context.timestamp()
+        }, format!("port '{}' does not exist on this mechtron", message.to.port).as_str(), context.seq(), context.configs()).unwrap()
+    }
+
+    fn ok( &self, message: &Message, info: TronInfo, ok: bool, context: &TronContext )->Message
+    {
+        // we unrwrap it because if REJECT message isn't available, then nothing should work
+        message.ok(mechtron_core::message::From {
+            tron: info.key.clone(),
+            cycle: context.revision().cycle,
+            timestamp: context.timestamp()
+        }, ok, context.seq(), context.configs()).unwrap()
+    }
+
+    fn respond( &self, message: &Message, info: TronInfo, payloads: Vec<Payload>,context: &TronContext )->Message
+    {
+        message.respond(mechtron_core::message::From {
+            tron: info.key.clone(),
+            cycle: context.revision().cycle,
+            timestamp: context.timestamp()
+        }, payloads, context.seq())
+    }
+
     fn from(&self, info: TronInfo, context: &dyn TronContext) -> mechtron_core::message::From {
         mechtron_core::message::From {
             tron: info.key.clone(),
@@ -131,15 +172,15 @@ impl TronShell {
         context: &dyn TronContext,
         state:  Arc<Mutex<State>>,
         create: &Message,
-    ) -> Result<Option<Vec<Message>>, Error> {
+    ) -> Option<Vec<Message>> {
 
-        let mut builders = self.tron.create(info.clone(), context, state, create)?;
-        let rtn = self.handle_builders(info.clone(), builders)?;
+        let mut builders = self.tron.create(info.clone(), context, state, create);
+        let rtn = self.handle_builders(info.clone(), builders);
         if rtn.is_empty()  {
-            Ok(Option::None)
+            Option::None
         }
         else {
-            Ok(Option::Some(rtn))
+            Option::Some(rtn)
         }
     }
 
@@ -150,18 +191,71 @@ impl TronShell {
         context: &dyn TronContext,
         state: &ReadOnlyState,
         message: &Message,
-    ) -> Result<Option<Vec<Message>>, Error>
+    ) -> Option<Vec<Message>>
     {
-        let func = self.tron.extra(&message.to.port)?;
-        let builders = func( info.clone(),context,state,message )?;
-        let rtn = self.handle_builders(info.clone(), builders )?;
-        if rtn.is_empty()
+        match message.to.target
         {
-            Ok(Option::None)
+            DeliveryTarget::Shell => {
+                match message.to.port.as_str(){
+                    "ping" => {
+                        return Option::Some(
+                            vec!(self.respond(message, info,
+                                              vec!(PongPayloadBuilder::new(context.configs()).unwrap())
+                                              ,context))
+                        )
+                    }
+                    _ => {
+                        return Option::None
+                    }
+                };
+            }
+            DeliveryTarget::Kernel => {
+                match info.config.message.extra.contains_key(&message.to.port)
+                {
+                    true => {
+                        let func = self.tron.extra(&message.to.port);
+                        match func{
+                            Ok(func) => {
+                                let builders = func( info.clone(),context,state,message );
+                                let rtn = self.handle_builders(info.clone(), builders );
+                                if rtn.is_empty()
+                                {
+                                    return Option::None;
+                                }
+                                else {
+                                    return Option::Some(rtn);
+                                }
+                            }
+                            Err(e) => {
+                                self.panic(e);
+                                return Option::None
+                            }
+                        }
+                    }
+                    false => {
+                        let rtn = message.reject(mechtron_core::message::From {
+                            tron: info.key.clone(),
+                            cycle: context.revision().cycle,
+                            timestamp: context.timestamp()
+                        }, format!("port '{}' does not exist on this mechtron", message.to.port).as_str(), context.seq(), context.configs());
+                        let rtn = match rtn{
+                            Ok(message) => {
+                                let rtn = vec!(message);
+                                return Option::Some(rtn)
+                            }
+                            Err(e) => {
+                                self.warn(e)
+                            }
+                        };
+
+                    }
+                }
+
+
+
+            }
         }
-        else {
-            Ok(Option::Some(rtn))
-        }
+        Option::None
     }
 
     pub fn incomming(
@@ -170,7 +264,7 @@ impl TronShell {
         context: &dyn TronContext,
         state: Arc<Mutex<State>>,
         messages: Vec<&Message>,
-    ) -> Result<Option<Vec<Message>>, Error> {
+    ) -> Option<Vec<Message>> {
         let mut hash = HashMap::new();
         for message in messages
         {
@@ -193,25 +287,35 @@ impl TronShell {
         for port in ports
         {
             let messages = hash.get(port).unwrap();
-            let func = self.tron.port(port)?;
-            let builders = func( info.clone(),context,state.clone(),messages )?;
-            rtn.append( &mut self.handle_builders(info.clone(),builders )?)
+            let func = self.tron.port(port);
+            match func
+            {
+                Ok(func) => {
+                    let builders = func( info.clone(),context,state.clone(),messages );
+                    rtn.append( &mut self.handle_builders(info.clone(),builders ))
+                }
+                Err(e) => {
+                    self.panic(e);
+                    return Option::None
+                }
+            }
+
         }
 
         if rtn.is_empty()
         {
-            Ok(Option::None)
+            Option::None
         }
         else {
-            Ok(Option::Some(rtn))
+            Option::Some(rtn)
         }
     }
 
     pub fn handle_builders(
         &self,
         info : TronInfo,
-        builders: Option<Vec<MessageBuilder>>,
-    ) -> Result<Vec<Message>, Error> {
+        builders: Result<Option<Vec<MessageBuilder>>,Error>,
+    ) -> Vec<Message> {
         /*            match builders {
                        None => Ok(Option::None),
                        Some(builders) =>
@@ -293,15 +397,8 @@ impl Neutron {
         let tron_config = Artifact::from(&tron_config)?;
         let tron_config = context.configs().trons.get(&tron_config)?;
 
-        let tron_state_artifact = match tron_config.state
-        {
-            None => CORE_SCHEMA_EMPTY.clone(),
-            Some(_) => {
-                tron_config.state.as_ref().unwrap().artifact.clone()
-            }
-        };
 
-        let mut tron_state = Arc::new(Mutex::new(State::new(context.configs(), tron_state_artifact.clone())?));
+        let mut tron_state = Arc::new(Mutex::new(State::new(context.configs(), tron_config.state.artifact.clone())?));
 
         {
             let mut tron_state = tron_state.lock()?;
@@ -425,20 +522,12 @@ impl CreatePayloadsBuilder {
         configs: &Configs,
         tron_config: &TronConfig,
     ) -> Result<(Artifact, Buffer), Error> {
-        if tron_config.message.as_ref().is_some() && tron_config.message.as_ref().unwrap().create.as_ref().is_some() {
-            let constructor_artifact = tron_config.message.as_ref().unwrap().create.as_ref().unwrap().artifact.clone();
+            let constructor_artifact = tron_config.message.create.artifact.clone();
             let factory = configs.schemas.get(&constructor_artifact)?;
             let constructor = factory.new_buffer(Option::None);
             let constructor = Buffer::new(constructor);
 
             Ok((constructor_artifact, constructor))
-        } else {
-            let constructor_artifact = CORE_SCHEMA_EMPTY.clone();
-            let factory = configs.schemas.get(&CORE_SCHEMA_EMPTY)?;
-            let constructor = factory.new_buffer(Option::None);
-            let constructor = Buffer::new(constructor);
-            Ok((constructor_artifact, constructor))
-        }
     }
 
     pub fn payloads<'configs>(configs: &'configs Configs, builder: CreatePayloadsBuilder) -> Vec<Payload> {

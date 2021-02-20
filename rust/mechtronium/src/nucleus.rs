@@ -169,6 +169,11 @@ impl<'nucleus> Nucleus<'nucleus> {
         Ok(nucleus)
     }
 
+    fn neutron_key(&self) -> TronKey
+    {
+        TronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0))
+    }
+
     pub fn intake_message(&self, message: Arc<Message>) {
         // check for extra cyclic
         if message.to.delivery == DeliveryMoment::ExtraCyclic
@@ -177,11 +182,6 @@ impl<'nucleus> Nucleus<'nucleus> {
         } else {
             self.messaging.intake(message, CycleMessagingContext { head: self.head.cycle });
         }
-    }
-
-    fn neutron_key(&self) -> TronKey
-    {
-        TronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0))
     }
 
     pub fn handle_extracyclic(&self, message: Arc<Message>) {
@@ -200,7 +200,7 @@ impl<'nucleus> Nucleus<'nucleus> {
         let result = self.tron(&state_key);
         if result.is_err()
         {
-            let result = Message::reject(message, mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp() }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
+            let result = message.reject( mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp() }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
             if (result.is_err())
             {
                 println!("could not access this tron.");
@@ -210,22 +210,19 @@ impl<'nucleus> Nucleus<'nucleus> {
             return;
         }
         let (config, state, mut shell, info) = result.unwrap();
-        let result = shell.extra(info, self, state.as_ref(), message.as_ref());
+        let messages = shell.extra(info, self, state.as_ref(), message.as_ref());
+        self.handle_outbound(messages);
+    }
 
-        if (result.is_err())
-        {
-            println!("an issue occured when attempting to send extra cyclic message.");
-            return;
-        }
-
-        let messages = result.unwrap();
-
-        if messages.is_some()
-        {
-            let messages = messages.unwrap();
-            for message in messages
-            {
-                self.context.router.send(Arc::new(message));
+    fn handle_outbound( &self, messages: Option<Vec<Message>>)
+    {
+        match messages {
+            None => {}
+            Some(messages) => {
+                for message in messages
+                {
+                    self.context.router.send(Arc::new(message));
+                }
             }
         }
     }
@@ -361,6 +358,10 @@ impl<'nucleus> TronContext<'nucleus> for Nucleus<'nucleus>
     fn timestamp(&self) -> u64 {
         timestamp()
     }
+
+    fn seq(&self) -> Arc<IdSeq> {
+        self.context.seq.clone()
+    }
 }
 
 struct NucleusData<'cycle>
@@ -451,7 +452,7 @@ impl<'cycle> NucleusCycle<'cycle> {
             CreatePayloadsBuilder::payloads(configs, neutron_create_payload_builder),
         );
 
-        let neutron_state_artifact = info.config.as_ref().state.as_ref().unwrap().artifact.clone();
+        let neutron_state_artifact = info.config.state.artifact.clone();
         let mut state = State::new(configs, neutron_state_artifact.clone())?;
         let mut state = Arc::new(Mutex::new(state));
 
@@ -569,6 +570,7 @@ pub trait TronContext<'cycle>
     fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<TronKey, Error>;
     fn revision(&self) -> &Revision;
     fn timestamp(&self) -> u64;
+    fn seq(&self)->Arc<IdSeq>;
 }
 
 pub trait NeutronContext<'cycle>: TronContext<'cycle>
@@ -615,6 +617,10 @@ impl<'cycle> TronContext<'cycle> for NucleusCycle<'cycle>
     fn timestamp(&self) -> u64 {
         0
     }
+
+    fn seq(&self) -> Arc<IdSeq> {
+        self.context.seq.clone()
+    }
 }
 
 impl<'cycle> NeutronContext<'cycle> for NucleusCycle<'cycle>
@@ -631,7 +637,7 @@ impl<'cycle> NeutronContext<'cycle> for NucleusCycle<'cycle>
             key: key
         };
 
-        tron.create(info, self, state.clone(), create)?;
+        tron.create(info, self, state.clone(), create);
 
         self.state.add(key, state);
 

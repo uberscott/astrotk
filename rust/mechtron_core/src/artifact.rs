@@ -59,7 +59,6 @@ pub struct Artifact {
     pub bundle: ArtifactBundle,
     pub path: String,
     pub kind: Option<String>
-
 }
 
 impl Artifact {
@@ -98,6 +97,13 @@ impl Artifact {
 
         let rtn = rtn;
         return rtn;
+    }
+}
+
+impl Default for Artifact
+{
+    fn default() -> Self {
+        crate::core::CORE_SCHEMA_EMPTY.clone()
     }
 }
 

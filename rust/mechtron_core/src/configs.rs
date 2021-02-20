@@ -226,8 +226,8 @@ pub struct TronConfig {
     pub name: String,
     pub nucleus_lookup_name: Option<String>,
     pub source: Artifact,
-    pub state: Option<StateConfig>,
-    pub message: Option<MessageConfig>,
+    pub state: StateConfig,
+    pub message: MessageConfig,
 }
 
 struct TronConfigArtifactCacher;
@@ -238,32 +238,20 @@ impl Cacher<TronConfig> for TronConfigArtifactCacher
 println!("Caching Artifacts!!!");
         let mut rtn = vec!();
         let config = &config;
-        if config.state.is_some()
+
+        rtn.push( config.state.artifact.clone());
+        rtn.push(config.message.create.artifact.clone());
+        for port in config.message.extra.values()
         {
-            rtn.push( config.state.as_ref().unwrap().artifact.clone());
+            rtn.push( port.artifact.clone() );
         }
-        if config.message.is_some()
+        for port in config.message.inbound.values()
         {
-            if config.message.as_ref().unwrap().create.is_some()
-            {
-                rtn.push(config.message.as_ref().unwrap().create.as_ref().unwrap().artifact.clone());
-            }
-
-            if config.as_ref().message.as_ref().unwrap().inbound.is_some()
-            {
-                for inbound in config.as_ref().message.as_ref().unwrap().inbound.as_ref().unwrap()
-                {
-                    rtn.push( inbound.artifact.clone() );
-                }
-            }
-
-            if config.as_ref().message.as_ref().unwrap().outbound.is_some()
-            {
-                for outbound in config.message.as_ref().unwrap().outbound.as_ref().unwrap()
-                {
-                    rtn.push( outbound.artifact.clone() );
-                }
-            }
+            rtn.push( port.artifact.clone() );
+        }
+        for port in config.message.outbound.values()
+        {
+            rtn.push( port.artifact.clone() );
         }
 
         Ok(rtn)
@@ -286,9 +274,23 @@ impl Cacher<SimConfig> for SimConfigArtifactCacher
 
 #[derive(Clone)]
 pub struct MessageConfig {
-    pub create: Option<CreateMessageConfig>,
-    pub inbound: Option<Vec<InboundMessageConfig>>,
-    pub outbound: Option<Vec<OutboundMessageConfig>>,
+    pub create: CreateMessageConfig,
+    pub extra: HashMap<String,ExtraMessageConfig>,
+    pub inbound: HashMap<String,InboundMessageConfig>,
+    pub outbound: HashMap<String,OutboundMessageConfig>,
+}
+
+impl Default for MessageConfig
+{
+    fn default() -> Self {
+
+        MessageConfig{
+            create: Default::default(),
+            extra:  Default::default(),
+            inbound: Default::default(),
+            outbound: Default::default()
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -296,8 +298,31 @@ pub struct StateConfig {
     pub artifact: Artifact,
 }
 
+impl Default for StateConfig {
+    fn default() -> Self {
+        StateConfig{
+            artifact: Default::default()
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CreateMessageConfig {
+    pub artifact: Artifact,
+}
+
+impl Default for CreateMessageConfig
+{
+    fn default() -> Self {
+        CreateMessageConfig{
+            artifact: Default::default()
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ExtraMessageConfig {
+    pub name: String,
     pub artifact: Artifact,
 }
 
@@ -354,6 +379,7 @@ pub struct TronConfigYaml {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MessageConfigYaml {
     create: Option<CreateConfigYaml>,
+    extra: Option<PortsYaml<ExtraConfigYaml>>,
     inbound: Option<PortsYaml<InboundConfigYaml>>,
     outbound: Option<PortsYaml<OutMessageConfigYaml>>,
 }
@@ -362,6 +388,12 @@ pub struct MessageConfigYaml {
 pub struct PortsYaml<T>
 {
     ports: Vec<T>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExtraConfigYaml {
+    name: String,
+    artifact: ArtifactYaml
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -414,17 +446,32 @@ impl TronConfigYaml {
             name: self.name.clone(),
 
             message: match &self.message {
-                None => Option::None,
-                Some(messages) => Option::Some(MessageConfig {
+                None => Default::default(),
+                Some(messages) => MessageConfig {
                     create: match &messages.create {
-                        None => Option::None,
-                        Some(create) => Option::Some(CreateMessageConfig {
+                        None => Default::default(),
+                        Some(create) => CreateMessageConfig {
                             artifact: create.artifact.to_artifact(default_bundle, Option::Some("schema"))?,
-                        }),
+                        },
+                    },
+                    extra: match &messages.extra{
+                        None => Default::default(),
+                        Some(extras) =>
+                            extras.ports.iter().map(|extra|->Result<ExtraMessageConfig,Error>{
+                                Ok(ExtraMessageConfig{
+                                    name: extra.name.clone(),
+                                    artifact: extra.artifact.to_artifact(default_bundle, Option::Some("schema"))?
+                                })
+                            }).filter(|r|{
+                                if r.is_err(){
+                                    println!("error processing extra" )
+                                }
+
+                                r.is_ok()}).map(|r|r.unwrap()).map(|c|(c.name.clone(),c)).collect()
                     },
                     inbound: match &messages.inbound{
-                        None => Option::None,
-                        Some(inbounds) => Option::Some(
+                        None => Default::default(),
+                        Some(inbounds) =>
                             inbounds.ports.iter().map(|inbound|->Result<InboundMessageConfig,Error>{
                                Ok(InboundMessageConfig{
                                    name: inbound.name.clone(),
@@ -435,12 +482,11 @@ impl TronConfigYaml {
                                     println!("error processing inbound" )
                                 }
 
-                                r.is_ok()}).map(|r|r.unwrap()).collect()
-                        ),
+                                r.is_ok()}).map(|r|r.unwrap()).map(|c|(c.name.clone(),c)).collect()
                     },
                     outbound: match &messages.outbound{
-                        None => Option::None,
-                        Some(inbounds) => Option::Some(
+                        None => Default::default(),
+                        Some(inbounds) =>
                             inbounds.ports.iter().map(|outbound|->Result<OutboundMessageConfig,Error>{
                                 Ok(OutboundMessageConfig{
                                     name: outbound.name.clone(),
@@ -453,16 +499,15 @@ impl TronConfigYaml {
                                     println!("error processing outbound" )
                                 }
 
-                                r.is_ok()}).map(|r|r.unwrap()).collect()
-                    ),
+                                r.is_ok()}).map(|r|r.unwrap()).map(|c|(c.name.clone(),c)).collect()
                     },
-                }),
+                },
             },
             state: match &self.state {
-                Some(state) => Option::Some(StateConfig {
+                Some(state) => StateConfig {
                     artifact: state.artifact.to_artifact(default_bundle, Option::Some("schema"))?,
-                }),
-                None => Option::None,
+                },
+                None => Default::default(),
             },
             nucleus_lookup_name: None,
         });

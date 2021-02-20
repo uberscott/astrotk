@@ -20,7 +20,8 @@ use crate::router::{Router, LocalRouter, NetworkRouter, SharedRouter, HasNucleus
 pub struct Node<'configs> {
     pub local: Option<Arc<Local<'configs>>>,
     pub net: Arc<Network<'configs>>,
-    pub cache: Arc<Cache<'configs>>
+    pub cache: Arc<Cache<'configs>>,
+    pub router: Arc<dyn Router+'configs>
 }
 
 
@@ -62,6 +63,7 @@ impl <'configs> Node<'configs> {
             cache: cache.clone(),
             local: Option::Some(local),
             net: network.clone(),
+            router: local_router.clone()
         };
         rtn
     }
@@ -83,7 +85,8 @@ impl <'configs> Node<'configs> {
 
     pub fn send( &self, message: Message )
     {
-        self.net.router().send( Arc::new(message))
+println!("NODE SEND MESSAGE ");
+        self.router.send( Arc::new(message))
     }
 
 }
@@ -132,6 +135,7 @@ impl<'configs> Router for Local<'configs>
     }
 
     fn receive(&self, message: Arc<Message>) {
+println!("LOCAL RECEIVED MESSAGE");
         let mut result = self.nuclei.get( &message.to.tron.nucleus);
 
         if result.is_err()
@@ -145,7 +149,11 @@ impl<'configs> Router for Local<'configs>
     }
 
     fn has_nucleus_local(&self, nucleus: &Id) -> HasNucleus {
-        unimplemented!()
+        match self.nuclei.has_nucleus(nucleus)
+        {
+            true => HasNucleus::Yes,
+            false => HasNucleus::No
+        }
     }
 
     fn has_nucleus_remote(&self, nucleus: &Id) -> HasNucleus {

@@ -721,16 +721,16 @@ impl Message {
         })
     }
 
-    pub fn reject(message: Arc<Message>, from: From,reason: &str,  seq: Arc<IdSeq>,configs: &Configs, ) -> Result<Message, Error>
+    pub fn reject(&self, from: From,reason: &str,  seq: Arc<IdSeq>,configs: &Configs, ) -> Result<Message, Error>
     {
         let rtn = Message::single_payload(seq,
                                            MessageKind::Reject,
                                           from,
-                                          match &message.callback
+                                          match &self.callback
                                           {
                                               None => {
                                                   To {
-                                                      tron: message.from.tron.clone(),
+                                                      tron: self.from.tron.clone(),
                                                       port: "reject".to_string(),
                                                       cycle: Cycle::Next,
                                                       phase: 0,
@@ -746,17 +746,17 @@ impl Message {
         Ok(rtn)
     }
 
-    pub fn respond(message: Arc<Message>, from: From, payloads: Vec<Payload>, seq: Arc<IdSeq>) -> Result<Message, Error>
+    pub fn respond(&self, from: From, payloads: Vec<Payload>, seq: Arc<IdSeq>) -> Message
     {
-        let rtn = Message::longform(seq,
+        Message::longform(seq,
                                     MessageKind::Response,
                                     from,
-                                    match &message.callback
+                                    match &self.callback
                                     {
                                         None => {
                                             To {
-                                                tron: message.from.tron.clone(),
-                                                port: message.to.port.clone(),
+                                                tron: self.from.tron.clone(),
+                                                port: self.to.port.clone(),
                                                 cycle: Cycle::Next,
                                                 phase: 0,
                                                 delivery: DeliveryMoment::Cyclic,
@@ -768,25 +768,24 @@ impl Message {
                                     Option::None,
                                     payloads,
                                     Option::None,
-                                    Option::Some(message.id)
-        );
+                                    Option::Some(self.id)
+        )
 
-        Ok(rtn)
     }
 
 
-    pub fn ok(message: Arc<Message>, from: From,  ok:bool, seq: Arc<IdSeq>,configs: &Configs) -> Result<Message, Error>
+    pub fn ok(&self, from: From,  ok:bool, seq: Arc<IdSeq>,configs: &Configs) -> Result<Message, Error>
     {
         let payload = OkPayloadBuilder::new(ok,configs)?;
 
         let rtn = Message::single_payload(seq,
                                            MessageKind::Reject,
                                           from,
-                                          match &message.callback
+                                          match &self.callback
                                           {
                                               None => {
                                                   To {
-                                                      tron: message.from.tron.clone(),
+                                                      tron: self.from.tron.clone(),
                                                       port: "reject".to_string(),
                                                       cycle: Cycle::Next,
                                                       phase: 0,
