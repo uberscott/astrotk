@@ -68,7 +68,14 @@ impl <'configs> Node<'configs> {
 
     pub fn shutdown(&self) {}
 
-    pub fn create_sim(&self ) -> Result<Id, Error>
+    pub fn create_sim(&self) -> Result<Id, Error>
+    {
+        let sim_id = self.net.seq.next();
+        self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()));
+        Ok(sim_id)
+    }
+
+    pub fn create_nucleus(&self, ) -> Result<Id, Error>
     {
         let sim_id = self.net.seq.next();
         self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()));

@@ -27,7 +27,7 @@ pub trait Tron {
         context: &dyn TronContext,
         state: Arc<Mutex<State>>,
         create: &Message,
-    ) -> Result<(Option<Vec<MessageBuilder>>), Error>;
+    ) -> Result<Option<Vec<MessageBuilder>>, Error>;
 
     fn update(
         &self,

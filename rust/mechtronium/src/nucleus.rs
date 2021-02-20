@@ -1408,7 +1408,7 @@ mod test
     fn test_create_node()
     {
         let node = create_node();
-        let result = node.create_sim();
+        let result = node.create_nucleus();
         assert!( result.is_ok());
         node.shutdown();
     }

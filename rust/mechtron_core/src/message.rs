@@ -58,7 +58,8 @@ struct({fields: {
     port: string(),
     cycle: i64(),
     phase: u8(),
-    delivery: enum({choices: ["Cyclic", "Phasic"], default: "Cyclic"})
+    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
+    target: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
   }}),
   payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) })
 
@@ -84,6 +85,7 @@ pub struct To {
     pub cycle: Cycle,
     pub phase: u8,
     pub delivery: DeliveryMoment,
+    pub target: DeliveryTarget
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -118,6 +120,7 @@ impl To {
             cycle: Cycle::Next,
             phase: 0,
             delivery: DeliveryMoment::Cyclic,
+            target: DeliveryTarget::Kernel
         }
     }
 
@@ -128,6 +131,7 @@ impl To {
             cycle: Cycle::Next,
             phase: phase,
             delivery: DeliveryMoment::Cyclic,
+            target: DeliveryTarget::Kernel
         }
     }
 
@@ -138,6 +142,7 @@ impl To {
             cycle: Cycle::Present,
             phase: phase,
             delivery: DeliveryMoment::Phasic,
+            target: DeliveryTarget::Kernel
         }
     }
 
@@ -157,6 +162,7 @@ impl To {
 
         match self.delivery {
             DeliveryMoment::Cyclic => {
+println!("Cyclic!!!");
                 buffer.set(
                     &path.with(path!("delivery")),
                     NP_Enum::Some("Cyclic".to_string()),
@@ -166,6 +172,27 @@ impl To {
                 buffer.set(
                     &path.with(path!("delivery")),
                     NP_Enum::Some("Phasic".to_string()),
+                )?;
+            }
+            DeliveryMoment::ExtraCyclic=> {
+                buffer.set(
+                    &path.with(path!("delivery")),
+                    NP_Enum::Some("ExtraCyclic".to_string()),
+                )?;
+            }
+        }
+
+        match self.target{
+            DeliveryTarget::Shell=> {
+                buffer.set(
+                    &path.with(path!("target")),
+                    NP_Enum::Some("Shell".to_string()),
+                )?;
+            }
+            DeliveryTarget::Kernel=> {
+                buffer.set(
+                    &path.with(path!("target")),
+                    NP_Enum::Some("Kernel".to_string()),
                 )?;
             }
         }
@@ -187,9 +214,19 @@ impl To {
             NP_Enum::Some(delivery) => match delivery.as_str() {
                 "Cyclic" => DeliveryMoment::Cyclic,
                 "Phasic" => DeliveryMoment::Phasic,
+                "ExtraCyclic" => DeliveryMoment::ExtraCyclic,
                 _ => return Err("unknown delivery type".into()),
             },
         };
+        let target = match buffer.get::<NP_Enum>(&path.with(path!("target")))? {
+            NP_Enum::None => return Err("unkown target type".into()),
+            NP_Enum::Some(target) => match target.as_str() {
+                "Shell" => DeliveryTarget::Shell,
+                "Kernel" => DeliveryTarget::Kernel,
+                _ => return Err("unknown delivery type".into()),
+            },
+        };
+
 
         Ok(To {
             tron: tron,
@@ -197,6 +234,7 @@ impl To {
             cycle: cycle,
             phase: phase,
             delivery: delivery,
+            target: target
         })
     }
 }
@@ -283,6 +321,13 @@ fn string_to_message_kind(str: &str) -> Result<MessageKind, Error> {
 pub enum DeliveryMoment {
     Cyclic,
     Phasic,
+    ExtraCyclic
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum DeliveryTarget {
+    Shell,
+    Kernel
 }
 
 #[derive(Clone)]
@@ -297,7 +342,8 @@ pub struct MessageBuilder {
     pub to_phase: Option<u8>,
     pub to_phase_name: Option<String>,
     pub to_port: Option<String>,
-    pub to_inter_delivery_type: Option<DeliveryMoment>,
+    pub to_delivery: Option<DeliveryMoment>,
+    pub to_target: Option<DeliveryTarget>,
     pub payloads: Option<Vec<PayloadBuilder>>,
     pub meta: Option<HashMap<String, String>>,
     pub transaction: Option<Id>,
@@ -316,7 +362,8 @@ impl MessageBuilder {
             to_port: None,
             to_phase: None,
             to_phase_name: None,
-            to_inter_delivery_type: None,
+            to_delivery: None,
+            to_target: None,
             payloads: None,
             meta: None,
             transaction: None,
@@ -389,9 +436,13 @@ impl MessageBuilder {
                 port: self.to_port.clone().unwrap(),
                 cycle: self.to_cycle_kind.clone().unwrap(),
                 phase: self.to_phase.clone().unwrap(),
-                delivery: match &self.to_inter_delivery_type {
+                delivery: match &self.to_delivery {
                     Some(r) => r.clone(),
                     None => DeliveryMoment::Cyclic,
+                },
+                target: match &self.to_target{
+                    Some(r) => r.clone(),
+                    None => DeliveryTarget::Kernel,
                 },
             },
             payloads: vec![],
@@ -644,10 +695,7 @@ mod tests {
     use crate::buffers::{Buffer, BufferFactories, Path};
     use crate::id::{Id, IdSeq, TronKey};
     use crate::message;
-    use crate::message::{
-        Cycle, DeliveryMoment, From, Message, MessageKind, Payload, PayloadBuilder, To, ID,
-        MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA,
-    };
+    use crate::message::{Cycle, DeliveryMoment, From, Message, MessageKind, Payload, PayloadBuilder, To, ID, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, DeliveryTarget};
     use no_proto::buffer::NP_Buffer;
     use no_proto::memory::NP_Memory_Ref;
     use no_proto::NP_Factory;
@@ -730,6 +778,32 @@ mod tests {
     }
 
     #[test]
+    fn test_serialize_to()
+    {
+        let np_factory = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
+        let np_buffer = np_factory.new_buffer(Option::None);
+        let mut buffer = Buffer::new(np_buffer);
+
+        let mut seq = IdSeq::new(0);
+
+        let key = TronKey {
+            nucleus: seq.next(),
+            tron: seq.next(),
+        };
+        let to = To::basic(key,"someport".to_string());
+
+        let path = Path::new(path!["to"]);
+        to.append(&path, &mut buffer).unwrap();
+
+        let buffer = buffer.read_only();
+
+        let ser_to = To::from(&path, &buffer).unwrap();
+
+        assert_eq!(to, ser_to);
+
+    }
+
+    #[test]
     fn test_serialize_message() {
         let artifact = Artifact::from("mechtron.io:core:1.0.0:schema/empty.schema").unwrap();
         let factories = BufferFactoriesImpl {};
@@ -761,6 +835,7 @@ mod tests {
             cycle: Cycle::Exact(32),
             phase: 0,
             delivery: DeliveryMoment::Cyclic,
+            target: DeliveryTarget::Kernel
         };
 
         let mut message = Message::single_payload(
