@@ -17,6 +17,7 @@ pub struct Configs<'config> {
     pub schemas: Keeper<NP_Factory<'config>>,
     pub sims: Keeper<SimConfig>,
     pub trons: Keeper<TronConfig>,
+    pub nucleus: Keeper<NucleusConfig>,
     pub mechtrons: Keeper<MechtronConfig>
 }
 
@@ -31,6 +32,7 @@ impl<'config> Configs<'config> {
             ),
             sims: Keeper::new(artifact_cache.clone(), Box::new(SimConfigParser), Option::Some(Box::new(SimConfigArtifactCacher{}))),
             trons: Keeper::new(artifact_cache.clone(), Box::new(TronConfigParser), Option::Some(Box::new(TronConfigArtifactCacher{}))),
+            nucleus: Keeper::new(artifact_cache.clone(), Box::new(NucleusConfigParser ), Option::Some(Box::new(NucleusConfigArtifactCacher{}))),
             mechtrons: Keeper::new(
                 artifact_cache.clone(),
                 Box::new(MechtronConfigParser),
@@ -57,6 +59,15 @@ impl<'config> Configs<'config> {
                         self.trons.cache(artifact)?;
                         let config = self.trons.get(artifact)?;
                         for artifact in self.trons.get_cacher().as_ref().unwrap().artifacts(config)?
+                        {
+                            &self.cache(&artifact)?;
+                        }
+                        Ok(())
+                    },
+                    "nucleus"=>{
+                        self.nucleus.cache(artifact)?;
+                        let config = self.nucleus.get(artifact)?;
+                        for artifact in self.nucleus.get_cacher().as_ref().unwrap().artifacts(config)?
                         {
                             &self.cache(&artifact)?;
                         }
@@ -97,6 +108,8 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_SCHEMA_PONG)?;
         self.cache(&CORE_SCHEMA_TEXT)?;
         self.cache(&CORE_SCHEMA_OK)?;
+
+        self.cache(&CORE_NUCLEUS_CONFIG_SIMULATION)?;
         Ok(())
     }
 }
@@ -208,6 +221,18 @@ impl Parser<TronConfig> for TronConfigParser {
     }
 }
 
+
+struct NucleusConfigParser;
+
+impl Parser<NucleusConfig> for NucleusConfigParser {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<NucleusConfig, Error> {
+        let nucleus_config_yaml = NucleusConfigYaml::from_yaml(str)?;
+        let nucleus_config = nucleus_config_yaml.to_config(artifact)?;
+        Ok(nucleus_config)
+    }
+}
+
+
 #[derive(Clone)]
 pub struct MechtronConfig {
     pub source: Artifact,
@@ -228,6 +253,15 @@ pub struct TronConfig {
     pub source: Artifact,
     pub state: StateConfig,
     pub message: MessageConfig,
+}
+
+struct NucleusConfigArtifactCacher;
+
+impl Cacher<NucleusConfig> for NucleusConfigArtifactCacher
+{
+    fn artifacts(&self, config: Arc<NucleusConfig>) -> Result<Vec<Artifact>, Error> {
+        Ok(vec!())
+    }
 }
 
 struct TronConfigArtifactCacher;
@@ -292,6 +326,19 @@ impl Default for MessageConfig
         }
     }
 }
+
+#[derive(Clone)]
+pub struct NucleusConfig
+{
+   pub phases: Vec<PhaseConfig>
+}
+
+#[derive(Clone)]
+pub struct PhaseConfig
+{
+    pub name: String
+}
+
 
 #[derive(Clone)]
 pub struct StateConfig {
@@ -597,6 +644,34 @@ impl SimConfigYaml {
         }
         return Ok(rtn);
     }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct NucleusConfigYaml
+{
+    phases: Vec<PhaseConfigYaml>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct PhaseConfigYaml
+{
+    name: String
+}
+
+impl NucleusConfigYaml
+{
+    pub fn from_yaml(string: &str) -> Result<Self, Error> {
+        Ok(serde_yaml::from_str(string)?)
+    }
+
+    pub fn to_config(&self, artifact: &Artifact) -> Result<NucleusConfig, Error> {
+        let default_bundle = &artifact.bundle.clone();
+        Ok(NucleusConfig{
+            phases: self.phases.iter().map( |p| PhaseConfig{ name: p.name.clone() } ).collect()
+        })
+    }
+
+
 }
 
 pub trait Cacher<V> {

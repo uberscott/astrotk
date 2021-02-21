@@ -2,6 +2,7 @@ struct( { fields: {
 
   artifact: string(),
   creation_timestamp: i64(),
-  creation_cycle: i64()
+  creation_cycle: i64(),
+  taint: bool()
 
 }})

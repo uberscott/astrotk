@@ -49,6 +49,7 @@ impl State {
         }
     }
 
+
     pub fn read_only(&self) -> Result<ReadOnlyState, Error> {
         Ok(ReadOnlyState {
             meta: self.meta.read_only(),
@@ -76,6 +77,12 @@ impl StateMeta for State {
     fn set_creation_cycle(&mut self, value: i64) -> Result<(), Error> {
         Ok(self.meta.set(&path!["creation_cycle"], value)?)
     }
+
+    fn set_taint( &mut self, taint: bool )
+    {
+        self.meta.set(&path!["taint"], taint );
+    }
+
 }
 
 impl ReadOnlyStateMeta for State {
@@ -89,6 +96,10 @@ impl ReadOnlyStateMeta for State {
 
     fn get_creation_cycle(&self) -> Result<i64, Error> {
         Ok(self.meta.get(&path!["creation_cycle"])?)
+    }
+
+    fn is_tainted(&self) -> Result<bool, Error> {
+        Ok(self.meta.get(&path!["taint"])?)
     }
 }
 
@@ -138,16 +149,23 @@ impl ReadOnlyStateMeta for ReadOnlyState {
     fn get_creation_cycle(&self) -> Result<i64, Error> {
         Ok(self.meta.get(&path!["creation_cycle"])?)
     }
+
+    fn is_tainted(&self) -> Result<bool, Error> {
+        Ok(self.meta.get(&path!["taint"])?)
+    }
+
 }
 
 pub trait ReadOnlyStateMeta {
     fn get_artifact(&self) -> Result<Artifact, Error>;
     fn get_creation_timestamp(&self) -> Result<i64, Error>;
     fn get_creation_cycle(&self) -> Result<i64, Error>;
+    fn is_tainted(&self) -> Result<bool, Error>;
 }
 
 pub trait StateMeta: ReadOnlyStateMeta {
     fn set_artifact(&mut self, artifact: &Artifact) -> Result<(), Error>;
     fn set_creation_timestamp(&mut self, value: i64) -> Result<(), Error>;
     fn set_creation_cycle(&mut self, value: i64) -> Result<(), Error>;
+    fn set_taint( &mut self, taint: bool );
 }

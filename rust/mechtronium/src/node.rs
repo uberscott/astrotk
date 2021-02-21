@@ -7,9 +7,10 @@ use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, JIT, Module, Store};
 
 use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{Configs, Keeper, Parser, SimConfig};
+use mechtron_core::configs::{Configs, Keeper, Parser, SimConfig, NucleusConfig};
 use mechtron_core::id::{Id, IdSeq};
 use mechtron_core::message::Message;
+use mechtron_core::core::*;
 
 use crate::artifact::FileSystemArtifactRepository;
 use crate::cache::Cache;
@@ -72,14 +73,15 @@ impl <'configs> Node<'configs> {
 
     pub fn create_sim(&self) -> Result<(Id,Id), Error>
     {
+        let nucleus_config = self.cache.configs.nucleus.get(&CORE_NUCLEUS_CONFIG_SIMULATION )?;
         let sim_id = self.net.seq.next();
-        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()))?;
+        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()),nucleus_config)?;
         Ok((sim_id,nucleus_id))
     }
 
-    pub fn create_nucleus(&self, sim_id: &Id) -> Result<Id, Error>
+    pub fn create_nucleus(&self, sim_id: &Id, nucleus_config: Arc<NucleusConfig>) -> Result<Id, Error>
     {
-        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id.clone(), Option::Some("simulation".to_string()))?;
+        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id.clone(), Option::Some("simulation".to_string()),nucleus_config)?;
         Ok(nucleus_id)
     }
 

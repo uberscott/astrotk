@@ -11,8 +11,8 @@ use mechtron_core::configs::{
 };
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, NucleusKey, Revision, StateKey, TronKey};
-use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, DeliveryTarget};
-use mechtron_core::state::{ReadOnlyState, State};
+use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, TronLayer};
+use mechtron_core::state::{ReadOnlyState, State, ReadOnlyStateMeta, StateMeta};
 
 use crate::node::Node;
 use crate::nucleus::{Nucleus, TronContext, NeutronContext};
@@ -25,6 +25,7 @@ use mechtron_core::util::PongPayloadBuilder;
 use std::cell::RefCell;
 use no_proto::collection::list::NP_List;
 use no_proto::collection::struc::NP_Struct;
+use std::borrow::BorrowMut;
 
 pub trait Tron {
     fn create(
@@ -123,6 +124,7 @@ pub struct TronShell {
     pub tron: Box<dyn Tron>,
     pub info: TronInfo,
     pub outbound: RefCell<Vec<Message>>,
+    pub panic: bool
 }
 
 
@@ -130,7 +132,8 @@ impl  TronShell {
     pub fn new(tron: Box<dyn Tron>, info: TronInfo  ) -> Self {
         TronShell { tron: tron,
                     info: info,
-                    outbound: RefCell::new(vec!())}
+                    outbound: RefCell::new(vec!()),
+                    panic: false}
     }
 
     fn warn<E:Debug>( &self, error: E )
@@ -143,31 +146,32 @@ impl  TronShell {
         println!("PANIC: TronShell got unexpected error {:?}",error);
     }
 
-    fn reject( &mut self,message: &Message, reason: &str, context: &dyn TronContext )
+    fn reject( &mut self,message: &Message, reason: &str, context: &dyn TronContext, layer: TronLayer )
     {
         // we unrwrap it because if REJECT message isn't available, then nothing should work
-        let message = message.reject(self.from(context), reason, context.seq(), context.configs()).unwrap();
+        let message = message.reject(self.from(context,layer), reason, context.seq(), context.configs()).unwrap();
         self.send(message)
     }
 
-    fn ok( &mut self, message: &Message, ok: bool, context: &dyn TronContext  )
+    fn ok( &mut self, message: &Message, ok: bool, context: &dyn TronContext, layer: TronLayer   )
     {
         // we unrwrap it because if REJECT message isn't available, then nothing should work
-        let message = message.ok(self.from(context), ok, context.seq(), context.configs()).unwrap();
+        let message = message.ok(self.from(context,layer), ok, context.seq(), context.configs()).unwrap();
         self.send(message)
     }
 
-    fn respond( &mut self, message: &Message, payloads: Vec<Payload>, context: &dyn TronContext  )
+    fn respond( &mut self, message: &Message, payloads: Vec<Payload>, context: &dyn TronContext, layer: TronLayer   )
     {
-        let message = message.respond(self.from(context), payloads, context.seq());
+        let message = message.respond(self.from(context,layer), payloads, context.seq());
         self.send(message);
     }
 
-    fn from(&self, context: &dyn TronContext ) -> mechtron_core::message::From {
+    fn from(&self, context: &dyn TronContext, layer: TronLayer  ) -> mechtron_core::message::From {
         mechtron_core::message::From {
             tron: self.info.key.clone(),
             cycle: context.revision().cycle.clone(),
-            timestamp: context.timestamp()
+            timestamp: context.timestamp(),
+            layer: layer
         }
     }
 
@@ -179,6 +183,30 @@ impl  TronShell {
     pub fn flush(&self)->Vec<Message>
     {
         self.outbound.replace(Default::default())
+    }
+
+    pub fn taint(
+        &mut self,
+        state: &mut MutexGuard<State>
+    ) ->Result<(),Error>  {
+
+        state.set_taint(true);
+        Ok(())
+    }
+
+    pub fn is_tainted(
+        &self,
+        state: TronShellState
+    ) ->Result<bool,Error>  {
+
+        match state{
+            TronShellState::Mutable(state) => {
+                Ok(state.is_tainted()?)
+            }
+            TronShellState::ReadOnly(state) => {
+                Ok(state.is_tainted()?)
+            }
+        }
     }
 
     pub fn create(
@@ -201,20 +229,20 @@ impl  TronShell {
     {
 
 println!("entered EXTRA");
-        match message.to.target
+        match message.to.layer
         {
-            DeliveryTarget::Shell => {
+            TronLayer::Shell => {
                 match message.to.port.as_str(){
                     "ping" => {
 println!("PING!!!");
-                        self.respond(message, vec!(PongPayloadBuilder::new(context.configs()).unwrap()),context);
+                        self.respond(message, vec!(PongPayloadBuilder::new(context.configs()).unwrap()),context,TronLayer::Shell);
                     }
                     _ => {
-                       self.reject(message, format!("TronShell has no extra port: {}", message.to.port.clone()).as_str(),context );
+                       self.reject(message, format!("TronShell has no extra port: {}", message.to.port.clone()).as_str(),context, TronLayer::Shell );
                     }
                 };
             }
-            DeliveryTarget::Kernel => {
+            TronLayer::Kernel => {
                 match self.info.config.message.extra.contains_key(&message.to.port)
                 {
                     true => {
@@ -230,7 +258,7 @@ println!("PING!!!");
                         }
                     }
                     false => {
-                        self.reject( message, format!("extra cyclic port '{}' does not exist on this mechtron", message.to.port).as_str(),context);
+                        self.reject( message, format!("extra cyclic port '{}' does not exist on this mechtron", message.to.port).as_str(),context,TronLayer::Shell);
                     }
                 }
             }
@@ -280,7 +308,7 @@ println!("PING!!!");
                 }
                 false => {
                     for message in messages{
-                        self.reject(message, format!("mechtron {} does not have an inbound port {}", self.info.config.source.to(), port).as_str(),context );
+                        self.reject(message, format!("mechtron {} does not have an inbound port {}", self.info.config.source.to(), port).as_str(),context, TronLayer::Shell );
                     }
                 }
             }
@@ -296,9 +324,69 @@ println!("PING!!!");
         context: &dyn TronContext
     )  {
                     match builders {
-                        Ok(_) => {}
-                        Err(e) => {
+                        Ok(builders) => {
+                            match builders{
+                                None => {}
+                                Some(builders) => {
+                                    for mut builder in builders
+                                    {
+                                        builder.from = Option::Some( self.from(context, TronLayer::Kernel ) );
 
+                                        if builder.to_nucleus_lookup_name.is_some()
+                                        {
+                                            let nucleus_id = context.lookup_nucleus(&builder.to_nucleus_lookup_name.unwrap() );
+                                            match nucleus_id{
+                                                Ok(nucleus_id) => {
+                                                    builder.to_nucleus_id = Option::Some(nucleus_id);
+                                                    builder.to_nucleus_lookup_name = Option::None;
+                                                }
+                                                Err(e) => {
+                                                    self.panic(e);
+                                                    return;
+                                                }
+                                            }
+                                        }
+
+                                        if builder.to_tron_lookup_name.is_some()
+                                        {
+
+                                            let nucleus_id =builder.to_nucleus_id;
+                                            match nucleus_id{
+                                                None => {
+                                                    // do nothing. builder.build() will panic for us
+                                                }
+                                                Some(nucleus_id) => {
+                                                    let tron_key = context.lookup_tron(&nucleus_id,&builder.to_tron_lookup_name.unwrap().as_str() );
+                                                    match tron_key{
+                                                        Ok(tron_key) => {
+                                                            builder.to_tron_id = Option::Some(tron_key.tron);
+                                                            builder.to_tron_lookup_name = Option::None;
+                                                        }
+                                                        Err(e) => {
+                                                            self.panic(e);
+                                                            return;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        let message = builder.build(context.seq().clone() );
+                                        match message {
+                                            Ok(message) => {
+                                                self.outbound.borrow_mut().push(message);
+                                            }
+                                            Err(e) => {
+                                                self.panic(e);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                        }
+                        Err(e) => {
                            self.panic(e)
                         }
                     }
@@ -419,7 +507,7 @@ impl Tron for Neutron {
             let mut builder = MessageBuilder::new();
             builder.to_tron_lookup_name = Option::Some("simtron".to_string());
             builder.to_nucleus_lookup_name= Option::Some("simulation".to_string());
-            builder.to_phase = Option::Some(0);
+            builder.to_phase = Option::Some("default".to_string());
             builder.kind = Option::Some(MessageKind::Update);
 
             let factory = context.configs().schemas.get(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;

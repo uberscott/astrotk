@@ -11,12 +11,12 @@ use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
 use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{Configs, Keeper, SimConfig, TronConfig};
+use mechtron_core::configs::{Configs, Keeper, SimConfig, TronConfig, NucleusConfig};
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq, StateKey};
 use mechtron_core::id::Revision;
 use mechtron_core::id::TronKey;
-use mechtron_core::message::{Cycle, DeliveryMoment, DeliveryTarget, Message, MessageKind, Payload, To};
+use mechtron_core::message::{Cycle, DeliveryMoment, TronLayer, Message, MessageKind, Payload, To};
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
 
 use crate::cache::Cache;
@@ -77,9 +77,9 @@ impl<'nuclei> Nuclei<'nuclei> {
     }
 
 
-    pub fn create(&self, sim_id: Id, lookup_name: Option<String>) -> Result<Id, Error> {
+    pub fn create(&self, sim_id: Id, lookup_name: Option<String>, config: Arc<NucleusConfig> ) -> Result<Id, Error> {
         let id = self.context.seq.next();
-        let mut nucleus = Nucleus::new( id, sim_id, self.context.clone() )?;
+        let mut nucleus = Nucleus::new( id, sim_id, self.context.clone(), config.clone() )?;
 
         nucleus.bootstrap(lookup_name)?;
 
@@ -145,6 +145,7 @@ pub struct Nucleus<'nucleus> {
     messaging: CyclicMessagingStructure,
     head: Revision,
     context: NucleusContext<'nucleus>,
+    config: Arc<NucleusConfig>
 }
 
 impl<'nucleus> Nucleus<'nucleus> {}
@@ -154,6 +155,7 @@ impl<'nucleus> Nucleus<'nucleus> {
         id: Id,
         sim_id: Id,
         context: NucleusContext<'nucleus>,
+        config: Arc<NucleusConfig>
     ) -> Result<Arc<Self>, Error> {
         let mut nucleus = Arc::new(Nucleus {
             info: NucleusInfo {
@@ -164,6 +166,7 @@ impl<'nucleus> Nucleus<'nucleus> {
             messaging: CyclicMessagingStructure::new(),
             head: Revision { cycle: -1 },
             context: context,
+            config: config
         });
 
         Ok(nucleus)
@@ -184,7 +187,7 @@ impl<'nucleus> Nucleus<'nucleus> {
         }
     }
 
-    pub fn handle_extracyclic(&self, message: Arc<Message>) {
+    pub fn handle_extracyclic(&mut self, message: Arc<Message>) {
         println!("handling extra cyclic message");
         let state_key = StateKey {
             tron: message.to.tron,
@@ -198,9 +201,9 @@ impl<'nucleus> Nucleus<'nucleus> {
         };
 
         let result = self.tron(&state_key);
-        /*if result.is_err()
+        if result.is_err()
         {
-            let result = message.reject( mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp() }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
+            let result = message.reject( mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp(), layer: TronLayer::Shell }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
             if (result.is_err())
             {
                 println!("could not access this tron.");
@@ -210,11 +213,17 @@ impl<'nucleus> Nucleus<'nucleus> {
             self.context.router.send(Arc::new(result.unwrap()));
             return;
         }
-         */
         let (mut shell,state) = result.unwrap();
+
         shell.extra(message.as_ref(),self, state);
-        self.handle_outbound(shell.flush());
+
+        if !shell.panic
+        {
+            self.handle_outbound(shell.flush());
+        }
     }
+
+
 
     fn handle_outbound( &self, messages: Vec<Message>)
     {
@@ -247,7 +256,7 @@ println!("Sending message of type: {:?} ", &message.kind );
         let mut states = vec!();
         let mut messages = vec!();
         {
-            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone())?;
+            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone(),self.config.clone())?;
 
             nucleus_cycle.bootstrap(lookup_name);
 
@@ -287,7 +296,7 @@ println!("Sending message of type: {:?} ", &message.kind );
         let mut messages= vec!();
         {
 
-            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), to.clone(), self.state.clone())?;
+            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), to.clone(), self.state.clone(), self.config.clone() )?;
 
             for message in self.messaging.query(to.cycle)? {
                 nucleus_cycle.intake_message(message)?;
@@ -341,9 +350,9 @@ impl<'nucleus> TronContext<'nucleus> for Nucleus<'nucleus>
         self.state.get(key)
     }
 
-    fn lookup_nucleus(&self, info: &TronInfo, name: &str) -> Result<Id, Error> {
+    fn lookup_nucleus(&self, name: &str) -> Result<Id, Error> {
        let lookup = Lookup::new(self.state.clone(), self.head.clone() );
-        lookup.lookup_nucleus(info,name)
+        lookup.lookup_nucleus(self.info.id.clone(),name)
     }
     fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<TronKey, Error> {
         let lookup = Lookup::new(self.state.clone(), self.head.clone() );
@@ -374,10 +383,11 @@ struct NucleusCycle<'cycle> {
     state: PhasicStateStructure,
     messaging: PhasicMessagingStructure,
     outbound: OutboundMessaging,
-    phase: u8,
     revision: Revision,
     context: NucleusContext<'cycle>,
-    history: Arc<StateHistory>
+    config: Arc<NucleusConfig>,
+    history: Arc<StateHistory>,
+    phase: String
 }
 
 impl<'cycle> NucleusCycle<'cycle> {
@@ -385,7 +395,8 @@ impl<'cycle> NucleusCycle<'cycle> {
         info: NucleusInfo,
         context: NucleusContext<'cycle>,
         revision: Revision,
-        history: Arc<StateHistory>
+        history: Arc<StateHistory>,
+        config: Arc<NucleusConfig>,
 
     ) -> Result<Self, Error> {
         Ok(NucleusCycle {
@@ -395,8 +406,9 @@ impl<'cycle> NucleusCycle<'cycle> {
             messaging: PhasicMessagingStructure::new(),
             outbound: OutboundMessaging::new(),
             revision: revision,
-            phase: 0,
-            history:history
+            history:history,
+            config: config,
+            phase: "default".to_string()
         })
     }
 
@@ -439,14 +451,15 @@ impl<'cycle> NucleusCycle<'cycle> {
                 tron: info.key.clone(),
                 cycle: 0,
                 timestamp,
+                layer: TronLayer::Kernel
             },
             To {
                 tron: info.key.clone(),
                 port: "create".to_string(),
                 cycle: Cycle::Next,
-                phase: 0,
+                phase: "default".to_string(),
                 delivery: DeliveryMoment::Cyclic,
-                target: DeliveryTarget::Kernel,
+                layer: TronLayer::Kernel,
             },
             CreatePayloadsBuilder::payloads(configs, neutron_create_payload_builder),
         );
@@ -472,12 +485,16 @@ impl<'cycle> NucleusCycle<'cycle> {
     }
 
     fn execute(&mut self) -> Result<(), Error> {
-        let phase: u8 = 0;
-        match self.messaging.drain(&phase)? {
-            None => {}
-            Some(messages) => {
-                for message in messages {
-                    self.process(message.as_ref())?;
+        let config = self.config.clone();
+        for phase in &config.phases
+        {
+            let phase = phase.name.clone();
+            match &self.messaging.drain(&phase)? {
+                None => {}
+                Some(messages) => {
+                    for message in messages {
+                        self.process(message.as_ref())?;
+                    }
                 }
             }
         }
@@ -575,7 +592,7 @@ pub trait TronContext<'cycle>
 {
     fn configs<'get>(&'get self) -> &'get Configs<'cycle>;
     fn get_state(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error>;
-    fn lookup_nucleus(&self, context: &TronInfo, name: &str) -> Result<Id, Error>;
+    fn lookup_nucleus(&self, name: &str) -> Result<Id, Error>;
     fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<TronKey, Error>;
     fn revision(&self) -> &Revision;
     fn timestamp(&self) -> u64;
@@ -604,9 +621,10 @@ impl<'cycle> TronContext<'cycle> for NucleusCycle<'cycle>
         Ok(state)
     }
 
-    fn lookup_nucleus(&self, info: &TronInfo, name: &str) -> Result<Id, Error> {
+    fn lookup_nucleus(&self, name: &str) -> Result<Id, Error> {
+        let nucleus_id = self.info.id.clone();
         let lookup = Lookup::new( self.history.clone(), self.revision.clone() );
-        lookup.lookup_nucleus(info,name)
+        lookup.lookup_nucleus(nucleus_id,name)
     }
 
     fn lookup_tron(
@@ -852,7 +870,7 @@ mod message
     }
 
     pub struct PhasicMessagingStructure {
-        store: HashMap<u8, Vec<Arc<Message>>>,
+        store: HashMap<String, Vec<Arc<Message>>>,
     }
 
     impl PhasicMessagingStructure {
@@ -873,7 +891,7 @@ mod message
         }
 
 
-        pub fn drain(&mut self, phase: &u8) -> Result<Option<Vec<Arc<Message>>>, Error> {
+        pub fn drain(&mut self, phase: &String) -> Result<Option<Vec<Arc<Message>>>, Error> {
             Ok(self.store.remove(phase))
         }
         pub fn drain_all(&mut self ) -> Result<Vec<Arc<Message>>, Error> {
@@ -943,7 +961,7 @@ mod message
         use mechtron_core::configs::Configs;
         use mechtron_core::core::*;
         use mechtron_core::id::{Id, IdSeq, TronKey};
-        use mechtron_core::message::{Cycle, DeliveryMoment, DeliveryTarget, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To};
+        use mechtron_core::message::{Cycle, DeliveryMoment, TronLayer, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To};
         use mechtron_core::message::DeliveryMoment::Cyclic;
 
         use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
@@ -972,14 +990,15 @@ mod message
                                         tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),
                                         cycle: 0,
                                         timestamp: 0,
+                                        layer: TronLayer::Kernel
                                     },
                                     To {
                                         tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),
                                         port: "someport".to_string(),
                                         cycle: Cycle::Present,
-                                        phase: 0,
+                                        phase: "default".to_string(),
                                         delivery: DeliveryMoment::Cyclic,
-                                        target: DeliveryTarget::Kernel
+                                        layer: TronLayer::Kernel
                                     },
                                     payload,
             )
@@ -990,7 +1009,7 @@ mod message
             let mut builder = MessageBuilder::new();
             builder.to_nucleus_id = Option::Some(Id::new(0, 0));
             builder.to_tron_id = Option::Some(Id::new(0, 0));
-            builder.to_phase = Option::Some(0);
+            builder.to_phase = Option::Some("default".to_string());
             builder.to_cycle_kind = Option::Some(Cycle::Next);
             builder.to_port = Option::Some("port".to_string());
             builder.from = Option::Some(mock_from());
@@ -1026,6 +1045,7 @@ mod message
                 tron: mock_tron_key(),
                 cycle: 0,
                 timestamp: 0,
+                layer: TronLayer::Kernel
             }
         }
 
@@ -1054,7 +1074,7 @@ mod message
             let configs_ref = &mut configs;
             let mut builder = message_builder(configs_ref);
             builder.to_cycle_kind = Option::Some(Cycle::Next);
-            let message = Arc::new(builder.build(&mut IdSeq::new(0)).unwrap());
+            let message = Arc::new(builder.build(Arc::new(IdSeq::new(0))).unwrap());
             let context = CycleMessagingContext{
                 head: 0
             };
@@ -1076,7 +1096,7 @@ mod message
             let configs_ref = &mut configs;
             let mut builder = message_builder(configs_ref);
             builder.to_cycle_kind = Option::Some(Cycle::Exact(0));
-            let message = Arc::new(builder.build(&mut IdSeq::new(0)).unwrap());
+            let message = Arc::new(builder.build(Arc::new(IdSeq::new(0))).unwrap());
             let context =CycleMessagingContext{
                 head: 0
             };
@@ -1096,7 +1116,7 @@ mod message
         {
             let mut builder = message_builder(configs);
             builder.to_cycle_kind = Option::Some(Cycle::Exact(cycle));
-            let message = builder.build(&mut IdSeq::new(0)).unwrap();
+            let message = builder.build(Arc::new(IdSeq::new(0))).unwrap();
             let context =  CycleMessagingContext{head:0};
 
             messaging.intake(Arc::new(message), context);
@@ -1167,7 +1187,7 @@ mod message
                 cyclic_messaging.intake(message).unwrap();
             }
 
-            let messages = cyclic_messaging.drain(&0).unwrap().unwrap();
+            let messages = cyclic_messaging.drain(&"default".to_string()).unwrap().unwrap();
 
             assert_eq!(1, messages.len());
 
@@ -1180,7 +1200,7 @@ mod message
                 cyclic_messaging.intake(message).unwrap();
             }
 
-            let messages = cyclic_messaging.drain(&0).unwrap().unwrap();
+            let messages = cyclic_messaging.drain(&"default".to_string()).unwrap().unwrap();
         }
 
         #[test]
@@ -1188,24 +1208,24 @@ mod message
         {
             let mut cyclic_messaging = PhasicMessagingStructure::new();
             let mut configs = create_configs();
-            let mut id_seq = IdSeq::new(0);
+            let mut id_seq = Arc::new(IdSeq::new(0));
             let configs_ref = &mut configs;
 
             let mut builder = message_builder(configs_ref);
-            builder.to_phase = Option::Some(0);
-            let message = builder.build(&mut id_seq).unwrap();
+            builder.to_phase = Option::Some("default".to_string());
+            let message = builder.build(id_seq.clone()).unwrap();
             cyclic_messaging.intake(Arc::new(message));
 
             let mut builder = message_builder(configs_ref);
-            builder.to_phase = Option::Some(1);
-            let message = builder.build(&mut id_seq).unwrap();
+            builder.to_phase = Option::Some("1".to_string());
+            let message = builder.build(id_seq.clone()).unwrap();
             cyclic_messaging.intake(Arc::new(message));
 
-            assert_eq!(1, cyclic_messaging.drain(&0).unwrap().unwrap().len());
-            assert!(cyclic_messaging.drain(&0).unwrap().is_none());
-            assert_eq!(1, cyclic_messaging.drain(&1).unwrap().unwrap().len());
-            assert!(cyclic_messaging.drain(&1).unwrap().is_none());
-            assert!(cyclic_messaging.drain(&2).unwrap().is_none());
+            assert_eq!(1, cyclic_messaging.drain(&"0".to_string()).unwrap().unwrap().len());
+            assert!(cyclic_messaging.drain(&"0".to_string()).unwrap().is_none());
+            assert_eq!(1, cyclic_messaging.drain(&"1".to_string() ).unwrap().unwrap().len());
+            assert!(cyclic_messaging.drain(&"1".to_string()).unwrap().is_none());
+            assert!(cyclic_messaging.drain(&"2".to_string()).unwrap().is_none());
         }
     }
 
@@ -1466,10 +1486,10 @@ mod state
             }
         }
 
-        pub fn lookup_nucleus(&self, info: &TronInfo, name: &str) -> Result<Id, Error> {
+        pub fn lookup_nucleus(&self, nucleus_id: Id, name: &str) -> Result<Id, Error> {
             let neutron_key = TronKey {
-                nucleus: info.key.nucleus.clone(),
-                tron: Id::new(info.key.nucleus.seq_id, 0),
+                nucleus: nucleus_id,
+                tron: Id::new(nucleus_id.seq_id, 0),
             };
             let state_key = StateKey {
                 tron: neutron_key,
@@ -1558,6 +1578,7 @@ mod test
     use std::sync::Arc;
 
     use mechtron_core::id::{Id, TronKey};
+    use mechtron_core::core::*;
     use mechtron_core::message::*;
     use mechtron_core::util::PingPayloadBuilder;
 
@@ -1572,9 +1593,13 @@ mod test
     #[test]
     fn test_create_node()
     {
+
         let node = create_node();
+
+        let nucleus_config = node.cache.configs.nucleus.get( &CORE_NUCLEUS_CONFIG_SIMULATION ).unwrap();
+
         let (sim_id,nucleus1)= node.create_sim().unwrap();
-        let nucleus2 = node.create_nucleus(&sim_id).unwrap();
+        let nucleus2 = node.create_nucleus(&sim_id,nucleus_config.clone()).unwrap();
         println!("nucleus 1 {:?}", nucleus1);
         println!("nucleus 2 {:?}", nucleus2);
 
@@ -1585,6 +1610,7 @@ mod test
                                                   tron: TronKey { nucleus: nucleus2.clone(), tron: Id { seq_id: 0, id: 0 } },
                                                   cycle: 0,
                                                   timestamp: 0,
+                                                  layer: TronLayer::Shell
                                               },
                                               To {
                                                   tron: TronKey {
@@ -1593,9 +1619,9 @@ mod test
                                                   },
                                                   port: "ping".to_string(),
                                                   cycle: Cycle::Present,
-                                                  phase: 0,
+                                                  phase: "default".to_string(),
                  delivery: DeliveryMoment::ExtraCyclic,
-                 target: DeliveryTarget::Shell
+                 layer: TronLayer::Shell
              },
                                               ping
         );
