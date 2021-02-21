@@ -233,10 +233,14 @@ println!("entered EXTRA");
         {
             TronLayer::Shell => {
                 match message.to.port.as_str(){
-                    "ping" => {
+                   "ping" => {
 println!("PING!!!");
                         self.respond(message, vec!(PongPayloadBuilder::new(context.configs()).unwrap()),context,TronLayer::Shell);
                     }
+                   "pong" => {
+                        println!("PONG!!!");
+                    }
+
                     _ => {
                        self.reject(message, format!("TronShell has no extra port: {}", message.to.port.clone()).as_str(),context, TronLayer::Shell );
                     }
@@ -264,6 +268,7 @@ println!("PING!!!");
             }
         }
     }
+
 
     pub fn inbound(
         &mut self,

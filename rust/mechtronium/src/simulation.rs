@@ -20,7 +20,7 @@ fn timestamp() -> Result<u64, Box<dyn Error>> {
 }
 
 impl SimulationBootstrap {
-    pub fn launch(sys: Arc<Node>, sim_config: Arc<SimConfig>) -> Result<(), Box<dyn Error>> {
+    pub fn bootstrap(sys: Arc<Node>, sim_config: Arc<SimConfig>) -> Result<(), Box<dyn Error>> {
         //        sim_config.cache(&mut sys.local.configs)?;
 
         /*

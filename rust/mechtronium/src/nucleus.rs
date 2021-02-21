@@ -187,7 +187,7 @@ impl<'nucleus> Nucleus<'nucleus> {
         }
     }
 
-    pub fn handle_extracyclic(&mut self, message: Arc<Message>) {
+    pub fn handle_extracyclic(&self, message: Arc<Message>) {
         println!("handling extra cyclic message");
         let state_key = StateKey {
             tron: message.to.tron,
@@ -1604,7 +1604,7 @@ mod test
         println!("nucleus 2 {:?}", nucleus2);
 
         let ping = PingPayloadBuilder::new(&node.cache.configs).unwrap();
-        let message = Message::single_payload(node.net.seq().clone(),
+        let message = Message::longform(node.net.seq().clone(),
                                               MessageKind::Request,
                                               From {
                                                   tron: TronKey { nucleus: nucleus2.clone(), tron: Id { seq_id: 0, id: 0 } },
@@ -1622,8 +1622,20 @@ mod test
                                                   phase: "default".to_string(),
                  delivery: DeliveryMoment::ExtraCyclic,
                  layer: TronLayer::Shell
-             },
-                                              ping
+             },Option::Some(To {
+                tron: TronKey {
+                    nucleus: nucleus2,
+                    tron: Id { seq_id: 0, id: 0 },
+                },
+                port: "pong".to_string(),
+                cycle: Cycle::Present,
+                phase: "default".to_string(),
+                delivery: DeliveryMoment::ExtraCyclic,
+                layer: TronLayer::Shell
+            }),
+                                              vec!(ping),
+        Option::None,
+        Option::None
         );
 
         node.send(message);
