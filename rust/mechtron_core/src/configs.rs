@@ -16,7 +16,7 @@ pub struct Configs<'config> {
     pub artifacts: Arc<dyn ArtifactCache + Sync + Send>,
     pub schemas: Keeper<NP_Factory<'config>>,
     pub sims: Keeper<SimConfig>,
-    pub trons: Keeper<TronConfig>,
+    pub binds: Keeper<BindConfig>,
     pub nucleus: Keeper<NucleusConfig>,
     pub mechtrons: Keeper<MechtronConfig>
 }
@@ -31,12 +31,12 @@ impl<'config> Configs<'config> {
                 Option::None
             ),
             sims: Keeper::new(artifact_cache.clone(), Box::new(SimConfigParser), Option::Some(Box::new(SimConfigArtifactCacher{}))),
-            trons: Keeper::new(artifact_cache.clone(), Box::new(TronConfigParser), Option::Some(Box::new(TronConfigArtifactCacher{}))),
+            binds: Keeper::new(artifact_cache.clone(), Box::new(BindParser), Option::Some(Box::new(BindCacher {}))),
             nucleus: Keeper::new(artifact_cache.clone(), Box::new(NucleusConfigParser ), Option::Some(Box::new(NucleusConfigArtifactCacher{}))),
             mechtrons: Keeper::new(
                 artifact_cache.clone(),
                 Box::new(MechtronConfigParser),
-                Option::None
+                Option::Some(Box::new(MechtronConfigCacher))
             ),
         };
 
@@ -55,10 +55,10 @@ impl<'config> Configs<'config> {
             Some(kind) => {
                 match kind.as_str(){
                     "schema"=>Ok(self.schemas.cache(artifact)?),
-                    "tron_config"=>{
-                        self.trons.cache(artifact)?;
-                        let config = self.trons.get(artifact)?;
-                        for artifact in self.trons.get_cacher().as_ref().unwrap().artifacts(config)?
+                    "bind"=>{
+                        self.binds.cache(artifact)?;
+                        let config = self.binds.get(artifact)?;
+                        for artifact in self.binds.get_cacher().as_ref().unwrap().artifacts(config)?
                         {
                             &self.cache(&artifact)?;
                         }
@@ -73,7 +73,16 @@ impl<'config> Configs<'config> {
                         }
                         Ok(())
                     },
-                    "sim_config"=>{
+                    "mechtron"=>{
+                        self.mechtrons.cache(artifact)?;
+                        let config = self.mechtrons.get(artifact)?;
+                        for artifact in self.mechtrons.get_cacher().as_ref().unwrap().artifacts(config)?
+                        {
+                            &self.cache(&artifact)?;
+                        }
+                        Ok(())
+                    },
+                    "sim"=>{
                         self.sims.cache(artifact)?;
                         let config = self.sims.get(artifact)?;
                         for artifact in self.sims.get_cacher().as_ref().unwrap().artifacts(config)?
@@ -93,23 +102,27 @@ impl<'config> Configs<'config> {
 
     pub fn cache_core(&mut self)->Result<(),Error>
     {
+
+        self.cache(&CORE_BIND_NEUTRON)?;
+        self.cache(&CORE_BIND_SIMTRON)?;
+
         self.cache(&CORE_SCHEMA_EMPTY)?;
         self.cache(&CORE_SCHEMA_META_STATE)?;
         self.cache(&CORE_SCHEMA_META_CREATE)?;
 
-
         self.cache(&CORE_SCHEMA_NEUTRON_CREATE)?;
         self.cache(&CORE_SCHEMA_NEUTRON_STATE)?;
 
-        self.cache(&CORE_TRONCONFIG_NEUTRON)?;
-        self.cache(&CORE_TRONCONFIG_SIMTRON)?;
         self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
         self.cache(&CORE_SCHEMA_PING)?;
         self.cache(&CORE_SCHEMA_PONG)?;
         self.cache(&CORE_SCHEMA_TEXT)?;
         self.cache(&CORE_SCHEMA_OK)?;
 
-        self.cache(&CORE_NUCLEUS_CONFIG_SIMULATION)?;
+        self.cache(&CORE_NUCLEUS_SIMULATION)?;
+        self.cache(&CORE_MECHTRON_SIMTRON)?;
+        self.cache(&CORE_MECHTRON_NEUTRON)?;
+
         Ok(())
     }
 }
@@ -146,9 +159,9 @@ impl<V> Keeper<V> {
 
         self.repo.cache(&artifact)?;
 
-        let str = self.repo.get(&artifact).unwrap();
+        let str = self.repo.get(&artifact)?;
 
-        let value = self.parser.parse(&artifact, str.as_ref()).unwrap();
+        let value = self.parser.parse(&artifact, str.as_ref())?;
         cache.insert(artifact.clone(), Arc::new(value));
         Ok(())
     }
@@ -208,16 +221,25 @@ impl Parser<MechtronConfig> for MechtronConfigParser {
         let mechtron_config_yaml = MechtronConfigYaml::from_yaml(str)?;
         let mechtron_config = mechtron_config_yaml.to_config(artifact)?;
         Ok(mechtron_config)
+
+            /*
+        Ok( MechtronConfig{
+            source: Default::default(),
+            wasm: Default::default(),
+            bind: BindRef { artifact: Default::default() }
+        })
+
+             */
     }
 }
 
-struct TronConfigParser;
+struct BindParser;
 
-impl Parser<TronConfig> for TronConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<TronConfig, Error> {
-        let tron_config_yaml = TronConfigYaml::from_yaml(str)?;
-        let tron_config = tron_config_yaml.to_config(artifact)?;
-        Ok(tron_config)
+impl Parser<BindConfig> for BindParser {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<BindConfig, Error> {
+        let bind_yaml = BindYaml::from_yaml(str)?;
+        let bind = bind_yaml.to_config(artifact)?;
+        Ok(bind)
     }
 }
 
@@ -236,17 +258,18 @@ impl Parser<NucleusConfig> for NucleusConfigParser {
 #[derive(Clone)]
 pub struct MechtronConfig {
     pub source: Artifact,
+    pub name: Option<String>,
     pub wasm: Artifact,
-    pub tron: TronConfigRef,
+    pub bind: BindRef,
 }
 
 #[derive(Clone)]
-pub struct TronConfigRef {
+pub struct BindRef {
     pub artifact: Artifact,
 }
 
 #[derive(Clone)]
-pub struct TronConfig {
+pub struct BindConfig {
     pub kind: String,
     pub name: String,
     pub nucleus_lookup_name: Option<String>,
@@ -264,12 +287,11 @@ impl Cacher<NucleusConfig> for NucleusConfigArtifactCacher
     }
 }
 
-struct TronConfigArtifactCacher;
+struct BindCacher;
 
-impl Cacher<TronConfig> for TronConfigArtifactCacher
+impl Cacher<BindConfig> for BindCacher
 {
-    fn artifacts(&self, config: Arc<TronConfig>  ) -> Result<Vec<Artifact>,Error> {
-println!("Caching Artifacts!!!");
+    fn artifacts(&self, config: Arc<BindConfig>  ) -> Result<Vec<Artifact>,Error> {
         let mut rtn = vec!();
         let config = &config;
 
@@ -297,11 +319,24 @@ impl Cacher<SimConfig> for SimConfigArtifactCacher
 {
     fn artifacts(&self, source: Arc<SimConfig>) -> Result<Vec<Artifact>, Error> {
         let mut rtn = vec!();
-        for tron in &source.trons
+/*        for tron in &source.trons
         {
             rtn.push(tron.artifact.clone() );
         }
 
+ */
+
+        Ok(rtn)
+    }
+}
+
+
+struct MechtronConfigCacher;
+impl Cacher<MechtronConfig> for MechtronConfigCacher
+{
+    fn artifacts(&self, source: Arc<MechtronConfig>) -> Result<Vec<Artifact>, Error> {
+        let mut rtn = vec!();
+        rtn.push( source.bind.artifact.clone() );
         Ok(rtn)
     }
 }
@@ -330,7 +365,10 @@ impl Default for MessageConfig
 #[derive(Clone)]
 pub struct NucleusConfig
 {
-   pub phases: Vec<PhaseConfig>
+   pub name: Option<String>,
+   pub description: Option<String>,
+   pub phases: Vec<PhaseConfig>,
+   pub mectrons: Vec<MechtronConfigRef>,
 }
 
 #[derive(Clone)]
@@ -388,9 +426,9 @@ pub struct OutboundMessageConfig {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MechtronConfigYaml {
-    name: String,
+    name: Option<String>,
     wasm: ArtifactYaml,
-    tron: ArtifactYaml,
+    bind: ArtifactYaml,
 }
 
 impl MechtronConfigYaml {
@@ -402,9 +440,10 @@ impl MechtronConfigYaml {
         let default_bundle = &artifact.bundle.clone();
         return Ok(MechtronConfig {
             source: artifact.clone(),
+            name: self.name.clone(),
             wasm: self.wasm.to_artifact(default_bundle, Option::Some("wasm"))?,
-            tron: TronConfigRef {
-                artifact: self.tron.to_artifact(default_bundle, Option::Some("tron_config"))?,
+            bind: BindRef {
+                artifact: self.bind.to_artifact(default_bundle, Option::Some("bind"))?,
             },
         });
     }
@@ -416,7 +455,7 @@ pub struct TronConfigRefYaml {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct TronConfigYaml {
+pub struct BindYaml {
     kind: String,
     name: String,
     state: Option<StateConfigYaml>,
@@ -428,7 +467,7 @@ pub struct MessageConfigYaml {
     create: Option<CreateConfigYaml>,
     extra: Option<PortsYaml<ExtraConfigYaml>>,
     inbound: Option<PortsYaml<InboundConfigYaml>>,
-    outbound: Option<PortsYaml<OutMessageConfigYaml>>,
+    outbound: Option<PortsYaml<OutboundConfigYaml>>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -473,21 +512,15 @@ pub struct PortConfigYaml {
     artifact: ArtifactYaml,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct OutMessageConfigYaml {
-    name: String,
-    artifact: ArtifactYaml
-}
-
-impl TronConfigYaml {
+impl BindYaml {
     pub fn from_yaml(string: &str) -> Result<Self, Error> {
         Ok(serde_yaml::from_str(string)?)
     }
 
-    pub fn to_config(&self, artifact: &Artifact) -> Result<TronConfig, Error> {
+    pub fn to_config(&self, artifact: &Artifact) -> Result<BindConfig, Error> {
         let default_bundle = &artifact.bundle.clone();
 
-        return Ok(TronConfig {
+        return Ok(BindConfig {
             kind: self.kind.clone(),
             source: artifact.clone(),
             name: self.name.clone(),
@@ -567,14 +600,21 @@ pub struct SimConfig {
     pub source: Artifact,
     pub name: String,
     pub description: Option<String>,
-    pub trons: Vec<SimTronConfig>,
+    pub nucleus: Vec<NucleusConfigRef>
 }
 
 #[derive(Clone)]
-pub struct SimTronConfig {
+pub struct NucleusConfigRef{
+    pub name: Option<String>,
+    pub auto: Option<bool>,
+    pub kind: Option<String>,
+    pub artifact: Artifact,
+}
+
+#[derive(Clone)]
+pub struct MechtronConfigRef {
     pub name: Option<String>,
     pub artifact: Artifact,
-    pub create: Option<SimCreateTronConfig>,
 }
 
 #[derive(Clone)]
@@ -591,8 +631,17 @@ pub struct DataRef {
 pub struct SimConfigYaml {
     name: String,
     description: Option<String>,
-    trons: Vec<SimTronConfigYaml>,
+    nucleus: Option<Vec<NucleusConfigRefYaml>>
 }
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct NucleusConfigRefYaml{
+    name: Option<String>,
+    kind: Option<String>,
+    auto: Option<bool>,
+    artifact: ArtifactYaml
+}
+
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimTronConfigYaml {
@@ -621,34 +670,28 @@ impl SimConfigYaml {
             source: artifact.clone(),
             name: self.name.clone(),
             description: self.description.clone(),
-            trons: self.to_trons(artifact)?,
+            nucleus: match &self.nucleus{
+                None => vec!(),
+                Some(nuclei) => nuclei.iter().map( |nucleus|{
+                    NucleusConfigRef{
+                        name: nucleus.name.clone(),
+                        kind: nucleus.kind.clone(),
+                        auto: nucleus.auto.clone(),
+                        artifact: nucleus.artifact.to_artifact(&artifact.bundle, Option::Some("nucleus")).unwrap()
+                    }
+                }).collect()
+            }
         })
     }
 
-    fn to_trons(&self, artifact: &Artifact) -> Result<Vec<SimTronConfig>, Error> {
-        let default_bundle = &artifact.bundle;
-        let mut rtn = vec![];
-        for t in &self.trons {
-            rtn.push(SimTronConfig {
-                name: t.name.clone(),
-                artifact: t.artifact.to_artifact(&default_bundle, Option::Some("tron_config"))?,
-                create: match &t.create {
-                    None => Option::None,
-                    Some(c) => Option::Some(SimCreateTronConfig {
-                        data: DataRef {
-                            artifact: c.data.artifact.to_artifact(&default_bundle, Option::Some("schema"))?,
-                        }
-                    })
-                }
-            });
-        }
-        return Ok(rtn);
-    }
+
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct NucleusConfigYaml
 {
+    name: Option<String>,
+    description: Option<String>,
     phases: Vec<PhaseConfigYaml>
 }
 
@@ -667,7 +710,10 @@ impl NucleusConfigYaml
     pub fn to_config(&self, artifact: &Artifact) -> Result<NucleusConfig, Error> {
         let default_bundle = &artifact.bundle.clone();
         Ok(NucleusConfig{
-            phases: self.phases.iter().map( |p| PhaseConfig{ name: p.name.clone() } ).collect()
+            name: self.name.clone(),
+            description: self.description.clone(),
+            phases: self.phases.iter().map( |p| PhaseConfig{ name: p.name.clone() } ).collect(),
+            mectrons: vec!()
         })
     }
 

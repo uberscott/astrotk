@@ -28,14 +28,8 @@ pub struct Node<'configs> {
 
 impl <'configs> Node<'configs> {
 
-    pub fn new() -> Node<'static> {
-        let inter_local_router = Arc::new(SharedRouter::new());
-        let inter_gateway_router= Arc::new(SharedRouter::new());
-        let local_router = Arc::new(LocalRouter::new(inter_local_router.clone()));
-        let network_router = Arc::new(NetworkRouter::new(inter_gateway_router.clone() )  );
-
-        let seq = Arc::new(IdSeq::new(0));
-        let network = Arc::new(Network::new(network_router.clone()));
+    pub fn default_cache()->Arc<Cache<'static>>
+    {
         let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
         let configs = Configs::new(repo.clone());
@@ -47,11 +41,29 @@ impl <'configs> Node<'configs> {
             ),
             Option::None);
 
-        let cache = Arc::new(Cache {
+        Arc::new(Cache {
             wasm_store: wasm_store,
             configs: configs,
             wasms: wasms,
-        });
+        })
+    }
+
+    pub fn new(cache: Option<Arc<Cache<'static>>>) -> Node<'static> {
+
+        let cache = match cache{
+            None => {
+                Node::default_cache()
+            }
+            Some(cache) => cache
+        };
+
+        let inter_local_router = Arc::new(SharedRouter::new());
+        let inter_gateway_router= Arc::new(SharedRouter::new());
+        let local_router = Arc::new(LocalRouter::new(inter_local_router.clone()));
+        let network_router = Arc::new(NetworkRouter::new(inter_gateway_router.clone() )  );
+
+        let seq = Arc::new(IdSeq::new(0));
+        let network = Arc::new(Network::new(network_router.clone()));
 
         let local =Arc::new(Local::new(cache.clone(), seq.clone(), inter_local_router.clone()));
 
@@ -73,15 +85,15 @@ impl <'configs> Node<'configs> {
 
     pub fn create_sim(&self) -> Result<(Id,Id), Error>
     {
-        let nucleus_config = self.cache.configs.nucleus.get(&CORE_NUCLEUS_CONFIG_SIMULATION )?;
+        let nucleus_config = self.cache.configs.nucleus.get(&CORE_NUCLEUS_SIMULATION)?;
         let sim_id = self.net.seq.next();
-        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id, Option::Some("simulation".to_string()),nucleus_config)?;
+        let nucleus_id = self.local.as_ref().unwrap().sources.create(sim_id, Option::Some("simulation".to_string()), nucleus_config)?;
         Ok((sim_id,nucleus_id))
     }
 
     pub fn create_nucleus(&self, sim_id: &Id, nucleus_config: Arc<NucleusConfig>) -> Result<Id, Error>
     {
-        let nucleus_id = self.local.as_ref().unwrap().nuclei.create(sim_id.clone(), Option::Some("simulation".to_string()),nucleus_config)?;
+        let nucleus_id = self.local.as_ref().unwrap().sources.create(sim_id.clone(), Option::Some("simulation".to_string()), nucleus_config)?;
         Ok(nucleus_id)
     }
 
@@ -101,23 +113,27 @@ impl<'configs> Drop for Node<'configs>
 }
 
 pub struct Local<'configs> {
-    nuclei: Nuclei<'configs>,
-    router: Arc<dyn Router+'static>
+    sources: Nuclei<'configs>,
+    router: Arc<dyn Router+'static>,
+    seq: Arc<IdSeq>,
+    cache: Arc<Cache<'configs>>
 }
 
 
 impl <'configs> NucleiContainer for Local<'configs>
 {
     fn has_nucleus(&self, id: &Id) -> bool {
-        self.nuclei.has_nucleus(id)
+        self.sources.has_nucleus(id)
     }
 }
 
 impl <'configs> Local <'configs>{
     fn new(cache: Arc<Cache<'configs>>, seq: Arc<IdSeq>, router: Arc<dyn Router+'static>) -> Self {
         let rtn = Local {
-            nuclei: Nuclei::new(cache, seq, router.clone()),
+            sources: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
             router: router,
+            seq: seq.clone(),
+            cache: cache.clone()
         };
 
         rtn
@@ -125,9 +141,23 @@ impl <'configs> Local <'configs>{
 
     pub fn has_nucleus(&self, id: &Id)->bool
     {
-        self.nuclei.has_nucleus(id)
+        self.sources.has_nucleus(id)
     }
 
+    pub fn seq(&self)->Arc<IdSeq>
+    {
+        self.seq.clone()
+    }
+
+    pub fn cache(&self)->Arc<Cache<'configs>>
+    {
+        self.cache.clone()
+    }
+
+    pub fn create_source_nucleus( &self, sim_id: Id, config: Arc<NucleusConfig>, lookup_name: Option<String> )->Result<Id,Error>
+    {
+        self.sources.create(sim_id, lookup_name, config )
+    }
 }
 
 impl<'configs> Router for Local<'configs>
@@ -138,7 +168,7 @@ impl<'configs> Router for Local<'configs>
 
     fn receive(&self, message: Arc<Message>) {
 println!("LOCAL RECEIVED MESSAGE");
-        let mut result = self.nuclei.get( &message.to.tron.nucleus);
+        let mut result = self.sources.get( &message.to.tron.nucleus);
 
         if result.is_err()
         {
@@ -151,7 +181,7 @@ println!("LOCAL RECEIVED MESSAGE");
     }
 
     fn has_nucleus_local(&self, nucleus: &Id) -> HasNucleus {
-        match self.nuclei.has_nucleus(nucleus)
+        match self.sources.has_nucleus(nucleus)
         {
             true => HasNucleus::Yes,
             false => HasNucleus::No

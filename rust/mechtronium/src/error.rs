@@ -13,6 +13,21 @@ pub struct Error{
     pub error: String
 }
 
+impl Error
+{
+    pub fn downgrade<R>( result: Result<R,Error>)->Result<R,mechtron_core::error::Error>
+    {
+        match result{
+            Ok(ok) => Ok(ok),
+            Err(error) => Err(
+                error.error.into()
+            )
+        }
+
+    }
+}
+
+
 impl fmt::Display for Error{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "nucleus error: {:?}",self)

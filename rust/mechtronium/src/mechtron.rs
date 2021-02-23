@@ -7,15 +7,16 @@ use no_proto::memory::NP_Memory_Owned;
 use mechtron_core::artifact::Artifact;
 use mechtron_core::buffers;
 use mechtron_core::configs::{
-    Configs, CreateMessageConfig, MessageConfig, SimConfig, TronConfig,
+    Configs, CreateMessageConfig, MessageConfig, SimConfig, BindConfig,
 };
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, NucleusKey, Revision, StateKey, TronKey};
 use mechtron_core::message::{Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, TronLayer};
 use mechtron_core::state::{ReadOnlyState, State, ReadOnlyStateMeta, StateMeta};
+use mechtron_core::mechtron::MechtronContext;
 
 use crate::node::Node;
-use crate::nucleus::{Nucleus, TronContext, NeutronContext};
+use crate::nucleus::{Nucleus, MechtronShellContext, NeutronContext};
 use mechtron_core::buffers::{Buffer, Path};
 use crate::error::Error;
 use std::ops::DerefMut;
@@ -26,13 +27,14 @@ use std::cell::RefCell;
 use no_proto::collection::list::NP_List;
 use no_proto::collection::struc::NP_Struct;
 use std::borrow::BorrowMut;
+use std::rc::Rc;
 
-pub trait Tron {
+pub trait MechtronKernel {
     fn create(
         &self,
         info: TronInfo,
-        context: &dyn TronContext,
-        state: &mut MutexGuard<State>,
+        context: &dyn MechtronShellContext,
+        state: &mut State,
         create: &Message,
     ) -> Result<Option<Vec<MessageBuilder>>, Error>;
 
@@ -42,7 +44,7 @@ pub trait Tron {
     ) -> Result<
         fn(
             info: TronInfo,
-            context: &dyn TronContext,
+            context: &dyn MechtronShellContext,
             state: &mut MutexGuard<State>,
         ) -> Result<Option<Vec<MessageBuilder>>, Error>,
         Error,
@@ -54,7 +56,7 @@ pub trait Tron {
     ) -> Result<
         fn(
             info: TronInfo,
-            context: &dyn TronContext,
+            context: &dyn MechtronShellContext,
             state: &mut MutexGuard<State>,
             messages: &Vec<&Message>,
         ) -> Result<Option<Vec<MessageBuilder>>, Error>,
@@ -67,15 +69,14 @@ pub trait Tron {
     ) -> Result<
         fn(
             info: TronInfo,
-            context: &dyn TronContext,
+            context: &dyn MechtronShellContext,
             state: &ReadOnlyState,
             message: &Message,
         ) -> Result<Option<Vec<MessageBuilder>>, Error>,
-        Error,
+        Error
     >;
 
 
-    fn update_phases(&self) -> Phases;
 }
 
 pub enum Phases {
@@ -95,13 +96,13 @@ pub struct MessagePort {
 #[derive(Clone)]
 pub struct TronInfo {
     pub key: TronKey,
-    pub config: Arc<TronConfig>,
+    pub config: Arc<BindConfig>,
 }
 
 impl TronInfo {
     pub fn new(
         key: TronKey,
-        tron_config: Arc<TronConfig>,
+        tron_config: Arc<BindConfig>,
     ) -> Self {
         TronInfo {
             key: key,
@@ -120,17 +121,17 @@ pub enum TronShellState<'readonly>
 }
 
 
-pub struct TronShell {
-    pub tron: Box<dyn Tron>,
+pub struct MechtronShell {
+    pub tron: Box<dyn MechtronKernel>,
     pub info: TronInfo,
     pub outbound: RefCell<Vec<Message>>,
     pub panic: bool
 }
 
 
-impl  TronShell {
-    pub fn new(tron: Box<dyn Tron>, info: TronInfo  ) -> Self {
-        TronShell { tron: tron,
+impl MechtronShell {
+    pub fn new(tron: Box<dyn MechtronKernel>, info: TronInfo  ) -> Self {
+        MechtronShell { tron: tron,
                     info: info,
                     outbound: RefCell::new(vec!()),
                     panic: false}
@@ -146,27 +147,27 @@ impl  TronShell {
         println!("PANIC: TronShell got unexpected error {:?}",error);
     }
 
-    fn reject( &mut self,message: &Message, reason: &str, context: &dyn TronContext, layer: TronLayer )
+    fn reject(&mut self, message: &Message, reason: &str, context: &dyn MechtronShellContext, layer: TronLayer )
     {
         // we unrwrap it because if REJECT message isn't available, then nothing should work
         let message = message.reject(self.from(context,layer), reason, context.seq(), context.configs()).unwrap();
         self.send(message)
     }
 
-    fn ok( &mut self, message: &Message, ok: bool, context: &dyn TronContext, layer: TronLayer   )
+    fn ok(&mut self, message: &Message, ok: bool, context: &dyn MechtronShellContext, layer: TronLayer   )
     {
         // we unrwrap it because if REJECT message isn't available, then nothing should work
         let message = message.ok(self.from(context,layer), ok, context.seq(), context.configs()).unwrap();
         self.send(message)
     }
 
-    fn respond( &mut self, message: &Message, payloads: Vec<Payload>, context: &dyn TronContext, layer: TronLayer   )
+    fn respond(&mut self, message: &Message, payloads: Vec<Payload>, context: &dyn MechtronShellContext, layer: TronLayer   )
     {
         let message = message.respond(self.from(context,layer), payloads, context.seq());
         self.send(message);
     }
 
-    fn from(&self, context: &dyn TronContext, layer: TronLayer  ) -> mechtron_core::message::From {
+    fn from(&self, context: &dyn MechtronShellContext, layer: TronLayer  ) -> mechtron_core::message::From {
         mechtron_core::message::From {
             tron: self.info.key.clone(),
             cycle: context.revision().cycle.clone(),
@@ -212,10 +213,11 @@ impl  TronShell {
     pub fn create(
         &mut self,
         create: &Message,
-        context: &dyn TronContext,
-        state: &mut MutexGuard<State>
+        context: &dyn MechtronShellContext,
+        state: &mut State
     ) ->Result<(),Error>  {
 
+        let mut state = state;
         let mut builders = self.tron.create(self.info.clone(), context, state, create);
         self.handle(builders,context);
         Ok(())
@@ -223,12 +225,13 @@ impl  TronShell {
     pub fn extra(
         &mut self,
         message: &Message,
-        context: &dyn TronContext,
+        context: &dyn MechtronShellContext,
         state: Arc<ReadOnlyState>
     )
     {
 
-println!("entered EXTRA");
+
+        println!("entered EXTRA");
         match message.to.layer
         {
             TronLayer::Shell => {
@@ -253,7 +256,7 @@ println!("PING!!!");
                         let func = self.tron.extra(&message.to.port);
                         match func{
                             Ok(func) => {
-                                let builders = func( self.info.clone(),context,state.as_ref(),message );
+                                let builders = func( self.info.clone(),context, &state,message);
                                 self.handle(builders,context);
                             }
                             Err(e) => {
@@ -273,7 +276,7 @@ println!("PING!!!");
     pub fn inbound(
         &mut self,
         messages: Vec<&Message>,
-        context: &dyn TronContext,
+        context: &dyn MechtronShellContext,
         state: &mut MutexGuard<State>
     ) {
         let mut hash = HashMap::new();
@@ -326,7 +329,7 @@ println!("PING!!!");
     pub fn handle(
         &self,
         builders: Result<Option<Vec<MessageBuilder>>,Error>,
-        context: &dyn TronContext
+        context: &dyn MechtronShellContext
     )  {
                     match builders {
                         Ok(builders) => {
@@ -403,7 +406,7 @@ pub struct Neutron {}
 pub struct NeutronStateInterface {}
 
 impl NeutronStateInterface {
-    fn add_tron(&self, state: &mut MutexGuard<State>, key: &TronKey, kind: String) -> Result<(), Error> {
+    fn add_tron(&self, state: &mut State, key: &TronKey, kind: String) -> Result<(), Error> {
         println!("ADD TRON...");
         let index = {
             if state.data.is_set::<i64>(&path!("tron","0","id"))?
@@ -424,7 +427,7 @@ impl NeutronStateInterface {
 
     fn set_tron_name(
         &self,
-        state: &mut MutexGuard<State>,
+        state: &mut State,
         name: &str,
         key: &TronKey,
     ) -> Result<(), Error> {
@@ -434,7 +437,7 @@ impl NeutronStateInterface {
 }
 
 impl Neutron {
-    fn init() -> Result<Box<Tron>, Error> {
+    fn init() -> Result<Box<MechtronKernel>, Error> {
         Ok(Box::new(Neutron {}))
     }
 
@@ -453,7 +456,7 @@ impl Neutron {
         let create_meta = &create.payloads[0].buffer;
         let tron_config = create_meta.get::<String>(&path![&"artifact"])?;
         let tron_config = Artifact::from(&tron_config)?;
-        let tron_config = context.configs().trons.get(&tron_config)?;
+        let tron_config = context.configs().binds.get(&tron_config)?;
 
 
         let tron_seq_id = neutron_state.data.get::<i64>(&path!["tron_seq_id"] )?;
@@ -474,11 +477,9 @@ impl Neutron {
 
 
 
-        let mut tron_state = Arc::new(Mutex::new(State::new(context.configs(), tron_config.state.artifact.clone())?));
+        let mut tron_state = State::new(context.configs(), tron_config.state.artifact.clone())?;
 
         {
-            let mut tron_state = tron_state.lock()?;
-
             tron_state.meta.set(&path![&"artifact"], tron_config.source.to());
             tron_state.meta.set(&path![&"creation_timestamp"], context.timestamp());
             tron_state.meta.set(&path![&"creation_cycle"], context.revision().cycle);
@@ -489,14 +490,19 @@ impl Neutron {
 
         Ok(())
     }
+
+    fn extra_create_simtron(info: TronInfo, context: &dyn MechtronShellContext, state: &ReadOnlyState, message: &Message) -> Result<Option<Vec<MessageBuilder>>, Error>
+    {
+        Ok(Option::None)
+    }
 }
 
-impl Tron for Neutron {
+impl MechtronKernel for Neutron {
     fn create(
         &self,
         info: TronInfo,
-        context: &dyn TronContext,
-        state: &mut MutexGuard<State>,
+        context: &MechtronShellContext,
+        state: &mut State,
         create: &Message,
     ) -> Result<Option<Vec<MessageBuilder>>, Error> {
 
@@ -535,21 +541,21 @@ impl Tron for Neutron {
         }
     }
 
-    fn update(&self, phase: &str) -> Result<fn(TronInfo, &dyn TronContext, &mut MutexGuard<State>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+    fn update(&self, phase: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
         unimplemented!()
     }
 
-    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, &mut MutexGuard<State>, &Vec<&Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>, &Vec<&Message>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
         unimplemented!()
     }
 
-    fn extra(&self, port: &str) -> Result<fn(TronInfo, &dyn TronContext, &ReadOnlyState, &Message) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
-        unimplemented!()
-    }
-
-
-    fn update_phases(&self) -> Phases {
-        Phases::None
+    fn extra(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &ReadOnlyState, &Message) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        match port{
+            "create_simtron" => {
+                Ok(Neutron::extra_create_simtron)
+            }
+            port => Err(format!("").into())
+        }
     }
 }
 
@@ -562,14 +568,14 @@ pub struct CreatePayloadsBuilder {
 impl CreatePayloadsBuilder {
     pub fn new<'configs> (
         configs: &'configs Configs,
-        tron_config: &TronConfig,
+        bind: &BindConfig,
     ) -> Result<Self, Error> {
 
         let meta_factory = configs.schemas.get(&CORE_SCHEMA_META_CREATE)?;
         let mut meta = Buffer::new(meta_factory.new_buffer(Option::None));
-        meta.set(&path![&"artifact"], tron_config.source.to())?;
+        meta.set(&path![&"artifact"], bind.source.to())?;
         let (constructor_artifact, constructor) =
-            CreatePayloadsBuilder::constructor(configs, tron_config)?;
+            CreatePayloadsBuilder::constructor(configs, bind)?;
         Ok(CreatePayloadsBuilder {
             meta: meta,
             constructor_artifact: constructor_artifact,
@@ -594,7 +600,7 @@ impl CreatePayloadsBuilder {
 
     fn constructor(
         configs: &Configs,
-        tron_config: &TronConfig,
+        tron_config: &BindConfig,
     ) -> Result<(Artifact, Buffer), Error> {
             let constructor_artifact = tron_config.message.create.artifact.clone();
             let factory = configs.schemas.get(&constructor_artifact)?;
@@ -620,12 +626,14 @@ impl CreatePayloadsBuilder {
 }
 
 
-pub fn init_tron(config: &TronConfig) -> Result<Box<dyn Tron>, Error> {
+pub fn init_tron(config: &BindConfig) -> Result<Box<dyn MechtronKernel>, Error> {
 
-    let rtn: Box<Tron> = match config.kind.as_str() {
-        "neutron" => Neutron::init()? as Box<Tron>,
+    let rtn: Box<MechtronKernel> = match config.kind.as_str() {
+        "neutron" => Neutron::init()? as Box<MechtronKernel>,
         _ => return Err(format!("we don't have a tron of kind {}", config.kind).into()),
     };
 
     Ok(rtn)
 }
+
+

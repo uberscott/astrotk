@@ -1,70 +1,55 @@
-use crate::node::{Node, NucleusContext};
+use crate::node::{Node, NucleusContext, Local};
 use crate::nucleus::Nucleus;
-use crate::tron::CreatePayloadsBuilder;
+use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_core::configs::SimConfig;
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, TronKey};
-use mechtron_core::message::{Message, MessageKind, To};
-use std::error::Error;
+use mechtron_core::message::{Message, MessageKind, To, TronLayer, Cycle, DeliveryMoment};
 use std::sync::Arc;
 use std::time::SystemTime;
+use crate::error::Error;
+use crate::router::Router;
 
 pub struct SimulationBootstrap {}
 
-fn timestamp() -> Result<u64, Box<dyn Error>> {
-    let since_the_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-    let timestamp =
-        since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
 
-    return Ok(timestamp);
-}
 
 impl SimulationBootstrap {
-    pub fn bootstrap(sys: Arc<Node>, sim_config: Arc<SimConfig>) -> Result<(), Box<dyn Error>> {
-        //        sim_config.cache(&mut sys.local.configs)?;
+    pub fn bootstrap(local: Arc<Local>, config: Arc<SimConfig>) -> Result<(), Error> {
+        let sim_id = local.seq().next();
 
-        /*
-        let sim_id = sys.net.id_seq.next();
+        let sim_nucleus_config = local.cache().configs.nucleus.get(&CORE_NUCLEUS_SIMULATION)?;
+        let sim_nucleus_id = local.create_source_nucleus(sim_id.clone(),sim_nucleus_config.clone(),Option::Some("sim".to_string()))?;
 
-        let nucleus_id = Nucleus::new(
-            sim_id,
-            Option::Some("simulation".to_string()),
-            NucleusContext::new(sys.clone()),
-        )?;
-        let neutron_key = TronKey {
-            nucleus: nucleus_id.clone(),
-            tron: Id {
-                seq_id: nucleus_id.seq_id.clone(),
-                id: 0,
-            },
-        };
+        let simtron_config = local.cache().configs.mechtrons.get( &CORE_MECHTRON_SIMTRON )?;
+        let simtron_bind = local.cache().configs.binds.get( &simtron_config.bind.artifact )?;
+        {
+            let mut builder = CreatePayloadsBuilder::new(&local.cache().configs, &simtron_bind)?;
+            builder.set_lookup_name("simtron");
+            builder.constructor.set( &path!["sim_config_artifact"], config.source.to() )?;
 
-        let simtron_config = sys
-            .local
-            .configs
-            .tron_config_keeper
-            .get(&CORE_SIMTRON_CONFIG)?;
-        let mut sim_create_payload_builder =
-            CreatePayloadsBuilder::new(&sys.local.configs, &simtron_config)?;
-        sim_create_payload_builder.set_lookup_name("simtron");
-        sim_create_payload_builder.set_sim_config(&sim_config);
+            let neutron_key = TronKey::new(sim_nucleus_id.clone(),Id::new(sim_nucleus_id.seq_id, 0));
 
-        let message = Message::multi_payload(
-            &mut sys.net.id_seq,
-            MessageKind::Create,
-            mechtron_core::message::From {
-                tron: neutron_key.clone(),
-                cycle: 0,
-                timestamp: timestamp()?,
-            },
-            To::basic(neutron_key.clone(), "create".to_string()),
-            CreatePayloadsBuilder::payloads(&sys.local.configs, sim_create_payload_builder),
-        );
-
-        sys.router.send(message);
-
+            let message = Message::multi_payload(
+                                   local.seq().clone(),
+                                   MessageKind::Create,
+                                  mechtron_core::message::From{
+                                        tron: neutron_key.clone(),
+                                        cycle: 0,
+                                        timestamp: 0,
+                                        layer: TronLayer::Shell
+                                    },
+                                    To{
+                                        tron: neutron_key.clone(),
+                                        port: "create_simtron".to_string(),
+                                        cycle: Cycle::Present,
+                                        phase: "default".to_string(),
+                                        delivery: DeliveryMoment::ExtraCyclic,
+                                        layer: TronLayer::Kernel
+                                    },
+                                        CreatePayloadsBuilder::payloads(&local.cache().configs,builder));
+           local.send( Arc::new(message));
+        }
         Ok(())
-         */
-        unimplemented!()
     }
 }

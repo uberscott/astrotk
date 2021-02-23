@@ -1,0 +1,8 @@
+name: Neutron
+wasm:
+  artifact:
+    path: wasm/neutron.wasm
+bind:
+  artifact:
+    path: bind/neutron.yaml
+

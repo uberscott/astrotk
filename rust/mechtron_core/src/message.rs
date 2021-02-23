@@ -32,7 +32,7 @@ struct({fields: {
         seq_id: i64(),
         id: i64()
       }}),
-  kind: enum({choices: ["Create", "Update", "Content", "Request", "Response", "Reject"]}),
+  kind: enum({choices: ["State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic"]}),
   from: struct({fields: {
     tron: struct({fields: {
       nucleus: struct({fields: {
@@ -307,9 +307,10 @@ pub enum Cycle {
 pub enum MessageKind {
     Create,
     Update,
-    Content,
+    State,
     Request,
     Response,
+    Command,
     Reject,
     Panic
 }
@@ -318,11 +319,12 @@ fn message_kind_to_index(kind: &MessageKind) -> u8 {
     match kind {
         MessageKind::Create => 0,
         MessageKind::Update => 1,
-        MessageKind::Content => 2,
+        MessageKind::State => 2,
         MessageKind::Request => 3,
         MessageKind::Response => 4,
-        MessageKind::Reject => 5,
-        MessageKind::Panic => 6,
+        MessageKind::Command=> 5,
+        MessageKind::Reject => 6,
+        MessageKind::Panic => 7,
     }
 }
 
@@ -330,9 +332,10 @@ fn message_kind_to_string(kind: &MessageKind) -> &str {
     match kind {
         MessageKind::Create => "Create",
         MessageKind::Update => "Update",
-        MessageKind::Content => "Content",
+        MessageKind::State => "Content",
         MessageKind::Request => "Request",
         MessageKind::Response => "Response",
+        MessageKind::Command=> "Command",
         MessageKind::Reject => "Reject",
         MessageKind::Panic=> "Panic",
     }
@@ -342,11 +345,12 @@ fn index_to_message_kind(index: u8) -> Result<MessageKind, Error> {
     match index {
         0 => Ok(MessageKind::Create),
         1 => Ok(MessageKind::Update),
-        2 => Ok(MessageKind::Content),
+        2 => Ok(MessageKind::State),
         3 => Ok(MessageKind::Request),
         4 => Ok(MessageKind::Response),
-        5 => Ok(MessageKind::Reject),
-        6 => Ok(MessageKind::Panic),
+        5 => Ok(MessageKind::Command),
+        6 => Ok(MessageKind::Reject),
+        7 => Ok(MessageKind::Panic),
         _ => Err(format!("invalid index {}", index).into()),
     }
 }
@@ -355,7 +359,7 @@ fn string_to_message_kind(str: &str) -> Result<MessageKind, Error> {
     match str {
         "Create" => Ok(MessageKind::Create),
         "Update" => Ok(MessageKind::Update),
-        "Content" => Ok(MessageKind::Content),
+        "Content" => Ok(MessageKind::State),
         "Request" => Ok(MessageKind::Request),
         "Response" => Ok(MessageKind::Response),
         "Reject" => Ok(MessageKind::Reject),

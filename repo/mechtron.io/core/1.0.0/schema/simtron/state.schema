@@ -1,0 +1,16 @@
+struct({fields:{
+  
+  nucleus: list( { of: 
+     struct({fields:{
+       seq_id : i64(),
+       id: i64(),
+       kind: string()
+     }})
+  }),
+  nucleus_names: map( { value: 
+    struct( {fields:{
+      seq_id: i64(),
+      id: i64()
+    }})
+  })
+}})

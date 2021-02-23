@@ -1,7 +1,0 @@
-{"type": "table",
- "columns": 
-  [
-  ["nucleus_ids", {"type": "list", "of": {"type":"table","columns":[["seq_id",{"type":"i64"}],["id",{"type":"i64"}]]} } ],
-  ["nucleus_names", {"type": "map", "values": {"type":"table","columns":[["seq_id",{"type":"i64"}],["id",{"type":"i64"}]]} } ]
-  ]
-}

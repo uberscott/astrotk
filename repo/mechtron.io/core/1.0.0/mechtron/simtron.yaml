@@ -1,0 +1,8 @@
+name: Simtron
+wasm:
+  artifact:
+    path: wasm/simtron.wasm
+bind:
+  artifact:
+    path: bind/simtron.yaml
+

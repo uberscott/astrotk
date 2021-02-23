@@ -16,15 +16,19 @@ lazy_static! {
     pub static ref CORE_SCHEMA_NEUTRON_CREATE: Artifact = CORE.path_and_kind(&"schema/neutron/create.schema", "schema");
     pub static ref CORE_SCHEMA_NEUTRON_STATE : Artifact = CORE.path_and_kind(&"schema/neutron/state.schema", "schema");
 
-    pub static ref CORE_TRONCONFIG_NEUTRON: Artifact = CORE.path_and_kind(&"tron/neutron.yaml", "tron_config");
-    pub static ref CORE_TRONCONFIG_SIMTRON: Artifact = CORE.path_and_kind(&"tron/sim.yaml", "tron_config");
 
     pub static ref CORE_SCHEMA_PING: Artifact = CORE.path_and_kind(&"schema/util/ping.schema", "schema");
     pub static ref CORE_SCHEMA_PONG: Artifact = CORE.path_and_kind(&"schema/util/pong.schema", "schema");
     pub static ref CORE_SCHEMA_TEXT : Artifact = CORE.path_and_kind(&"schema/util/text.schema", "schema");
     pub static ref CORE_SCHEMA_OK : Artifact = CORE.path_and_kind(&"schema/util/ok.schema", "schema");
 
+    pub static ref CORE_NUCLEUS_SIMULATION: Artifact = CORE.path_and_kind(&"nucleus/sim-nucleus.yaml", "nucleus");
 
-    pub static ref CORE_NUCLEUS_CONFIG_SIMULATION: Artifact = CORE.path_and_kind(&"nucleus/sim-nucleus.yaml", "nucleus");
+    pub static ref CORE_BIND_NEUTRON: Artifact = CORE.path_and_kind(&"bind/neutron.yaml", "bind");
+    pub static ref CORE_BIND_SIMTRON: Artifact = CORE.path_and_kind(&"bind/simtron.yaml", "bind");
+
+    pub static ref CORE_MECHTRON_NEUTRON: Artifact = CORE.path_and_kind(&"mechtron/neutron.yaml", "mechtron");
+    pub static ref CORE_MECHTRON_SIMTRON: Artifact = CORE.path_and_kind(&"mechtron/simtron.yaml", "mechtron");
+
 }
 
