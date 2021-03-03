@@ -1,18 +1,19 @@
-use crate::node::{Node, Local};
-use std::sync::Arc;
-use std::error::Error;
-use mechtron_core::message::Message;
-use crate::nucleus::{Nuclei, NucleiContainer};
 use std::cell::{Cell, RefCell};
-use std::sync::Weak;
-use mechtron_core::id::Id;
+use std::error::Error;
 use std::marker::PhantomData;
+use std::sync::Arc;
+use std::sync::Weak;
+
+use mechtron_core::id::Id;
+use mechtron_core::message::Message;
+
+use crate::node::{Local, Node};
+use crate::nucleus::{Nuclei, NucleiContainer};
 
 pub trait Router {
     fn send(&self, message: Arc<Message>);
     fn receive(&self, message: Arc<Message>);
     fn has_nucleus_local(&self, nucleus: &Id) ->HasNucleus;
-    fn has_nucleus_remote(&self, nucleus: &Id) ->HasNucleus;
 }
 
 pub enum HasNucleus
@@ -50,10 +51,6 @@ impl <'local> Router for NetworkRouter<'local>{
         self.shared.has_nucleus_local(nucleus)
     }
 
-    fn has_nucleus_remote(&self, nucleus: &Id) ->HasNucleus
-    {
-        HasNucleus::No
-    }
 }
 
 
@@ -105,9 +102,7 @@ impl <'local> Router for LocalRouter<'local> {
         self.local.has_nucleus_local(nucleus)
     }
 
-    fn has_nucleus_remote(&self, nucleus: &Id) -> HasNucleus {
-        unimplemented!()
-    }
+
 }
 
 impl <'local> Drop for LocalRouter<'local>
@@ -231,29 +226,7 @@ impl <'local,L: Router+'local,R: Router+'local>Router for  SharedRouter<'local,L
         router.has_nucleus_local(nucleus)
     }
 
-    fn has_nucleus_remote(&self, nucleus: &Id) -> HasNucleus {
-        let router = self.remote.borrow();
 
-        if router.is_none()
-        {
-            self.panic( );
-            return HasNucleus::No;
-        }
-
-        let router = router.clone();
-        let router = router.unwrap();
-        let router = router.upgrade();
-
-        if router.is_none()
-        {
-            println!("shared router could not upgrade");
-            self.panic( );
-            return HasNucleus::No;
-        }
-
-        let router = router.unwrap();
-        router.has_nucleus_local(nucleus)
-    }
 }
 
 

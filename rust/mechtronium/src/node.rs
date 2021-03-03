@@ -7,16 +7,16 @@ use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, JIT, Module, Store};
 
 use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{Configs, Keeper, Parser, SimConfig, NucleusConfig};
+use mechtron_core::configs::{Configs, Keeper, NucleusConfig, Parser, SimConfig};
+use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq};
 use mechtron_core::message::Message;
-use mechtron_core::core::*;
 
 use crate::artifact::FileSystemArtifactRepository;
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::nucleus::{Nuclei, Nucleus, NucleiContainer};
-use crate::router::{Router, LocalRouter, NetworkRouter, SharedRouter, HasNucleus};
+use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
+use crate::router::{HasNucleus, LocalRouter, NetworkRouter, Router, SharedRouter};
 
 pub struct Node<'configs> {
     pub local: Option<Arc<Local<'configs>>>,
@@ -99,7 +99,6 @@ impl <'configs> Node<'configs> {
 
     pub fn send( &self, message: Message )
     {
-println!("NODE SEND MESSAGE ");
         self.router.send( Arc::new(message))
     }
 
@@ -167,7 +166,6 @@ impl<'configs> Router for Local<'configs>
     }
 
     fn receive(&self, message: Arc<Message>) {
-println!("LOCAL RECEIVED MESSAGE");
         let mut result = self.sources.get( &message.to.tron.nucleus);
 
         if result.is_err()
@@ -188,9 +186,6 @@ println!("LOCAL RECEIVED MESSAGE");
         }
     }
 
-    fn has_nucleus_remote(&self, nucleus: &Id) -> HasNucleus {
-        unimplemented!()
-    }
 }
 
 #[derive(Clone)]

@@ -1,8 +1,11 @@
 #[macro_use]
 extern crate lazy_static;
 
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{{AtomicUsize, Ordering}};
-use std::sync::{Mutex, Arc};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use no_proto::buffer::NP_Buffer;
@@ -15,12 +18,8 @@ use wasm_bindgen::prelude::*;
 use mechtron_config::artifact_config::Artifact;
 use mechtron_config::buffers::BufferFactories;
 use mechtron_config::mechtron_config::{ActorConfigYaml, MechtronConfig};
-use std::ops::Deref;
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
 use mechtron_core::artifact::Artifact;
 use mechtron_core::buffers::BufferFactories;
-
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator

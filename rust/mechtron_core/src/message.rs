@@ -17,7 +17,7 @@ use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
 use crate::configs::Configs;
 use crate::error::Error;
 use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, TronKey};
-use crate::util::{TextPayloadBuilder, OkPayloadBuilder};
+use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 
 static ID: &'static str = r#"
 struct({fields: {
@@ -301,6 +301,13 @@ pub enum Cycle {
     Exact(i64),
     Present,
     Next,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum NucleusKind
+{
+    Source,
+    Replica
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -856,7 +863,7 @@ mod tests {
     use crate::error::Error;
     use crate::id::{Id, IdSeq, TronKey};
     use crate::message;
-    use crate::message::{Cycle, DeliveryMoment, TronLayer, From, ID, Message, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, MessageKind, Payload, PayloadBuilder, To};
+    use crate::message::{Cycle, DeliveryMoment, From, ID, Message, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, MessageKind, Payload, PayloadBuilder, To, TronLayer};
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
