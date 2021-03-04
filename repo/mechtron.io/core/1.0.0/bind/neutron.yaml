@@ -16,3 +16,9 @@ message:
       artifact:
         path: schema/util/pong.schema
 
+  extra:
+    ports:
+    - name: create_simtron
+      artifact:
+        path: schema/util/pong.schema
+

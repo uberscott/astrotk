@@ -1,7 +1,5 @@
-kind: simtron
-name: SimTron
-content: 
+kind: simtron 
+name: Simtron
+state: 
   artifact:
-    path: schema/nuctron/content.json
-:
-  
+    path: schema/simtron/state.schema

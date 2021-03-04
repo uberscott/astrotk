@@ -223,6 +223,9 @@ impl<'nucleus> Nucleus<'nucleus> {
         {
             self.handle_outbound(shell.flush());
         }
+        else {
+            println!("experienced shell panic!");
+        }
     }
 
 
@@ -1598,6 +1601,7 @@ mod test
     use mechtron_core::util::PingPayloadBuilder;
 
     use crate::node::Node;
+    use mechtron_core::artifact::Artifact;
 
     fn create_node() ->Node<'static>
     {
@@ -1606,7 +1610,22 @@ mod test
     }
 
     #[test]
-    fn test_create_node()
+    fn test_create_sim()
+    {
+        let cache = Node::default_cache();
+        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:hello-world-simulation.yaml:sim").unwrap();
+        cache.configs.sims.cache(&SIM_CONFIG ).unwrap();
+        let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
+        let node = Node::new(Option::Some(cache));
+
+        let (sim_id, nucleus_id) = node.create_source_sim(SIM_CONFIG.clone() ).unwrap();
+
+        node.shutdown();
+    }
+
+    /*
+    #[test]
+    fn test_ping_neutron()
     {
 
         let node = create_node();
@@ -1657,6 +1676,7 @@ mod test
 
         node.shutdown();
     }
+     */
 
 }
 

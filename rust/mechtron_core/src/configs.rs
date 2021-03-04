@@ -40,12 +40,12 @@ impl<'config> Configs<'config> {
             ),
         };
 
-        configs.cache_core();
+        configs.cache_core().unwrap();
 
         return configs;
     }
 
-    pub fn cache( &mut self, artifact: &Artifact )->Result<(),Error>
+    pub fn cache( &self, artifact: &Artifact )->Result<(),Error>
     {
         match &artifact.kind{
             None => {
@@ -120,8 +120,8 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_SCHEMA_OK)?;
 
         self.cache(&CORE_NUCLEUS_SIMULATION)?;
-        self.cache(&CORE_MECHTRON_SIMTRON)?;
         self.cache(&CORE_MECHTRON_NEUTRON)?;
+        self.cache(&CORE_MECHTRON_SIMTRON)?;
 
         Ok(())
     }
@@ -148,7 +148,7 @@ impl<V> Keeper<V> {
         }
     }
 
-    pub fn cache(&mut self, artifact: &Artifact) -> Result<(),Error>  {
+    pub fn cache(&self, artifact: &Artifact) -> Result<(),Error>  {
         let mut cache = self.config_cache.write().unwrap();
 
         if cache.contains_key(artifact) {
@@ -259,12 +259,17 @@ impl Parser<NucleusConfig> for NucleusConfigParser {
 pub struct MechtronConfig {
     pub source: Artifact,
     pub name: Option<String>,
-    pub wasm: Artifact,
+    pub wasm: WasmRef,
     pub bind: BindRef,
 }
 
 #[derive(Clone)]
 pub struct BindRef {
+    pub artifact: Artifact,
+}
+
+#[derive(Clone)]
+pub struct WasmRef{
     pub artifact: Artifact,
 }
 
@@ -427,8 +432,20 @@ pub struct OutboundMessageConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MechtronConfigYaml {
     name: Option<String>,
-    wasm: ArtifactYaml,
-    bind: ArtifactYaml,
+    wasm: WasmRefYaml,
+    bind: BindRefYaml,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct BindRefYaml
+{
+    artifact: ArtifactYaml
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct WasmRefYaml
+{
+    artifact: ArtifactYaml
 }
 
 impl MechtronConfigYaml {
@@ -441,9 +458,11 @@ impl MechtronConfigYaml {
         return Ok(MechtronConfig {
             source: artifact.clone(),
             name: self.name.clone(),
-            wasm: self.wasm.to_artifact(default_bundle, Option::Some("wasm"))?,
+            wasm: WasmRef {
+                artifact: self.wasm.artifact.to_artifact(default_bundle, Option::Some("wasm"))?
+            },
             bind: BindRef {
-                artifact: self.bind.to_artifact(default_bundle, Option::Some("bind"))?,
+                artifact: self.bind.artifact.to_artifact(default_bundle, Option::Some("bind"))?
             },
         });
     }

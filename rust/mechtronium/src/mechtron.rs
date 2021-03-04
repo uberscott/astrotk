@@ -147,6 +147,7 @@ impl MechtronShell {
 
     fn reject(&mut self, message: &Message, reason: &str, context: &dyn MechtronShellContext, layer: TronLayer )
     {
+        println!("{}",reason );
         // we unrwrap it because if REJECT message isn't available, then nothing should work
         let message = message.reject(self.from(context,layer), reason, context.seq(), context.configs()).unwrap();
         self.send(message)
@@ -545,6 +546,7 @@ impl MechtronKernel for Neutron {
     }
 
     fn extra(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &ReadOnlyState, &Message) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+println!("seeking extra: {}",port)        ;
         match port{
             "create_simtron" => {
                 Ok(Neutron::extra_create_simtron)

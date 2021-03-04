@@ -27,8 +27,8 @@ lazy_static! {
     pub static ref CORE_BIND_NEUTRON: Artifact = CORE.path_and_kind(&"bind/neutron.yaml", "bind");
     pub static ref CORE_BIND_SIMTRON: Artifact = CORE.path_and_kind(&"bind/simtron.yaml", "bind");
 
-    pub static ref CORE_MECHTRON_NEUTRON: Artifact = CORE.path_and_kind(&"mechtron/neutron.yaml", "mechtron");
     pub static ref CORE_MECHTRON_SIMTRON: Artifact = CORE.path_and_kind(&"mechtron/simtron.yaml", "mechtron");
+    pub static ref CORE_MECHTRON_NEUTRON: Artifact = CORE.path_and_kind(&"mechtron/neutron.yaml", "mechtron");
 
 }
 
