@@ -68,29 +68,29 @@ pub struct NucleusKey {
 }
 
 #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
-pub struct TronKey {
+pub struct MechtronKey {
     pub nucleus: Id,
-    pub tron: Id,
+    pub mechtron: Id,
 }
 
-impl TronKey {
-    pub fn new(nucleus_id: Id, tron_id: Id) -> TronKey {
-        TronKey {
+impl MechtronKey {
+    pub fn new(nucleus_id: Id, tron_id: Id) -> MechtronKey {
+        MechtronKey {
             nucleus: nucleus_id,
-            tron: tron_id,
+            mechtron: tron_id,
         }
     }
 
     pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         self.nucleus.append(&path.push(path!["nucleus"]), buffer)?;
-        self.tron.append(&path.push(path!["tron"]), buffer)?;
+        self.mechtron.append(&path.push(path!["tron"]), buffer)?;
         Ok(())
     }
 
     pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Error> {
-        Ok(TronKey {
+        Ok(MechtronKey {
             nucleus: Id::from(&path.push(path!["nucleus"]), buffer)?,
-            tron: Id::from(&path.push(path!["tron"]), buffer)?,
+            mechtron: Id::from(&path.push(path!["tron"]), buffer)?,
         })
     }
 
@@ -98,7 +98,7 @@ impl TronKey {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone)]
 pub struct StateKey {
-    pub tron: TronKey,
+    pub tron: MechtronKey,
     pub revision: Revision,
 }
 

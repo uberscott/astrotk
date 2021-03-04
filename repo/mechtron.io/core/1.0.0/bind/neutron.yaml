@@ -1,4 +1,4 @@
-kind: neutron
+kind: Neutron
 name: Neutron
 state: 
   artifact:
@@ -7,18 +7,9 @@ state:
 message:
   inbound:
     ports:
-    - name: ping
-      artifact:
-        path: schema/util/ping.schema
-  outbound:
-    ports:
-    - name: pong
-      artifact:
-        path: schema/util/pong.schema
-
-  extra:
-    ports:
-    - name: create_simtron
-      artifact:
-        path: schema/util/pong.schema
-
+    - name: create 
+      payloads:
+      - kind: Schema
+        artifact: 
+          path: schema/mechtron/create-meta.schema
+      - kind: Any

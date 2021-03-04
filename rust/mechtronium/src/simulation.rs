@@ -3,18 +3,18 @@ use crate::nucleus::Nucleus;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_core::configs::SimConfig;
 use mechtron_core::core::*;
-use mechtron_core::id::{Id, TronKey};
-use mechtron_core::message::{Message, MessageKind, To, TronLayer, Cycle, DeliveryMoment};
+use mechtron_core::id::{Id, MechtronKey};
+use mechtron_core::message::{Message, MessageKind, To, MechtronLayer, Cycle, DeliveryMoment};
 use std::sync::Arc;
 use std::time::SystemTime;
 use crate::error::Error;
 use crate::router::Router;
 
-pub struct SimulationBootstrap {}
+pub struct Simulation {}
 
 
 
-impl SimulationBootstrap {
+impl Simulation {
     pub fn bootstrap(local: Arc<Local>, config: Arc<SimConfig>) -> Result<(), Error> {
         let sim_id = local.seq().next();
 
@@ -28,7 +28,7 @@ impl SimulationBootstrap {
             builder.set_lookup_name("simtron");
             builder.constructor.set( &path!["sim_config_artifact"], config.source.to() )?;
 
-            let neutron_key = TronKey::new(sim_nucleus_id.clone(),Id::new(sim_nucleus_id.seq_id, 0));
+            let neutron_key = MechtronKey::new(sim_nucleus_id.clone(), Id::new(sim_nucleus_id.seq_id, 0));
 
             let message = Message::multi_payload(
                                    local.seq().clone(),
@@ -37,7 +37,7 @@ impl SimulationBootstrap {
                                         tron: neutron_key.clone(),
                                         cycle: 0,
                                         timestamp: 0,
-                                        layer: TronLayer::Shell
+                                        layer: MechtronLayer::Shell
                                     },
                                     To{
                                         tron: neutron_key.clone(),
@@ -45,7 +45,7 @@ impl SimulationBootstrap {
                                         cycle: Cycle::Present,
                                         phase: "default".to_string(),
                                         delivery: DeliveryMoment::ExtraCyclic,
-                                        layer: TronLayer::Kernel
+                                        layer: MechtronLayer::Kernel
                                     },
                                         CreatePayloadsBuilder::payloads(&local.cache().configs,builder));
            local.send( Arc::new(message));
@@ -53,3 +53,4 @@ impl SimulationBootstrap {
         Ok(())
     }
 }
+

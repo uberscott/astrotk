@@ -11,13 +11,13 @@ use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
 use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{BindConfig, Configs, Keeper, NucleusConfig, SimConfig};
+use mechtron_core::configs::{BindConfig, Configs, Keeper, NucleusConfig, SimConfig, SimSpark};
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq, StateKey};
 use mechtron_core::id::Revision;
-use mechtron_core::id::TronKey;
+use mechtron_core::id::MechtronKey;
 use mechtron_core::mechtron::MechtronContext;
-use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To, TronLayer};
+use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To, MechtronLayer, MessageBuilder};
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
 
 use crate::cache::Cache;
@@ -77,16 +77,28 @@ impl<'nuclei> Nuclei<'nuclei> {
         return Ok(nucleus.clone());
     }
 
+    pub fn create_sim(&self, spark: SimSpark ) -> Result<Id, Error> {
+        let nucleus = Nucleus::sim( spark, self.context.clone() )?;
+        let id = nucleus.info.id.clone();
+        self.add(nucleus)?;
+        Ok(id)
+    }
 
     pub fn create(&self, sim_id: Id, lookup_name: Option<String>, config: Arc<NucleusConfig> ) -> Result<Id, Error> {
         let id = self.context.seq.next();
         let mut nucleus = Nucleus::new( id, sim_id, self.context.clone(), config.clone() )?;
 
-        nucleus.bootstrap(lookup_name)?;
+        nucleus.bootstrap()?;
 
-        let mut sources = self.nuclei.write()?;
-        sources.insert(nucleus.info.id.clone(),nucleus );
+        self.add( nucleus )?;
         Ok(id)
+    }
+
+    pub fn add( &self, nucleus: Nucleus<'nuclei> )->Result<(),Error>
+    {
+        let mut sources = self.nuclei.write()?;
+        sources.insert(nucleus.info.id.clone(),Arc::new(nucleus) );
+        Ok(())
     }
 }
 
@@ -125,7 +137,7 @@ impl <'context> NucleusContext<'context>
 {
     pub fn tron_info_for(
         &self,
-        key: TronKey,
+        key: MechtronKey,
         artifact: &Artifact,
     ) -> Result<TronInfo, Error> {
         let configs = &self.cache.configs;
@@ -153,13 +165,29 @@ pub struct Nucleus<'nucleus> {
 impl<'nucleus> Nucleus<'nucleus> {}
 
 impl<'nucleus> Nucleus<'nucleus> {
+    fn sim(
+        spark: SimSpark,
+        context: NucleusContext<'nucleus>,
+    ) -> Result<Self, Error> {
+        let sim_id = context.seq.next();
+        let id = sim_id.clone();
+
+        let config = context.cache.configs.nucleus.get(&CORE_NUCLEUS_SIMULATION)?;
+
+        let nucleus = Nucleus::new( id, sim_id, context, config )?;
+
+        nucleus.bootstrap()?;
+
+        Ok(nucleus)
+    }
+
     fn new(
         id: Id,
         sim_id: Id,
         context: NucleusContext<'nucleus>,
         config: Arc<NucleusConfig>
-    ) -> Result<Arc<Self>, Error> {
-        let mut nucleus = Arc::new(Nucleus {
+    ) -> Result<Self, Error> {
+        let mut nucleus = Nucleus {
             info: NucleusInfo {
                 id: id,
                 sim_id: sim_id,
@@ -169,14 +197,14 @@ impl<'nucleus> Nucleus<'nucleus> {
             head: Revision { cycle: -1 },
             context: context,
             config: config
-        });
+        };
 
         Ok(nucleus)
     }
 
-    fn neutron_key(&self) -> TronKey
+    fn neutron_key(&self) -> MechtronKey
     {
-        TronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0))
+        MechtronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0))
     }
 
     pub fn intake_message(&self, message: Arc<Message>) {
@@ -205,7 +233,7 @@ impl<'nucleus> Nucleus<'nucleus> {
         let result = self.tron(&state_key);
         if result.is_err()
         {
-            let result = message.reject( mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp(), layer: TronLayer::Shell }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
+            let result = message.reject(mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp(), layer: MechtronLayer::Shell }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
             if (result.is_err())
             {
                 println!("could not access this tron.");
@@ -251,19 +279,19 @@ println!("Sending message of type: {:?} ", &message.kind );
         let info = TronInfo {
             key: key.tron.clone(),
             config: tron_config.clone(),
-        };
+       };
 
         let tron_shell = MechtronShell::new(init_tron(&tron_config)?, info );
         Ok((tron_shell,state))
     }
 
-    fn bootstrap(&self, lookup_name: Option<String>) -> Result<(), Error> {
+    fn bootstrap(&self) -> Result<(), Error> {
         let mut states = vec!();
         let mut messages = vec!();
         {
             let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone(),self.config.clone())?;
 
-            nucleus_cycle.bootstrap(lookup_name);
+            nucleus_cycle.bootstrap()?;
 
             let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
             for state in tmp_states
@@ -373,7 +401,7 @@ impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
        let lookup = Lookup::new(self.state.clone(), self.head.clone() );
        lookup.lookup_nucleus(self.info.id.clone(),name)
     }
-    fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<TronKey, Error> {
+    fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error> {
         let lookup = Lookup::new(self.state.clone(), self.head.clone() );
       lookup.lookup_tron(nucleus_id,name)
     }
@@ -388,6 +416,36 @@ impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
 
     fn seq(&self) -> Arc<IdSeq> {
         self.context.seq.clone()
+    }
+
+    fn neutron_api_create(&self, key: MechtronKey, config: Artifact, state: State, create: &Message) -> Result<(), Error> {
+
+/*        let config = self.configs().binds.get(&config)?;
+        let tron = init_tron(&config)?;
+
+        let info = TronInfo {
+            config: config,
+            key: key
+        };
+
+        let mut tron = MechtronShell::new(tron, info);
+        let result = {
+            tron.create(create,self, &mut state)
+        };
+
+        match result
+        {
+            Ok(_) => {
+                self.state.add(key, Arc::new(Mutex::new(state)));
+                Ok(())
+            }
+            Err(e) => {
+                Result::Err(e.into())
+            }
+        }
+
+ */
+        unimplemented!()
     }
 
 }
@@ -439,17 +497,17 @@ impl<'cycle> NucleusCycle<'cycle> {
     }
 
 
-    fn bootstrap(&mut self, lookup_name: Option<String>) -> Result<(), Error> {
+    fn bootstrap(&mut self) -> Result<(), Error> {
+
+println!("BOOTSTRAP NUCLEUS");
         let mut seq = self.context.seq.clone();
 
         let timestamp = timestamp();
 
-        let neutron_key = TronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0));
+        let neutron_key = MechtronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0));
 
-        let configs = self.configs();
-        let tron_config_keeper = &configs.binds;
-        let config = tron_config_keeper.get(&CORE_BIND_NEUTRON)?;
-        let info = TronInfo{
+        let config = self.configs().binds.get(&CORE_BIND_NEUTRON)?;
+        let neutron_info = TronInfo{
             config: config.clone(),
             key: neutron_key.clone()
         };
@@ -457,47 +515,85 @@ impl<'cycle> NucleusCycle<'cycle> {
         // first we create a neutron for the simulation nucleus
 
         let mut neutron_create_payload_builder =
-            CreatePayloadsBuilder::new(configs, &info.config)?;
-        neutron_create_payload_builder.set_sim_id(&self.info.sim_id);
+            CreatePayloadsBuilder::new(self.configs(), &neutron_info.config)?;
 
-        if lookup_name.is_some() {
-            neutron_create_payload_builder.set_lookup_name(&lookup_name.as_ref().unwrap());
-        }
-
+println!("GOT HERE");
         let create = Message::multi_payload(
             seq,
             MessageKind::Create,
             mechtron_core::message::From {
-                tron: info.key.clone(),
-                cycle: 0,
+                tron: neutron_info.key.clone(),
+                cycle: -1,
                 timestamp,
-                layer: TronLayer::Kernel
+                layer: MechtronLayer::Shell
             },
             To {
-                tron: info.key.clone(),
+                tron: neutron_info.key.clone(),
                 port: "create".to_string(),
-                cycle: Cycle::Next,
+                cycle: Cycle::Present,
                 phase: "default".to_string(),
                 delivery: DeliveryMoment::Cyclic,
-                layer: TronLayer::Kernel,
+                layer: MechtronLayer::Kernel,
             },
-            CreatePayloadsBuilder::payloads(configs, neutron_create_payload_builder),
+            CreatePayloadsBuilder::payloads(self.configs(), neutron_create_payload_builder),
         );
 
-        let neutron_state_artifact = info.config.state.artifact.clone();
-        let mut state = State::new(configs, neutron_state_artifact.clone())?;
+        let neutron_state_artifact = neutron_info.config.state.artifact.clone();
+        let mut state = State::new(self.configs(), neutron_info.config.clone() )?;
+
+println!("NOW HERE");
+
+        state.set_artifact(&config.source);
+        state.set_creation_cycle(-1);
+        state.set_creation_timestamp(0);
+        let neutron_config = self.configs().binds.get(&CORE_BIND_NEUTRON)?;
+println!("OK, OKAY.......... HERE");
+        let mut kernel = init_tron(&neutron_info.config)?;
+        let mut neutron = MechtronShell::new(kernel, neutron_info.clone());
+println!("AND....... HERE");
+        neutron.create(&create, self, &mut state );
 
 
+println!("HELLO");
+        let mut messages = vec!();
+        // now we CREATE each named mechtron in the neutron_config
+        for mechtron_config_ref in self.config.mectrons.as_slice()
         {
-            state.set_artifact(&config.source);
-            state.set_creation_cycle(-1);
-            state.set_creation_timestamp(0);
-            let neutron_config = configs.binds.get(&CORE_BIND_NEUTRON)?;
-            let mut neutron = MechtronShell::new(init_tron(&info.config)?, info.clone());
-            neutron.create(&create, self, &mut state );
+            println!("creating mechtron: {}",mechtron_config_ref.name.as_ref().unwrap().clone());
+            let mechtron_config = self.context.cache.configs.mechtrons.get(&mechtron_config_ref.artifact)?;
+
+            let mut create_payloads_builder = CreatePayloadsBuilder::new(self.configs(), self.context.cache.configs.binds.get(&mechtron_config.bind.artifact)?.as_ref() )?;
+            create_payloads_builder.set_artifact(mechtron_config.as_ref());
+            let message = Message::multi_payload(
+                self.context.seq.clone(),
+                MessageKind::Create,
+                mechtron_core::message::From {
+                    tron: neutron_info.key.clone(),
+                    cycle: -1,
+                    timestamp,
+                    layer: MechtronLayer::Shell
+                },
+                To {
+                    tron: neutron_info.key.clone(),
+                    port: "create".to_string(),
+                    cycle: Cycle::Present,
+                    phase: "default".to_string(),
+                    delivery: DeliveryMoment::Cyclic,
+                    layer: MechtronLayer::Kernel,
+                },
+                CreatePayloadsBuilder::payloads(self.configs(), create_payloads_builder),
+            );
+
+            messages.push(Arc::new(message) );
         }
 
-        self.state.add(info.key.clone(), Arc::new(Mutex::new(state)));
+        let state = Mutex::new(state);
+        {
+           let mut state = &mut state.lock()?;
+            neutron.inbound(&messages, self, state);
+        }
+
+        self.state.add(neutron_info.key.clone(), Arc::new(state));
 
         Ok(())
     }
@@ -531,7 +627,7 @@ impl<'cycle> NucleusCycle<'cycle> {
         Ok(())
     }
 
-    fn intake_state(&mut self, key: TronKey, state: Arc<ReadOnlyState>) {
+    fn intake_state(&mut self, key: MechtronKey, state: Arc<ReadOnlyState>) {
         match self.state.intake(key, state)
         {
             Ok(_) => {}
@@ -541,7 +637,7 @@ impl<'cycle> NucleusCycle<'cycle> {
 
     fn tron(
         &mut self,
-        key: &TronKey,
+        key: &MechtronKey,
     ) -> Result<(MechtronShell, Arc<Mutex<State>>), Error> {
         let mut state = self.state.get(key)?;
         let artifact = {
@@ -570,10 +666,10 @@ impl<'cycle> NucleusCycle<'cycle> {
 
     fn process_create(&mut self, message: &Message) -> Result<(), Error> {
         // ensure this is addressed to a neutron
-        if !Neutron::valid_neutron_id(message.to.tron.tron.clone()) {
+        if !Neutron::valid_neutron_id(message.to.tron.mechtron.clone()) {
             return Err(format!(
                 "not a valid neutron id: {:?}",
-                message.to.tron.tron.id.clone()
+                message.to.tron.mechtron.id.clone()
             )
             .into());
         }
@@ -589,7 +685,7 @@ impl<'cycle> NucleusCycle<'cycle> {
 
         let info = self.context.tron_info_for(message.to.tron.clone(), &CORE_BIND_NEUTRON)?;
         let neutron = Neutron {};
-        neutron.create_mechtron(info, self, neutron_state, message);
+//        neutron.create_mechtron(info, self, neutron_state, message);
 
         Ok(())
     }
@@ -612,15 +708,13 @@ pub trait MechtronShellContext<'cycle>
     fn revision(&self) -> &Revision;
     fn get_state(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error>;
     fn lookup_nucleus(&self, name: &str) -> Result<Id, Error>;
-    fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<TronKey, Error>;
+    fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error>;
     fn timestamp(&self) -> u64;
     fn seq(&self)->Arc<IdSeq>;
+
+    fn neutron_api_create(&self, key: MechtronKey, config: Artifact, state: State, create: &Message ) ->Result<(),Error>;
 }
 
-pub trait NeutronContext<'cycle>: MechtronShellContext<'cycle>
-{
-    fn create(&mut self, key:TronKey, config: Artifact, state: State, create: &Message ) ->Result<(),Error>;
-}
 
 
 
@@ -628,8 +722,6 @@ pub trait NeutronContext<'cycle>: MechtronShellContext<'cycle>
 
 impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
 {
-
-
 
     fn configs<'get>(&'get self) -> &'get Configs<'cycle> {
         self.context.cache.configs.borrow()
@@ -660,7 +752,7 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
         &self,
         nucleus_id: &Id,
         name: &str,
-    ) -> Result<TronKey, Error> {
+    ) -> Result<MechtronKey, Error> {
         let lookup = Lookup::new( self.history.clone(), self.revision.clone() );
         lookup.lookup_tron(nucleus_id,name)
     }
@@ -673,38 +765,10 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
         self.context.seq.clone()
     }
 
-}
-
-impl<'cycle> NeutronContext<'cycle> for NucleusCycle<'cycle>
-{
-    fn create(&mut self, key: TronKey, config: Artifact, mut state: State, create: &Message) -> Result<(), Error>
-    {
-        let config = self.configs().binds.get(&config)?;
-        let tron = init_tron(&config)?;
-
-        let info = TronInfo {
-            config: config,
-            key: key
-        };
-
-        let mut tron = MechtronShell::new(tron, info);
-        let result = {
-            tron.create(create,self, &mut state)
-        };
-
-        match result
-        {
-            Ok(_) => {
-                self.state.add(key, Arc::new(Mutex::new(state)));
-                Ok(())
-            }
-            Err(e) => {
-                Result::Err(e.into())
-            }
-        }
+    fn neutron_api_create(&self, key: MechtronKey, config: Artifact, state: State, create: &Message) -> Result<(), Error> {
+        unimplemented!()
     }
 }
-
 
 
 
@@ -769,13 +833,13 @@ mod message
     use std::time::Instant;
 
     use mechtron_core::error::Error;
-    use mechtron_core::id::TronKey;
+    use mechtron_core::id::MechtronKey;
     use mechtron_core::message::{Cycle, DeliveryMoment, Message};
 
     use crate::nucleus::Nucleus;
 
     pub struct CyclicMessagingStructure {
-        store: RwLock<HashMap<i64, HashMap<TronKey, TronMessageChamber>>>,
+        store: RwLock<HashMap<i64, HashMap<MechtronKey, TronMessageChamber>>>,
     }
 
     impl CyclicMessagingStructure {
@@ -980,8 +1044,8 @@ mod message
         use mechtron_core::buffers::Buffer;
         use mechtron_core::configs::Configs;
         use mechtron_core::core::*;
-        use mechtron_core::id::{Id, IdSeq, TronKey};
-        use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To, TronLayer};
+        use mechtron_core::id::{Id, IdSeq, MechtronKey};
+        use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageBuilder, MessageKind, Payload, PayloadBuilder, To, MechtronLayer};
         use mechtron_core::message::DeliveryMoment::Cyclic;
 
         use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
@@ -1007,18 +1071,18 @@ mod message
             Message::single_payload(seq_borrow.clone(),
                                     MessageKind::Update,
                                     mechtron_core::message::From {
-                                        tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),
+                                        tron: MechtronKey::new(seq_borrow.next(), seq_borrow.next()),
                                         cycle: 0,
                                         timestamp: 0,
-                                        layer: TronLayer::Kernel
+                                        layer: MechtronLayer::Kernel
                                     },
                                     To {
-                                        tron: TronKey::new(seq_borrow.next(), seq_borrow.next()),
+                                        tron: MechtronKey::new(seq_borrow.next(), seq_borrow.next()),
                                         port: "someport".to_string(),
                                         cycle: Cycle::Present,
                                         phase: "default".to_string(),
                                         delivery: DeliveryMoment::Cyclic,
-                                        layer: TronLayer::Kernel
+                                        layer: MechtronLayer::Kernel
                                     },
                                     payload,
             )
@@ -1065,13 +1129,13 @@ mod message
                 tron: mock_tron_key(),
                 cycle: 0,
                 timestamp: 0,
-                layer: TronLayer::Kernel
+                layer: MechtronLayer::Kernel
             }
         }
 
-        fn mock_tron_key() -> TronKey {
-            TronKey {
-                tron: Id {
+        fn mock_tron_key() -> MechtronKey {
+            MechtronKey {
+                mechtron: Id {
                     seq_id: 0,
                     id: 0,
                 },
@@ -1272,14 +1336,14 @@ mod state
     use std::rc::Rc;
     use std::sync::{Arc, Mutex, RwLock};
 
-    use mechtron_core::id::{Id, Revision, StateKey, TronKey};
+    use mechtron_core::id::{Id, Revision, StateKey, MechtronKey};
     use mechtron_core::state::{ReadOnlyState, State};
 
     use crate::mechtron::TronInfo;
     use crate::nucleus::Error;
 
     pub struct StateHistory {
-        history: RwLock<HashMap<Revision, HashMap<TronKey, Arc<ReadOnlyState>>>>,
+        history: RwLock<HashMap<Revision, HashMap<MechtronKey, Arc<ReadOnlyState>>>>,
     }
 
     impl StateHistory {
@@ -1307,13 +1371,13 @@ mod state
             Ok(self.get(key)?.clone())
         }
 
-        pub fn query(&self, revision: Revision) -> Result<Option<Vec<(TronKey, Arc<ReadOnlyState>)>>, Error> {
+        pub fn query(&self, revision: Revision) -> Result<Option<Vec<(MechtronKey, Arc<ReadOnlyState>)>>, Error> {
             let history = self.history.read()?;
             let history = history.get(&revision);
             match history {
                 None => Ok(Option::None),
                 Some(history) => {
-                    let mut rtn: Vec<(TronKey, Arc<ReadOnlyState>)> = vec![];
+                    let mut rtn: Vec<(MechtronKey, Arc<ReadOnlyState>)> = vec![];
                     for key in history.keys() {
                         let state = history.get(key).unwrap();
                         rtn.push((key.clone(), state.clone()))
@@ -1378,7 +1442,7 @@ mod state
 
 
     pub struct PhasicStateStructure {
-        store: RwLock<HashMap<TronKey, Arc<Mutex<State>>>>,
+        store: RwLock<HashMap<MechtronKey, Arc<Mutex<State>>>>,
     }
 
     impl PhasicStateStructure {
@@ -1388,19 +1452,19 @@ mod state
             }
         }
 
-        pub fn intake(&mut self, key: TronKey, state: Arc<ReadOnlyState>) -> Result<(), Error> {
+        pub fn intake(&mut self, key: MechtronKey, state: Arc<ReadOnlyState>) -> Result<(), Error> {
             let mut store = self.store.write()?;
             store.insert(key, Arc::new(Mutex::new(state.copy())));
             Ok(())
         }
 
-        pub fn add(&mut self, key: TronKey, state: Arc<Mutex<State>> ) -> Result<(), Error> {
+        pub fn add(&mut self, key: MechtronKey, state: Arc<Mutex<State>> ) -> Result<(), Error> {
             let mut store = self.store.write()?;
             store.insert(key, state);
             Ok(())
         }
 
-        pub fn get(&mut self, key: &TronKey) -> Result<Arc<Mutex<State>>, Error> {
+        pub fn get(&mut self, key: &MechtronKey) -> Result<Arc<Mutex<State>>, Error> {
             let store = self.store.read()?;
             let rtn = store.get(key);
 
@@ -1435,7 +1499,7 @@ mod state
         use mechtron_core::buffers::Buffer;
         use mechtron_core::configs::Configs;
         use mechtron_core::core::*;
-        use mechtron_core::id::{Id, Revision, StateKey, TronKey};
+        use mechtron_core::id::{Id, Revision, StateKey, MechtronKey};
         use mechtron_core::state::State;
 
         use crate::nucleus::state::StateHistory;
@@ -1443,16 +1507,16 @@ mod state
 
         pub fn mock_state(configs_ref: &Configs) -> State
         {
-            let state = State::new(configs_ref, CORE_SCHEMA_EMPTY.clone()).unwrap();
+            let state = State::new_empty(configs_ref).unwrap();
             state
         }
 
         pub fn mock_state_key() -> StateKey
         {
             StateKey {
-                tron: TronKey{
+                tron: MechtronKey {
                     nucleus: Id::new(0,0),
-                    tron: Id ::new(0,0)
+                    mechtron: Id ::new(0, 0)
                 },
 
                 revision: Revision {
@@ -1505,9 +1569,9 @@ mod state
         }
 
         pub fn lookup_nucleus(&self, nucleus_id: Id, name: &str) -> Result<Id, Error> {
-            let neutron_key = TronKey {
+            let neutron_key = MechtronKey {
                 nucleus: nucleus_id,
-                tron: Id::new(nucleus_id.seq_id, 0),
+                mechtron: Id::new(nucleus_id.seq_id, 0),
             };
             let state_key = StateKey {
                 tron: neutron_key,
@@ -1518,18 +1582,18 @@ mod state
 
             let neutron_state = self.history.get(&state_key)?;
 
-            let simulation_nucleus_id = Id::new(
+            let sim_id = Id::new(
                 neutron_state
                     .data
-                    .get::<i64>(&path![&"simulation_nucleus_id", &"seq_id"])?,
+                    .get::<i64>(&path![&"sim_id", &"seq_id"])?,
                 neutron_state
                     .data
-                    .get::<i64>(&path![&"simulation_nucleus_id", &"id"])?,
+                    .get::<i64>(&path![&"sim_id", &"id"])?,
             );
 
-            let simtron_key = TronKey {
-                nucleus: simulation_nucleus_id.clone(),
-                tron: Id::new(simulation_nucleus_id.seq_id, 1),
+            let simtron_key = MechtronKey {
+                nucleus: sim_id.clone(),
+                mechtron: Id::new(sim_id.seq_id, 1),
             };
 
             let state_key = StateKey {
@@ -1556,10 +1620,10 @@ mod state
             &self,
             nucleus_id: &Id,
             name: &str,
-        ) -> Result<TronKey, Error> {
-            let neutron_key = TronKey {
+        ) -> Result<MechtronKey, Error> {
+            let neutron_key = MechtronKey {
                 nucleus: nucleus_id.clone(),
-                tron: Id::new(nucleus_id.seq_id, 0),
+                mechtron: Id::new(nucleus_id.seq_id, 0),
             };
             let state_key = StateKey {
                 tron: neutron_key,
@@ -1577,9 +1641,9 @@ mod state
                     .get::<i64>(&path![&"tron_names", name, &"id"])?,
             );
 
-            let tron_key = TronKey {
+            let tron_key = MechtronKey {
                 nucleus: nucleus_id.clone(),
-                tron: tron_id,
+                mechtron: tron_id,
             };
 
             Ok(tron_key)
@@ -1596,12 +1660,13 @@ mod test
     use std::sync::Arc;
 
     use mechtron_core::core::*;
-    use mechtron_core::id::{Id, TronKey};
+    use mechtron_core::id::{Id, MechtronKey};
     use mechtron_core::message::*;
     use mechtron_core::util::PingPayloadBuilder;
 
     use crate::node::Node;
     use mechtron_core::artifact::Artifact;
+    use mechtron_core::configs::SimSpark;
 
     fn create_node() ->Node<'static>
     {
@@ -1618,7 +1683,9 @@ mod test
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
         let node = Node::new(Option::Some(cache));
 
-        let (sim_id, nucleus_id) = node.create_source_sim(SIM_CONFIG.clone() ).unwrap();
+        node.create( SimSpark{} ).unwrap();
+
+        //let (sim_id, nucleus_id) = node.create_source_sim(SIM_CONFIG.clone() ).unwrap();
 
         node.shutdown();
     }

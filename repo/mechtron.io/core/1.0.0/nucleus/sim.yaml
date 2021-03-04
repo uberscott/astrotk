@@ -1,0 +1,8 @@
+name: sim
+description: this nucleus binds the mechtrons that manage the sim
+phases:
+- name: default
+mechtrons:
+- name: simtron
+  artifact:
+    path: mechtron/simtron.yaml

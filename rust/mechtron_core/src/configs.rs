@@ -109,6 +109,7 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_SCHEMA_EMPTY)?;
         self.cache(&CORE_SCHEMA_META_STATE)?;
         self.cache(&CORE_SCHEMA_META_CREATE)?;
+        self.cache(&CORE_SCHEMA_META_API)?;
 
         self.cache(&CORE_SCHEMA_NEUTRON_CREATE)?;
         self.cache(&CORE_SCHEMA_NEUTRON_STATE)?;
@@ -304,15 +305,34 @@ impl Cacher<BindConfig> for BindCacher
         rtn.push(config.message.create.artifact.clone());
         for port in config.message.extra.values()
         {
-            rtn.push( port.artifact.clone() );
+            for payload in &port.payloads
+            {
+                if payload.artifact.is_some()
+                {
+                    rtn.push(payload.artifact.as_ref().unwrap().clone());
+                }
+            }
         }
         for port in config.message.inbound.values()
         {
-            rtn.push( port.artifact.clone() );
+            for payload in &port.payloads
+            {
+                if payload.artifact.is_some()
+                {
+                    rtn.push(payload.artifact.as_ref().unwrap().clone());
+                }
+            }
         }
+
         for port in config.message.outbound.values()
         {
-            rtn.push( port.artifact.clone() );
+            for payload in &port.payloads
+            {
+                if payload.artifact.is_some()
+                {
+                    rtn.push(payload.artifact.as_ref().unwrap().clone());
+                }
+            }
         }
 
         Ok(rtn)
@@ -413,21 +433,34 @@ impl Default for CreateMessageConfig
 #[derive(Clone)]
 pub struct ExtraMessageConfig {
     pub name: String,
-    pub artifact: Artifact,
+    pub payloads: Vec<PayloadConfig>,
 }
 
 
 #[derive(Clone)]
 pub struct InboundMessageConfig {
     pub name: String,
-    pub artifact: Artifact,
+    pub payloads: Vec<PayloadConfig>,
 }
 
 #[derive(Clone)]
 pub struct OutboundMessageConfig {
     pub name: String,
-    pub artifact: Artifact,
+    pub payloads: Vec<PayloadConfig>,
 }
+
+#[derive(Clone)]
+pub struct PayloadConfig{
+    pub kind: PayloadKind,
+    pub artifact: Option<Artifact>
+}
+
+#[derive(Clone)]
+pub enum PayloadKind {
+    Any,
+    Schema
+}
+
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MechtronConfigYaml {
@@ -498,19 +531,56 @@ pub struct PortsYaml<T>
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExtraConfigYaml {
     name: String,
-    artifact: ArtifactYaml
+    payloads: Vec<PayloadYaml>
 }
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct PayloadYaml{
+    kind: PayloadKindYaml,
+    artifact: Option<ArtifactYaml>
+}
+
+impl PayloadYaml{
+
+    pub fn to_config(&self, artifact: &Artifact) -> Result<PayloadConfig, Error> {
+        Ok(PayloadConfig {
+            kind: match self.kind{
+                PayloadKindYaml::Any => PayloadKind::Any,
+                PayloadKindYaml::Schema => PayloadKind::Schema
+            },
+            artifact:
+            match self.kind{
+            PayloadKindYaml::Any => Option::None,
+            PayloadKindYaml::Schema => Option::Some( match &self.artifact{
+                None => {
+                    return Err("expected artifact".into());
+                },
+                Some(artifact_yaml) => artifact_yaml.to_artifact(&artifact.bundle, Option::Some("schema"))?
+            } )
+        }
+        })
+    }
+}
+
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum PayloadKindYaml
+{
+    Any,
+    Schema
+}
+
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct InboundConfigYaml {
     name: String,
-    artifact: ArtifactYaml
+    payloads: Vec<PayloadYaml>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct OutboundConfigYaml {
     name: String,
-    artifact: ArtifactYaml,
+    payloads: Vec<PayloadYaml>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -559,7 +629,7 @@ impl BindYaml {
                             extras.ports.iter().map(|extra|->Result<ExtraMessageConfig,Error>{
                                 Ok(ExtraMessageConfig{
                                     name: extra.name.clone(),
-                                    artifact: extra.artifact.to_artifact(default_bundle, Option::Some("schema"))?
+                                    payloads: extra.payloads.iter().map(|p| p.to_config(artifact).unwrap() ).collect()
                                 })
                             }).filter(|r|{
                                 if r.is_err(){
@@ -572,10 +642,10 @@ impl BindYaml {
                         None => Default::default(),
                         Some(inbounds) =>
                             inbounds.ports.iter().map(|inbound|->Result<InboundMessageConfig,Error>{
-                               Ok(InboundMessageConfig{
-                                   name: inbound.name.clone(),
-                                   artifact: inbound.artifact.to_artifact(default_bundle, Option::Some("schema"))?
-                               })
+                                Ok(InboundMessageConfig{
+                                    name: inbound.name.clone(),
+                                    payloads: inbound.payloads.iter().map(|p| p.to_config(artifact).unwrap() ).collect()
+                                })
                             }).filter(|r|{
                                 if r.is_err(){
                                     println!("error processing inbound" )
@@ -589,7 +659,7 @@ impl BindYaml {
                             inbounds.ports.iter().map(|outbound|->Result<OutboundMessageConfig,Error>{
                                 Ok(OutboundMessageConfig{
                                     name: outbound.name.clone(),
-                                    artifact: outbound.artifact.to_artifact(default_bundle, Option::Some("schema"))?
+                                    payloads: outbound.payloads.iter().map(|p| p.to_config(artifact).unwrap() ).collect()
                                 })
                             }).filter(|r|
 
@@ -711,7 +781,15 @@ struct NucleusConfigYaml
 {
     name: Option<String>,
     description: Option<String>,
-    phases: Vec<PhaseConfigYaml>
+    phases: Vec<PhaseConfigYaml>,
+    mechtrons: Vec<MechtronConfigRefYaml>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct MechtronConfigRefYaml
+{
+    name: Option<String>,
+    artifact: ArtifactYaml
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -732,7 +810,7 @@ impl NucleusConfigYaml
             name: self.name.clone(),
             description: self.description.clone(),
             phases: self.phases.iter().map( |p| PhaseConfig{ name: p.name.clone() } ).collect(),
-            mectrons: vec!()
+            mectrons:self.mechtrons.iter().map( |p| MechtronConfigRef{ name: p.name.clone(), artifact: p.artifact.to_artifact(&default_bundle,Option::Some("mechtron")).unwrap() } ).collect()
         })
     }
 
@@ -741,4 +819,17 @@ impl NucleusConfigYaml
 
 pub trait Cacher<V> {
     fn artifacts(&self, source: Arc<V>) -> Result<Vec<Artifact>, Error >;
+}
+
+pub struct NucleusSpark
+{
+
+}
+
+pub struct SimSpark
+{
+/*    sim_config: Arc<SimConfig>,
+    nucleus_sparks: HashMap<String,NucleusSpark>
+
+ */
 }

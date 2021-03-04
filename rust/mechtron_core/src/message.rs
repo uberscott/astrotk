@@ -16,7 +16,7 @@ use crate::artifact::Artifact;
 use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
 use crate::configs::Configs;
 use crate::error::Error;
-use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, TronKey};
+use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, MechtronKey};
 use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 
 static ID: &'static str = r#"
@@ -101,20 +101,20 @@ lazy_static! {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct To {
-    pub tron: TronKey,
+    pub tron: MechtronKey,
     pub port: String,
     pub cycle: Cycle,
     pub phase: String,
     pub delivery: DeliveryMoment,
-    pub layer: TronLayer
+    pub layer: MechtronLayer
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct From {
-    pub tron: TronKey,
+    pub tron: MechtronKey,
     pub cycle: i64,
     pub timestamp: u64,
-    pub layer: TronLayer
+    pub layer: MechtronLayer
 }
 
 impl From {
@@ -124,13 +124,13 @@ impl From {
         buffer.set(&path.with(path!("timestamp")), self.timestamp.clone())?;
 
         match self.layer {
-            TronLayer::Shell=> {
+            MechtronLayer::Shell=> {
                 buffer.set(
                     &path.with(path!("layer")),
                     NP_Enum::Some("Shell".to_string()),
                 )?;
             }
-            TronLayer::Kernel=> {
+            MechtronLayer::Kernel=> {
                 buffer.set(
                     &path.with(path!("layer")),
                     NP_Enum::Some("Kernel".to_string()),
@@ -146,14 +146,14 @@ impl From {
         let layer = match buffer.get::<NP_Enum>(&path.with(path!("layer")))? {
             NP_Enum::None => return Err("unkown layer type".into()),
             NP_Enum::Some(layer) => match layer.as_str() {
-                "Shell" => TronLayer::Shell,
-                "Kernel" => TronLayer::Kernel,
+                "Shell" => MechtronLayer::Shell,
+                "Kernel" => MechtronLayer::Kernel,
                 _ => return Err("unknown delivery type".into()),
             },
         };
 
         Ok(From {
-            tron: TronKey::from(&path.push(path!["tron"]), buffer)?,
+            tron: MechtronKey::from(&path.push(path!["tron"]), buffer)?,
             cycle: buffer.get(&path.with(path!["cycle"]))?,
             timestamp: buffer.get(&path.with(path!["timestamp"]))?,
             layer: layer
@@ -162,36 +162,36 @@ impl From {
 }
 
 impl To {
-    pub fn basic(tron: TronKey, port: String) -> Self {
+    pub fn basic(tron: MechtronKey, port: String) -> Self {
         To {
             tron: tron,
             port: port,
             cycle: Cycle::Next,
             phase: "default".to_string(),
             delivery: DeliveryMoment::Cyclic,
-            layer: TronLayer::Kernel
+            layer: MechtronLayer::Kernel
         }
     }
 
-    pub fn phasic(tron: TronKey, port: String, phase: String) -> Self {
+    pub fn phasic(tron: MechtronKey, port: String, phase: String) -> Self {
         To {
             tron: tron,
             port: port,
             cycle: Cycle::Next,
             phase: phase,
             delivery: DeliveryMoment::Cyclic,
-            layer: TronLayer::Kernel
+            layer: MechtronLayer::Kernel
         }
     }
 
-    pub fn inter_phasic(tron: TronKey, port: String, phase: String) -> Self {
+    pub fn inter_phasic(tron: MechtronKey, port: String, phase: String) -> Self {
         To {
             tron: tron,
             port: port,
             cycle: Cycle::Present,
             phase: phase,
             delivery: DeliveryMoment::Phasic,
-            layer: TronLayer::Kernel
+            layer: MechtronLayer::Kernel
         }
     }
 
@@ -231,13 +231,13 @@ impl To {
         }
 
         match self.layer {
-            TronLayer::Shell=> {
+            MechtronLayer::Shell=> {
                 buffer.set(
                     &path.with(path!("layer")),
                     NP_Enum::Some("Shell".to_string()),
                 )?;
             }
-            TronLayer::Kernel=> {
+            MechtronLayer::Kernel=> {
                 buffer.set(
                     &path.with(path!("layer")),
                     NP_Enum::Some("Kernel".to_string()),
@@ -249,7 +249,7 @@ impl To {
     }
 
     pub fn from(path: &Path, buffer: &ReadOnlyBuffer) -> Result<Self, Error> {
-        let tron = TronKey::from(&path.push(path!("tron")), buffer)?;
+        let tron = MechtronKey::from(&path.push(path!("tron")), buffer)?;
         let port = buffer.get::<String>(&path.with(path!["port"]))?;
         let cycle = match buffer.is_set::<i64>(&path.with(path!("cycle")))? {
             true => Cycle::Exact(buffer.get::<i64>(&path.with(path!("cycle")))?),
@@ -269,8 +269,8 @@ impl To {
         let layer = match buffer.get::<NP_Enum>(&path.with(path!("layer")))? {
             NP_Enum::None => return Err("unkown layer type".into()),
             NP_Enum::Some(layer) => match layer.as_str() {
-                "Shell" => TronLayer::Shell,
-                "Kernel" => TronLayer::Kernel,
+                "Shell" => MechtronLayer::Shell,
+                "Kernel" => MechtronLayer::Kernel,
                 _ => return Err("unknown delivery type".into()),
             },
         };
@@ -319,7 +319,8 @@ pub enum MessageKind {
     Response,
     Command,
     Reject,
-    Panic
+    Panic,
+    Api
 }
 
 fn message_kind_to_index(kind: &MessageKind) -> u8 {
@@ -332,6 +333,7 @@ fn message_kind_to_index(kind: &MessageKind) -> u8 {
         MessageKind::Command=> 5,
         MessageKind::Reject => 6,
         MessageKind::Panic => 7,
+        MessageKind::Api=> 8,
     }
 }
 
@@ -345,6 +347,7 @@ fn message_kind_to_string(kind: &MessageKind) -> &str {
         MessageKind::Command=> "Command",
         MessageKind::Reject => "Reject",
         MessageKind::Panic=> "Panic",
+        MessageKind::Api=> "Api",
     }
 }
 
@@ -358,6 +361,7 @@ fn index_to_message_kind(index: u8) -> Result<MessageKind, Error> {
         5 => Ok(MessageKind::Command),
         6 => Ok(MessageKind::Reject),
         7 => Ok(MessageKind::Panic),
+        8 => Ok(MessageKind::Api),
         _ => Err(format!("invalid index {}", index).into()),
     }
 }
@@ -371,6 +375,7 @@ fn string_to_message_kind(str: &str) -> Result<MessageKind, Error> {
         "Response" => Ok(MessageKind::Response),
         "Reject" => Ok(MessageKind::Reject),
         "Panic" => Ok(MessageKind::Reject),
+        "Api" => Ok(MessageKind::Api),
         _ => Err(format!("invalid index {}", str).into()),
     }
 }
@@ -384,7 +389,7 @@ pub enum DeliveryMoment {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum TronLayer {
+pub enum MechtronLayer {
     Kernel,
     Shell
 }
@@ -402,7 +407,7 @@ pub struct MessageBuilder {
     pub to_phase_name: Option<String>,
     pub to_port: Option<String>,
     pub to_delivery: Option<DeliveryMoment>,
-    pub to_layer: Option<TronLayer>,
+    pub to_layer: Option<MechtronLayer>,
     pub payloads: Option<Vec<PayloadBuilder>>,
     pub meta: Option<HashMap<String, String>>,
     pub transaction: Option<Id>,
@@ -494,9 +499,9 @@ impl MessageBuilder {
             kind: self.kind.clone().unwrap(),
             from: self.from.clone().unwrap(),
             to: To {
-                tron: TronKey {
+                tron: MechtronKey {
                     nucleus: self.to_nucleus_id.clone().unwrap(),
-                    tron: self.to_tron_id.clone().unwrap(),
+                    mechtron: self.to_tron_id.clone().unwrap(),
                 },
                 port: self.to_port.clone().unwrap(),
                 cycle: self.to_cycle_kind.clone().unwrap(),
@@ -507,7 +512,7 @@ impl MessageBuilder {
                 },
                 layer: match &self.to_layer{
                     Some(r) => r.clone(),
-                    None => TronLayer::Kernel,
+                    None => MechtronLayer::Kernel,
                 },
             },
             payloads: vec![],
@@ -861,9 +866,9 @@ mod tests {
     use crate::artifact::Artifact;
     use crate::buffers::{Buffer, BufferFactories, Path};
     use crate::error::Error;
-    use crate::id::{Id, IdSeq, TronKey};
+    use crate::id::{Id, IdSeq, MechtronKey};
     use crate::message;
-    use crate::message::{Cycle, DeliveryMoment, From, ID, Message, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, MessageKind, Payload, PayloadBuilder, To, TronLayer};
+    use crate::message::{Cycle, DeliveryMoment, From, ID, Message, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, MessageKind, Payload, PayloadBuilder, To, MechtronLayer};
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
@@ -922,13 +927,13 @@ mod tests {
 
         let mut seq = IdSeq::new(0);
         let from = message::From {
-            tron: TronKey {
+            tron: MechtronKey {
                 nucleus: seq.next(),
-                tron: seq.next(),
+                mechtron: seq.next(),
             },
             cycle: 0,
             timestamp: 0,
-            layer: TronLayer::Kernel
+            layer: MechtronLayer::Kernel
         };
 
         let path = Path::new(path!["from"]);
@@ -950,9 +955,9 @@ mod tests {
 
         let mut seq = IdSeq::new(0);
 
-        let key = TronKey {
+        let key = MechtronKey {
             nucleus: seq.next(),
-            tron: seq.next(),
+            mechtron: seq.next(),
         };
         let to = To::basic(key,"someport".to_string());
 
@@ -982,25 +987,25 @@ mod tests {
         let seq = Arc::new(IdSeq::new(0));
 
         let from = message::From {
-            tron: TronKey {
+            tron: MechtronKey {
                 nucleus: seq.next(),
-                tron: seq.next(),
+                mechtron: seq.next(),
             },
             cycle: 0,
             timestamp: 0,
-            layer: TronLayer::Kernel
+            layer: MechtronLayer::Kernel
         };
 
         let to = To {
-            tron: TronKey {
+            tron: MechtronKey {
                 nucleus: seq.next(),
-                tron: seq.next(),
+                mechtron: seq.next(),
             },
             port: "someport".to_string(),
             cycle: Cycle::Exact(32),
             phase: "default".to_string(),
             delivery: DeliveryMoment::Cyclic,
-            layer: TronLayer::Kernel
+            layer: MechtronLayer::Kernel
         };
 
         let mut message = Message::single_payload(

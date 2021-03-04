@@ -1,6 +1,6 @@
 use crate::artifact::Artifact;
 use crate::buffers::{Buffer, BufferFactories, ReadOnlyBuffer};
-use crate::configs::{Configs, Keeper};
+use crate::configs::{Configs, Keeper, MechtronConfig, BindConfig};
 use crate::core::*;
 use crate::id::StateKey;
 use crate::message::Payload;
@@ -16,11 +16,34 @@ use crate::error::Error;
 pub struct State {
     pub meta: Buffer,
     pub data: Buffer,
+    pub artifact: Artifact
 }
 
 impl State {
-    pub fn new<'configs>(configs: &'configs Configs, artifact: Artifact) -> Result<Self, Error> {
-        let meta = Buffer::new(
+    pub fn new_empty<'configs>(configs: &'configs Configs) -> Result<Self, Error> {
+        let mut meta = Buffer::new(
+            configs
+                .schemas
+                .get(&CORE_SCHEMA_META_STATE)?
+                .new_buffer(Option::None),
+        );
+        let data = Buffer::new(
+            configs
+                .schemas
+                .get(&CORE_SCHEMA_EMPTY)?
+                .new_buffer(Option::None),
+        );
+        meta.set(&path!["artifact"], CORE_SCHEMA_EMPTY.to());
+        Ok(State {
+            meta: meta,
+            data: data,
+            artifact: CORE_SCHEMA_EMPTY.clone()
+        })
+    }
+    pub fn new<'configs>(configs: &'configs Configs, bind: Arc<BindConfig>) -> Result<Self, Error> {
+
+        let artifact = bind.state.artifact.clone();
+        let mut meta = Buffer::new(
             configs
                 .schemas
                 .get(&CORE_SCHEMA_META_STATE)?
@@ -32,9 +55,11 @@ impl State {
                 .get(&artifact)?
                 .new_buffer(Option::None),
         );
+        meta.set(&path!["artifact"], artifact.to());
         Ok(State {
             meta: meta,
             data: data,
+            artifact: artifact
         })
     }
 
@@ -46,12 +71,14 @@ impl State {
         State {
             meta: Buffer::new(meta),
             data: Buffer::new(data),
+            artifact: artifact
         }
     }
 
 
     pub fn read_only(&self) -> Result<ReadOnlyState, Error> {
         Ok(ReadOnlyState {
+            artifact: self.artifact.clone(),
             meta: self.meta.read_only(),
             data: self.data.read_only(),
         })
@@ -105,6 +132,7 @@ impl ReadOnlyStateMeta for State {
 
 #[derive(Clone)]
 pub struct ReadOnlyState {
+    pub artifact: Artifact,
     pub meta: ReadOnlyBuffer,
     pub data: ReadOnlyBuffer,
 }
@@ -112,6 +140,7 @@ pub struct ReadOnlyState {
 impl ReadOnlyState {
     pub fn copy(&self) -> State {
         State {
+            artifact: self.artifact.clone(),
             meta: self.meta.copy_to_buffer(),
             data: self.data.copy_to_buffer(),
         }

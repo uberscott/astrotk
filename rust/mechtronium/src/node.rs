@@ -7,17 +7,17 @@ use std::sync::{Arc, RwLock};
 use wasmer::{Cranelift, JIT, Module, Store};
 
 use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{Configs, Keeper, NucleusConfig, Parser, SimConfig};
+use mechtron_core::configs::{Configs, Keeper, NucleusConfig, Parser, SimConfig, SimSpark};
 use mechtron_core::core::*;
-use mechtron_core::id::{Id, IdSeq, TronKey};
-use mechtron_core::message::{Message, MessageKind, TronLayer, To, Cycle, DeliveryMoment};
+use mechtron_core::id::{Id, IdSeq, MechtronKey};
+use mechtron_core::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment};
 
 use crate::artifact::FileSystemArtifactRepository;
 use crate::cache::Cache;
 use crate::error::Error;
 use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
 use crate::router::{HasNucleus, LocalRouter, NetworkRouter, Router, SharedRouter};
-use crate::simulation::SimulationBootstrap;
+use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 
 pub struct Node<'configs> {
@@ -85,61 +85,16 @@ impl <'configs> Node<'configs> {
 
     pub fn shutdown(&self) {}
 
-    pub fn create_source_sim(&self, config: Arc<SimConfig>) -> Result<(Id,Id), Error> {
+    pub fn create(&self, spark: SimSpark) -> Result<(Id,Id), Error> {
 
         if self.local.is_none()
         {
             return Err("local is none".into())
         }
 
-        let local = self.local.as_ref().unwrap().clone();
-        let sim_id = local.seq().next();
+        let id = self.local.as_ref().unwrap().sources.create_sim(spark)?;
 
-println!("HERE");
-        let sim_nucleus_config = local.cache().configs.nucleus.get(&CORE_NUCLEUS_SIMULATION)?;
-        let sim_nucleus_id = local.create_source_nucleus(sim_id.clone(),sim_nucleus_config.clone(),Option::Some("sim".to_string()))?;
-
-println!("HERE2");
-        let simtron_config = local.cache().configs.mechtrons.get( &CORE_MECHTRON_SIMTRON )?;
-        let simtron_bind = local.cache().configs.binds.get( &simtron_config.bind.artifact )?;
-        {
-println!("HERE3");
-            let mut builder = CreatePayloadsBuilder::new(&local.cache().configs, &simtron_bind)?;
-println!("HERE4");
-            let mut builder = CreatePayloadsBuilder::new(&local.cache().configs, &simtron_bind)?;
-            builder.set_lookup_name("simtron");
-println!("HERE5");
-            builder.constructor.set( &path!["sim_config_artifact"], config.source.to() );
-
-println!("HERE6");
-            let neutron_key = TronKey::new(sim_nucleus_id.clone(),Id::new(sim_nucleus_id.seq_id, 0));
-
-            let message = Message::multi_payload(
-                local.seq().clone(),
-                MessageKind::Create,
-                mechtron_core::message::From{
-                    tron: neutron_key.clone(),
-                    cycle: 0,
-                    timestamp: 0,
-                    layer: TronLayer::Shell
-                },
-                To{
-                    tron: neutron_key.clone(),
-                    port: "create_simtron".to_string(),
-                    cycle: Cycle::Present,
-                    phase: "default".to_string(),
-                    delivery: DeliveryMoment::ExtraCyclic,
-                    layer: TronLayer::Kernel
-                },
-                CreatePayloadsBuilder::payloads(&local.cache().configs,builder));
-            local.send( Arc::new(message));
-        }
-        Ok((sim_id,sim_nucleus_id))
-    }
-    pub fn create_nucleus(&self, sim_id: &Id, nucleus_config: Arc<NucleusConfig>) -> Result<Id, Error>
-    {
-        let nucleus_id = self.local.as_ref().unwrap().sources.create(sim_id.clone(), Option::Some("simulation".to_string()), nucleus_config)?;
-        Ok(nucleus_id)
+       Ok((id,id))
     }
 
     pub fn send( &self, message: Message )

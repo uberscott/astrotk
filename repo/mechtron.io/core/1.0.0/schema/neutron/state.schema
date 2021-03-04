@@ -1,23 +1,23 @@
 struct({fields:{
 
-  tron: list( { of: 
+  mechtron: list( { of: 
      struct({fields:{
        seq_id : i64(),
        id: i64(),
        kind: string()
      }})
   }),
-  tron_names: map( { value: 
+  mechtron_names: map( { value: 
     struct( {fields:{
       seq_id: i64(),
       id: i64()
     }})
   }),
-  simulation_nucleus_id: struct( {fields:{
+  sim_id: struct( {fields:{
                               seq_id: i64(),
                               id: i64()
                             }}),
-  tron_seq_id: i64(),
-  tron_seq: i64()
+  mechtron_seq_id: i64(),
+  mechtron_index: i64()
 
 }})
