@@ -1,4 +1,4 @@
 struct({fields:{
-  artifact: string(),
+  config: string(),
   lookup_name: string()
 }})

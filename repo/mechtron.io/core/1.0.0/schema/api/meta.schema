@@ -1,4 +1,4 @@
 struct({fields:{
-  api: string()
+  api: string(),
   call: string()
 }})

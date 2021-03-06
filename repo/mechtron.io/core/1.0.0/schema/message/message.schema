@@ -1,0 +1,58 @@
+struct({fields: {
+  id:struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+  kind: enum({choices: ["Create","State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic","Api"]}),
+  from: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    cycle: i64(),
+    timestamp: u64(),
+    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
+  }}),
+  to: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    port: string(),
+    cycle: i64(),
+    phase: string(),
+    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
+    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
+  }}),
+  callback: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    port: string(),
+    cycle: i64(),
+    phase: string(),
+    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
+    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
+  }}),
+  payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) })
+
+}})

@@ -1,9 +1,11 @@
 struct({fields:{
 
-  mechtron: list( { of: 
+  mechtrons: list( { of: 
      struct({fields:{
-       seq_id : i64(),
-       id: i64(),
+       id: struct({fields:{
+         seq_id : i64(),
+         id: i64()
+       }}),
        kind: string()
      }})
   }),

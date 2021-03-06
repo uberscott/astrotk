@@ -18,6 +18,8 @@ use crate::configs::Configs;
 use crate::error::Error;
 use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, MechtronKey};
 use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
+use crate::core::*;
+use std::cell::{Cell, RefCell};
 
 static ID: &'static str = r#"
 struct({fields: {
@@ -26,13 +28,14 @@ struct({fields: {
       }})
 "#;
 
+/*
 static MESSAGE_SCHEMA: &'static str = r#"
 struct({fields: {
   id:struct({fields: {
         seq_id: i64(),
         id: i64()
       }}),
-  kind: enum({choices: ["State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic"]}),
+  kind: enum({choices: ["State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic", "Api"]}),
   from: struct({fields: {
     tron: struct({fields: {
       nucleus: struct({fields: {
@@ -89,12 +92,14 @@ struct({fields: {
 
 "#;
 
+ */
+
 static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
 "type": "string"
 }"#;
 
 lazy_static! {
-    static ref MESSAGES_FACTORY: NP_Factory<'static> = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
+//    static ref MESSAGES_FACTORY: NP_Factory<'static> = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
     static ref MESSAGE_BUILDERS_FACTORY: NP_Factory<'static> =
         NP_Factory::new_json(MESSAGE_BUILDERS_SCHEMA).unwrap();
 }
@@ -374,7 +379,7 @@ fn string_to_message_kind(str: &str) -> Result<MessageKind, Error> {
         "Request" => Ok(MessageKind::Request),
         "Response" => Ok(MessageKind::Response),
         "Reject" => Ok(MessageKind::Reject),
-        "Panic" => Ok(MessageKind::Reject),
+        "Panic" => Ok(MessageKind::Panic),
         "Api" => Ok(MessageKind::Api),
         _ => Err(format!("invalid index {}", str).into()),
     }
@@ -394,7 +399,6 @@ pub enum MechtronLayer {
     Shell
 }
 
-#[derive(Clone)]
 pub struct MessageBuilder {
     pub kind: Option<MessageKind>,
     pub from: Option<From>,
@@ -408,7 +412,7 @@ pub struct MessageBuilder {
     pub to_port: Option<String>,
     pub to_delivery: Option<DeliveryMoment>,
     pub to_layer: Option<MechtronLayer>,
-    pub payloads: Option<Vec<PayloadBuilder>>,
+    pub payloads: RefCell<Option<Vec<Payload>>>,
     pub meta: Option<HashMap<String, String>>,
     pub transaction: Option<Id>,
     pub callback: Option<To>,
@@ -429,7 +433,7 @@ impl MessageBuilder {
             to_phase_name: None,
             to_delivery: None,
             to_layer: None,
-            payloads: None,
+            payloads: RefCell::new(None),
             meta: None,
             transaction: None,
             callback: None
@@ -461,7 +465,7 @@ impl MessageBuilder {
                 "message builder to_cycle_kind OR to_cycle must be set (but not both)".into(),
             );
         }
-        if self.payloads.is_none() {
+        if self.payloads.borrow().is_none() {
             return Err("message builder payload must be set".into());
         }
 
@@ -494,6 +498,8 @@ impl MessageBuilder {
 
     pub fn build(&self, seq: Arc<IdSeq>) -> Result<Message, Error> {
         self.validate_build()?;
+        let payloads= self.payloads.replace(Option::None);
+
         Ok(Message {
             id: seq.next(),
             kind: self.kind.clone().unwrap(),
@@ -515,7 +521,7 @@ impl MessageBuilder {
                     None => MechtronLayer::Kernel,
                 },
             },
-            payloads: vec![],
+            payloads: payloads.unwrap_or(vec!()),
             meta: self.meta.clone(),
             transaction: self.transaction.clone(),
             callback: self.callback.clone()
@@ -565,30 +571,32 @@ impl MessageBuilder {
     }
 }
 
+/*
 #[derive(Clone)]
 pub struct PayloadBuilder {
     pub buffer: Buffer,
-    pub artifact: Artifact,
+    pub schema: Artifact,
 }
 
 impl PayloadBuilder {
     pub fn build(builder: PayloadBuilder) -> Payload {
         Payload {
-            artifact: builder.artifact,
+            schema: builder.schema,
             buffer: builder.buffer.read_only(),
         }
     }
 }
+ */
 
 #[derive(Clone)]
 pub struct Payload {
     pub buffer: ReadOnlyBuffer,
-    pub artifact: Artifact,
+    pub schema: Artifact,
 }
 
 impl Payload {
     pub fn dump(payload: Payload, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
-        buffer.set(&path.with(path!["artifact"]), payload.artifact.to())?;
+        buffer.set(&path.with(path!["artifact"]), payload.schema.to())?;
         buffer.set::<Vec<u8>>(
             &path.with(path!["bytes"]),
             ReadOnlyBuffer::bytes(payload.buffer),
@@ -597,19 +605,19 @@ impl Payload {
         Ok(())
     }
 
-    pub fn from(
+    pub fn from<'config>(
         path: &Path,
         buffer: &ReadOnlyBuffer,
-        buffer_factories: &BufferFactories,
+        configs: &Configs<'config>,
     ) -> Result<Payload, Error> {
         let artifact = Artifact::from(buffer.get(&path.with(path!["artifact"]))?)?;
         let bytes = buffer.get::<Vec<u8>>(&path.with(path!["bytes"]))?;
-        let factory = buffer_factories.get(&artifact)?;
+        let factory = configs.schemas.get(&artifact)?;
         let buffer = factory.open_buffer(bytes);
         let buffer = ReadOnlyBuffer::new(buffer);
         Ok(Payload {
             buffer: buffer,
-            artifact: artifact,
+            schema: artifact,
         })
     }
 }
@@ -677,14 +685,31 @@ impl Message {
         return size;
     }
 
-    pub fn to_bytes(message: Message) -> Result<Vec<u8>, Error> {
+    pub fn to_payload<'configs>(message:Message, configs: &Configs<'configs>) -> Result<Payload, Error> {
+        Ok(Payload{
+            schema: CORE_SCHEMA_MESSAGE.clone(),
+            buffer: Message::to_buffer(message,configs)?
+        })
+    }
+
+    pub fn to_buffer<'configs>(message:Message, configs: &Configs<'configs>) -> Result<ReadOnlyBuffer, Error> {
+        let bytes = Message::to_bytes(message,configs)?;
+        let factory = configs.schemas.get( &CORE_SCHEMA_MESSAGE )?;
+        let buffer = factory.open_buffer(bytes);
+        let buffer = ReadOnlyBuffer::new(buffer );
+        Ok(buffer)
+    }
+
+    pub fn to_bytes<'configs>(message: Message, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
+        let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE)?;
         let mut buffer =
-            Buffer::new(MESSAGES_FACTORY.new_buffer(Option::Some(message.calc_bytes())));
+            Buffer::new(factory.new_buffer(Option::Some(message.calc_bytes())));
         let path = Path::new(path!());
         message.id.append(&path.push(path!["id"]), &mut buffer)?;
+
         buffer.set(
             &path!("kind"),
-            NP_Enum::new(message_kind_to_string(&message.kind)),
+            NP_Enum::Some(message_kind_to_string(&message.kind).to_string()),
         )?;
 
         message
@@ -725,11 +750,12 @@ impl Message {
         Ok((Buffer::bytes(buffer)))
     }
 
-    pub fn from_bytes(
+    pub fn from_bytes<'configs>(
         bytes: Vec<u8>,
-        buffer_factories: &dyn BufferFactories,
+        configs: &Configs<'configs>,
     ) -> Result<Self, Error> {
-        let buffer = MESSAGES_FACTORY.open_buffer(bytes);
+        let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE)?;
+        let buffer = factory.open_buffer(bytes);
         let buffer = Buffer::new(buffer);
         let buffer = buffer.read_only();
         let id = Id::from(&Path::new(path!("id")), &buffer)?;
@@ -750,7 +776,7 @@ impl Message {
         let mut payloads = vec![];
         for payload_index in 0..payload_count {
             let path = Path::new(path!["payloads", payload_index.to_string()]);
-            payloads.push(Payload::from(&path, &buffer, buffer_factories)?);
+            payloads.push(Payload::from(&path, &buffer, configs )?);
         }
 
         Ok(Message {
@@ -982,7 +1008,7 @@ mod tests {
         buffer.set(&path!("0"), "hello");
         let payload = Payload {
             buffer: buffer.read_only(),
-            artifact: artifact.clone(),
+            schema: artifact.clone(),
         };
         let seq = Arc::new(IdSeq::new(0));
 
@@ -1023,8 +1049,8 @@ mod tests {
         assert_eq!(message.to, new_message.to);
         assert_eq!(message.from, new_message.from);
         assert_eq!(
-            message.payloads[0].artifact,
-            new_message.payloads[0].artifact
+            message.payloads[0].schema,
+            new_message.payloads[0].schema
         );
         assert_eq!(
             message.payloads[0].buffer.read_bytes(),

@@ -1,9 +1,9 @@
 use crate::artifact::Artifact;
 use crate::buffers::Buffer;
-use crate::configs::{Configs, BindConfig};
+use crate::configs::{Configs, BindConfig, MechtronConfig};
 use crate::core::*;
 use crate::error::Error;
-use crate::message::PayloadBuilder;
+use crate::message::{Message, Payload};
 use crate::state::{State, StateMeta};
 use std::sync::Arc;
 
@@ -11,10 +11,11 @@ pub struct NeutronApiCallCreateMechtron
 {
    pub meta: Buffer,
    pub state: State,
+   pub create_message: Message
 }
 
 impl NeutronApiCallCreateMechtron {
-   pub fn new<'configs>(configs: &'configs Configs, bind: Arc<BindConfig> ) -> Result<Self, Error> {
+   pub fn new<'configs>(configs: &'configs Configs, config: Arc<MechtronConfig>, create_message: Arc<Message> ) -> Result<Self, Error> {
       let mut meta = Buffer::new(
          configs
              .schemas
@@ -22,32 +23,31 @@ impl NeutronApiCallCreateMechtron {
              .new_buffer(Option::None),
       );
 
-println!("HIYO");
-      meta.set(&path!["api"], "neutron_api");
-      meta.set(&path!["call"], "create_mechtron");
+      meta.set(&path!["api"], "neutron_api")?;
+      meta.set(&path!["call"], "create_mechtron")?;
 
-       let mut state = State::new(configs, bind)?;
-println!("AND... BLAH");
+       let mut state = State::new(configs, config)?;
 
       Ok(NeutronApiCallCreateMechtron {
          meta: meta,
          state: state,
+         create_message: (*create_message).clone()
       })
    }
 
-   pub fn payloads(call: NeutronApiCallCreateMechtron) -> Result<Vec<PayloadBuilder>, Error>
+   pub fn payloads<'config>(call: NeutronApiCallCreateMechtron, configs: &Configs<'config>) -> Result<Vec<Payload>, Error>
    {
-      Ok(vec![PayloadBuilder {
-                 buffer: call.meta,
-                 artifact: CORE_SCHEMA_META_API.clone(),
+      Ok(vec![Payload{
+                 buffer: call.meta.read_only(),
+                 schema: CORE_SCHEMA_META_API.clone(),
               },
-              PayloadBuilder {
-                 buffer: call.state.meta,
-                 artifact: CORE_SCHEMA_META_STATE.clone(),
+              Payload{
+                 buffer: call.state.data.read_only(),
+                 schema: CORE_SCHEMA_META_STATE.clone(),
               },
-              PayloadBuilder {
-                 buffer: call.state.data,
-                 artifact: call.state.artifact
-              }])
+               Message::to_payload(call.create_message,configs)?
+
+      ])
    }
+
 }

@@ -1,6 +1,11 @@
 struct( { fields: {
 
-  artifact: string(),
+  id: struct({fields:{
+       seq_id: string(),
+       id: string()
+  }}),
+
+  mechtron_config: string(),
   creation_timestamp: i64(),
   creation_cycle: i64(),
   taint: bool()

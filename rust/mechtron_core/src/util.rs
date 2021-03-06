@@ -16,7 +16,7 @@ impl PingPayloadBuilder
 
         Ok(Payload {
             buffer: buffer.read_only(),
-            artifact: CORE_SCHEMA_PING.clone()
+            schema: CORE_SCHEMA_PING.clone()
         })
     }
 }
@@ -32,7 +32,7 @@ impl PongPayloadBuilder
 
         Ok(Payload {
             buffer: buffer.read_only(),
-            artifact: CORE_SCHEMA_PONG.clone()
+            schema: CORE_SCHEMA_PONG.clone()
         })
     }
 }
@@ -48,7 +48,7 @@ impl TextPayloadBuilder
         buffer.set(&path!(),text.to_string() )?;
         Ok(Payload {
             buffer: buffer.read_only(),
-            artifact: CORE_SCHEMA_TEXT.clone()
+            schema: CORE_SCHEMA_TEXT.clone()
         })
     }
 }
@@ -66,7 +66,7 @@ impl OkPayloadBuilder
 
         Ok(Payload {
             buffer: buffer.read_only(),
-            artifact: CORE_SCHEMA_PING.clone()
+            schema: CORE_SCHEMA_PING.clone()
         })
     }
 }

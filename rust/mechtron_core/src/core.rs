@@ -7,6 +7,8 @@ lazy_static! {
         id: "core".to_string(),
         version: Version::new(1, 0, 0)
     };
+    pub static ref CORE_SCHEMA_MESSAGE: Artifact = CORE.path_and_kind(&"schema/message/message.schema", "schema");
+
     pub static ref CORE_SCHEMA_META_STATE: Artifact = CORE.path_and_kind(&"schema/mechtron/state-meta.schema", "schema");
     pub static ref CORE_SCHEMA_META_CREATE : Artifact = CORE.path_and_kind(&"schema/mechtron/create-meta.schema", "schema");
     pub static ref CORE_SCHEMA_META_API: Artifact = CORE.path_and_kind(&"schema/api/meta.schema", "schema");

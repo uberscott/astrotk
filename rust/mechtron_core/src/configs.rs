@@ -107,6 +107,7 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_BIND_SIMTRON)?;
 
         self.cache(&CORE_SCHEMA_EMPTY)?;
+        self.cache(&CORE_SCHEMA_MESSAGE)?;
         self.cache(&CORE_SCHEMA_META_STATE)?;
         self.cache(&CORE_SCHEMA_META_CREATE)?;
         self.cache(&CORE_SCHEMA_META_API)?;

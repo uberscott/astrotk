@@ -22,9 +22,8 @@ impl Simulation {
         let sim_nucleus_id = local.create_source_nucleus(sim_id.clone(),sim_nucleus_config.clone(),Option::Some("sim".to_string()))?;
 
         let simtron_config = local.cache().configs.mechtrons.get( &CORE_MECHTRON_SIMTRON )?;
-        let simtron_bind = local.cache().configs.binds.get( &simtron_config.bind.artifact )?;
         {
-            let mut builder = CreatePayloadsBuilder::new(&local.cache().configs, &simtron_bind)?;
+            let mut builder = CreatePayloadsBuilder::new(&local.cache().configs, simtron_config.clone())?;
             builder.set_lookup_name("simtron");
             builder.constructor.set( &path!["sim_config_artifact"], config.source.to() )?;
 

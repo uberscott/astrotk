@@ -16,11 +16,15 @@ use crate::error::Error;
 pub struct State {
     pub meta: Buffer,
     pub data: Buffer,
-    pub artifact: Artifact
+    pub config: Arc<MechtronConfig>
 }
 
 impl State {
-    pub fn new_empty<'configs>(configs: &'configs Configs) -> Result<Self, Error> {
+
+    pub fn new<'configs>(configs: &Configs<'configs>, config: Arc<MechtronConfig>) -> Result<Self, Error> {
+
+        let bind = configs.binds.get( &config.bind.artifact )?;
+
         let mut meta = Buffer::new(
             configs
                 .schemas
@@ -30,55 +34,66 @@ impl State {
         let data = Buffer::new(
             configs
                 .schemas
-                .get(&CORE_SCHEMA_EMPTY)?
+                .get(&bind.state.artifact)?
                 .new_buffer(Option::None),
         );
-        meta.set(&path!["artifact"], CORE_SCHEMA_EMPTY.to());
+        meta.set(&path!["mechtron_config_artifact"], config.source.to());
         Ok(State {
             meta: meta,
             data: data,
-            artifact: CORE_SCHEMA_EMPTY.clone()
+            config: config
         })
     }
-    pub fn new<'configs>(configs: &'configs Configs, bind: Arc<BindConfig>) -> Result<Self, Error> {
 
-        let artifact = bind.state.artifact.clone();
-        let mut meta = Buffer::new(
-            configs
-                .schemas
-                .get(&CORE_SCHEMA_META_STATE)?
-                .new_buffer(Option::None),
-        );
-        let data = Buffer::new(
-            configs
-                .schemas
-                .get(&artifact)?
-                .new_buffer(Option::None),
-        );
-        meta.set(&path!["artifact"], artifact.to());
+
+    pub fn new_from_meta<'configs>(
+        configs: &Configs<'configs>,
+        meta: Buffer
+    ) -> Result<Self,Error> {
+
+        let source = meta.get::<String>(&path!["mechtron_config"])?;
+        let source = Artifact::from(source.as_str() )?;
+        let config = configs.mechtrons.get( &source )?;
+        let bind = configs.binds.get(&config.bind.artifact )?;
+        let data_factory = configs.schemas.get( &bind.state.artifact )?;
+        let buffer = data_factory.new_buffer(Option::None);
+        let data = Buffer::new(buffer);
+
+
         Ok(State {
             meta: meta,
             data: data,
-            artifact: artifact
+            config:config
         })
     }
 
-    pub fn from(
-        artifact: Artifact,
-        meta: NP_Buffer<NP_Memory_Owned>,
-        data: NP_Buffer<NP_Memory_Owned>,
-    ) -> Self {
-        State {
-            meta: Buffer::new(meta),
-            data: Buffer::new(data),
-            artifact: artifact
-        }
+
+    pub fn from<'configs>(
+        configs: &Configs<'configs>,
+        meta: Buffer,
+        data: Buffer,
+    ) -> Result<Self,Error> {
+
+        let source = meta.get::<String>(&path!["mechtron_config"])?;
+        let source = Artifact::from(source.as_str() )?;
+        let config = configs.mechtrons.get( &source )?;
+
+        Ok(State {
+            meta: meta,
+            data: data,
+            config:config
+        })
+
+
     }
 
+    fn is_tainted(&self) -> Result<bool, Error> {
+        Ok(self.meta.get(&path!["taint"])?)
+    }
 
     pub fn read_only(&self) -> Result<ReadOnlyState, Error> {
         Ok(ReadOnlyState {
-            artifact: self.artifact.clone(),
+            config: self.config.clone(),
             meta: self.meta.read_only(),
             data: self.data.read_only(),
         })
@@ -93,8 +108,8 @@ impl State {
 }
 
 impl StateMeta for State {
-    fn set_artifact(&mut self, artifact: &Artifact) -> Result<(), Error> {
-        Ok(self.meta.set(&path!["artifact"], artifact.to())?)
+    fn set_mechtron_config(&mut self, config: Arc<MechtronConfig>) -> Result<(), Error> {
+        Ok(self.meta.set(&path!["mechtron_config"], config.source.to())?)
     }
 
     fn set_creation_timestamp(&mut self, value: i64) -> Result<(), Error> {
@@ -113,8 +128,8 @@ impl StateMeta for State {
 }
 
 impl ReadOnlyStateMeta for State {
-    fn get_artifact(&self) -> Result<Artifact, Error> {
-        Ok(Artifact::from(self.meta.get(&path!["artifact"])?)?)
+    fn get_mechtron_config(&self) -> Arc<MechtronConfig>{
+        self.config.clone()
     }
 
     fn get_creation_timestamp(&self) -> Result<i64, Error> {
@@ -132,7 +147,7 @@ impl ReadOnlyStateMeta for State {
 
 #[derive(Clone)]
 pub struct ReadOnlyState {
-    pub artifact: Artifact,
+    pub config: Arc<MechtronConfig>,
     pub meta: ReadOnlyBuffer,
     pub data: ReadOnlyBuffer,
 }
@@ -140,7 +155,7 @@ pub struct ReadOnlyState {
 impl ReadOnlyState {
     pub fn copy(&self) -> State {
         State {
-            artifact: self.artifact.clone(),
+            config: self.config.clone(),
             meta: self.meta.copy_to_buffer(),
             data: self.data.copy_to_buffer(),
         }
@@ -150,15 +165,16 @@ impl ReadOnlyState {
         configs: &Configs,
         state: ReadOnlyState,
     ) -> Result<Vec<Payload>, Error> {
-        let artifact = state.get_artifact()?;
+
+        let bind = configs.binds.get(&state.config.bind.artifact)?;
         let rtn: Vec<Payload> = vec![
             Payload {
                 buffer: state.meta,
-                artifact: CORE_SCHEMA_META_STATE.clone(),
+                schema: CORE_SCHEMA_META_STATE.clone(),
             },
             Payload {
                 buffer: state.data,
-                artifact: artifact,
+                schema: bind.state.artifact.clone(),
             },
         ];
 
@@ -167,8 +183,8 @@ impl ReadOnlyState {
 }
 
 impl ReadOnlyStateMeta for ReadOnlyState {
-    fn get_artifact(&self) -> Result<Artifact, Error> {
-        Ok(Artifact::from(self.meta.get(&path!["artifact"])?)?)
+    fn get_mechtron_config(&self) -> Arc<MechtronConfig> {
+        self.config.clone()
     }
 
     fn get_creation_timestamp(&self) -> Result<i64, Error> {
@@ -186,14 +202,14 @@ impl ReadOnlyStateMeta for ReadOnlyState {
 }
 
 pub trait ReadOnlyStateMeta {
-    fn get_artifact(&self) -> Result<Artifact, Error>;
+    fn get_mechtron_config(&self) -> Arc<MechtronConfig>;
     fn get_creation_timestamp(&self) -> Result<i64, Error>;
     fn get_creation_cycle(&self) -> Result<i64, Error>;
     fn is_tainted(&self) -> Result<bool, Error>;
 }
 
 pub trait StateMeta: ReadOnlyStateMeta {
-    fn set_artifact(&mut self, artifact: &Artifact) -> Result<(), Error>;
+    fn set_mechtron_config(&mut self, config: Arc<MechtronConfig>) -> Result<(), Error>;
     fn set_creation_timestamp(&mut self, value: i64) -> Result<(), Error>;
     fn set_creation_cycle(&mut self, value: i64) -> Result<(), Error>;
     fn set_taint( &mut self, taint: bool );
