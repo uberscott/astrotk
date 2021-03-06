@@ -123,7 +123,7 @@ pub struct NeutronStateInterface {}
 
 impl NeutronStateInterface {
     fn add_mechtron(&self, state: &mut State, key: &MechtronKey, kind: String) -> Result<(), Error> {
-        println!("ADD MECHTRON...");
+        println!("ADD MECHTRON...{}",kind);
         let index = {
                 match state.data.get_length(&path!("mechtrons"))
                 {
@@ -133,8 +133,8 @@ impl NeutronStateInterface {
         };
 
         let path = Path::new(path!["mechtrons", index.to_string()]);
-        state.data.set(&path.with(path!["kind"]), kind)?;
         key.mechtron.append(&path.push(path!["id"]), &mut state.data)?;
+        state.data.set(&path.with(path!["kind"]), kind)?;
         println!("MECHTRON ADDED...x");
 
         Ok(())
@@ -201,19 +201,17 @@ impl Neutron {
         info: TronInfo,
         context: &dyn MechtronShellContext,
         neutron_state: &mut MutexGuard<State>,
-        create: Arc<Message>,
+        create_message: Arc<Message>,
     ) -> Result<MessageBuilder, Error> {
-
-println!("Neutron::create_mechtron()");
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 
-
         // grab the new mechtron create meta
-        let new_mechtron_create_meta = &create.payloads[0].buffer;
+        let new_mechtron_create_meta = &create_message.payloads[0].buffer;
 
         // and derive the new mechtron config
         let new_mechtron_config = new_mechtron_create_meta.get::<String>(&path![&"config"])?;
+println!("CREATE MECHTRON {}",new_mechtron_config);
         let new_mechtron_config = Artifact::from(&new_mechtron_config)?;
         let new_mechtron_config = context.configs().mechtrons.get(&new_mechtron_config)?;
 
@@ -236,20 +234,18 @@ println!("Neutron::create_mechtron()");
             neutron_state_interface.set_mechtron_name(& mut *neutron_state, name.as_str(), &new_mechtron_key);
         }
 
-        println!("Neutron::create_mechtron() prepairing api call");
         // prepare an api call to the MechtronShell to create this new mechtron
-        let mut call = NeutronApiCallCreateMechtron::new(context.configs(), new_mechtron_config.clone(), create.clone() )?;
+        let mut call = NeutronApiCallCreateMechtron::new(context.configs(), new_mechtron_config.clone(), create_message.clone() )?;
 
         // set some additional meta information about the new mechtron
         {
-            new_mechtron_id.append(&Path::new(path!("id")), &mut call.state.meta);
-            call.state.meta.set(&path![&"mechtron_config"], new_mechtron_config.source.to());
-            call.state.meta.set(&path![&"creation_timestamp"], context.timestamp());
-            call.state.meta.set(&path![&"creation_cycle"], context.revision().cycle);
-            call.state.meta.set(&path![&"taint"], false);
+            new_mechtron_id.append(&Path::new(path!("id")), &mut call.state.meta)?;
+            call.state.meta.set(&path![&"mechtron_config"], new_mechtron_config.source.to())?;
+            call.state.meta.set(&path![&"creation_cycle"], context.revision().cycle)?;
+            call.state.meta.set(&path![&"creation_timestamp"], context.timestamp() as i64)?;
+            call.state.meta.set(&path![&"taint"], false)?;
         }
 
-        println!("Neutron::create_mechtron() pre builder");
         let mut builder = MessageBuilder::new();
         builder.kind = Option::Some(MessageKind::Api);
         builder.to_layer = Option::Some(MechtronLayer::Shell);
@@ -259,11 +255,12 @@ println!("Neutron::create_mechtron()");
         println!("Neutron::create_mechtron() replacing payloads");
         builder.payloads.replace(Option::Some(NeutronApiCallCreateMechtron::payloads(call,context.configs())?));
 
-        println!("Neutron::create_mechtron() rtn");
-
-       Ok(builder)
+        Ok(builder)
     }
 }
+
+
+
 
 impl MechtronKernel for Neutron {
     fn create(
@@ -321,7 +318,6 @@ impl MechtronKernel for Neutron {
             "create" => Ok(Neutron::create_mechtrons),
             _ => Err(format!("port not available: {}", port).into())
         }
-
     }
 
 
@@ -334,6 +330,32 @@ println!("seeking extra: {}",port)        ;
 
 }
 
+pub struct Simtron{}
+impl Simtron{
+    pub fn init() -> Result<Box<MechtronKernel>, Error> {
+        Ok(Box::new(Simtron{}))
+    }
+}
+
+impl MechtronKernel for Simtron{
+    fn create(&self, info: TronInfo, context: &dyn MechtronShellContext, state: &mut State, create: &Message) -> Result<Option<Vec<MessageBuilder>>, Error> {
+        println!("Simtron created!");
+        Ok(Option::None)
+    }
+
+    fn update(&self, phase: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+
+    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>, &Vec<Arc<Message>>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+
+    fn extra(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &ReadOnlyState, &Message) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+}
+
 pub struct CreatePayloadsBuilder {
     pub constructor_artifact: Artifact,
     pub meta: Buffer,
@@ -341,8 +363,8 @@ pub struct CreatePayloadsBuilder {
 }
 
 impl CreatePayloadsBuilder {
-    pub fn new<'configs> (
-        configs: &'configs Configs,
+    pub fn new (
+        configs: &Configs,
         config: Arc<MechtronConfig>,
     ) -> Result<Self, Error> {
 

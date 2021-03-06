@@ -1,8 +1,8 @@
 use crate::artifact::Artifact;
-use crate::buffers::{Buffer, BufferFactories, ReadOnlyBuffer};
+use crate::buffers::{Buffer, BufferFactories, ReadOnlyBuffer, Path};
 use crate::configs::{Configs, Keeper, MechtronConfig, BindConfig};
 use crate::core::*;
-use crate::id::StateKey;
+use crate::id::{StateKey, Id};
 use crate::message::Payload;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::error::NP_Error;
@@ -46,11 +46,13 @@ impl State {
     }
 
 
-    pub fn new_from_meta<'configs>(
-        configs: &Configs<'configs>,
+    pub fn new_from_meta(
+        configs: &Configs,
         meta: Buffer
     ) -> Result<Self,Error> {
 
+let taint= meta.get::<bool>(&path!["taint"])?;
+println!("TAINT {} ",taint );
         let source = meta.get::<String>(&path!["mechtron_config"])?;
         let source = Artifact::from(source.as_str() )?;
         let config = configs.mechtrons.get( &source )?;
@@ -58,7 +60,6 @@ impl State {
         let data_factory = configs.schemas.get( &bind.state.artifact )?;
         let buffer = data_factory.new_buffer(Option::None);
         let data = Buffer::new(buffer);
-
 
         Ok(State {
             meta: meta,
@@ -108,6 +109,7 @@ impl State {
 }
 
 impl StateMeta for State {
+
     fn set_mechtron_config(&mut self, config: Arc<MechtronConfig>) -> Result<(), Error> {
         Ok(self.meta.set(&path!["mechtron_config"], config.source.to())?)
     }
@@ -125,9 +127,14 @@ impl StateMeta for State {
         self.meta.set(&path!["taint"], taint );
     }
 
+
 }
 
 impl ReadOnlyStateMeta for State {
+    fn get_mechtron_id(&self) -> Result<Id, Error> {
+      Ok(Id::from_buffer( &Path::new(path!["id"] ), &self.meta )?)
+    }
+
     fn get_mechtron_config(&self) -> Arc<MechtronConfig>{
         self.config.clone()
     }
@@ -183,6 +190,11 @@ impl ReadOnlyState {
 }
 
 impl ReadOnlyStateMeta for ReadOnlyState {
+
+    fn get_mechtron_id(&self) -> Result<Id, Error> {
+        Ok(Id::from( &Path::new(path!["id"] ), &self.meta )?)
+    }
+
     fn get_mechtron_config(&self) -> Arc<MechtronConfig> {
         self.config.clone()
     }
@@ -202,6 +214,7 @@ impl ReadOnlyStateMeta for ReadOnlyState {
 }
 
 pub trait ReadOnlyStateMeta {
+    fn get_mechtron_id(&self) -> Result<Id, Error>;
     fn get_mechtron_config(&self) -> Arc<MechtronConfig>;
     fn get_creation_timestamp(&self) -> Result<i64, Error>;
     fn get_creation_cycle(&self) -> Result<i64, Error>;

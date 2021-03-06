@@ -14,22 +14,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/api/meta.schema" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/api/meta.schema" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/mechtron/create-meta.schema" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/mechtron/create-meta.schema" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/mechtron/state-meta.schema" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/mechtron/state-meta.schema" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/neutron/state.schema" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/schema/neutron/state.schema" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/api.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/api.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/configs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/core.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/message.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/id.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/id.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/state.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/util.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/util.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/simulation.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -258,7 +251,7 @@
       <workItem from="1614438907351" duration="1335000" />
       <workItem from="1614447127924" duration="6742000" />
       <workItem from="1614719901799" duration="38584000" />
-      <workItem from="1614860823054" duration="51155000" />
+      <workItem from="1614860823054" duration="73526000" />
     </task>
     <servers />
   </component>

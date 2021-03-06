@@ -92,7 +92,7 @@ impl MechtronShell {
         context: &dyn MechtronShellContext,
         state: &mut State,
     ) {
-        match self.create_result( create, context, state )
+        match self.create_result(create, context, state)
         {
             Ok(_) => {}
             Err(error) => {
@@ -125,7 +125,7 @@ impl MechtronShell {
         state: Arc<ReadOnlyState>,
     )
     {
-        match self.extra_result(message,context,state)
+        match self.extra_result(message, context, state)
         {
             Ok(_) => {}
             Err(err) => {
@@ -139,7 +139,7 @@ impl MechtronShell {
         message: &Message,
         context: &dyn MechtronShellContext,
         state: Arc<ReadOnlyState>,
-    )->Result<(),Error>
+    ) -> Result<(), Error>
     {
         if state.is_tainted()?
         {
@@ -193,8 +193,8 @@ impl MechtronShell {
         messages: &Vec<Arc<Message>>,
         context: &dyn MechtronShellContext,
         state: &mut MutexGuard<State>,
-    ){
-        match self.inbound_result(messages,context,state)
+    ) {
+        match self.inbound_result(messages, context, state)
         {
             Ok(_) => {}
             Err(error) => {
@@ -202,7 +202,6 @@ impl MechtronShell {
                 state.set_taint(true);
             }
         }
-
     }
 
     pub fn inbound_result(
@@ -210,8 +209,7 @@ impl MechtronShell {
         messages: &Vec<Arc<Message>>,
         context: &dyn MechtronShellContext,
         state: &mut MutexGuard<State>,
-    )->Result<(),Error> {
-
+    ) -> Result<(), Error> {
         if state.is_tainted()?
         {
             return Err("mechtron state is tainted".into());
@@ -246,7 +244,7 @@ impl MechtronShell {
                     {
                         Ok(func) => {
                             let builders = func(self.info.clone(), context, state, messages)?;
-                            self.handle(builders, context);
+                            self.handle(builders, context)?;
                         }
                         Err(e) => {
                             self.panic(e);
@@ -268,7 +266,7 @@ impl MechtronShell {
         builders: Option<Vec<MessageBuilder>>,
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error> {
-println!("HANDLE");
+        println!("HANDLE");
         match builders {
             None => Ok(()),
             Some(builders) => {
@@ -292,7 +290,7 @@ println!("HANDLE");
                                 // do nothing. builder.build() will panic for us
                             }
                             Some(nucleus_id) => {
-                                let tron_key = context.lookup_tron(&nucleus_id, &builder.to_tron_lookup_name.unwrap().as_str())?;
+                                let tron_key = context.lookup_mechtron(&nucleus_id, &builder.to_tron_lookup_name.unwrap().as_str())?;
                                 builder.to_tron_id = Option::Some(tron_key.mechtron);
                                 builder.to_tron_lookup_name = Option::None;
                             }
@@ -319,7 +317,7 @@ println!("HANDLE");
         &self,
         mut builder: MessageBuilder,
         context: &dyn MechtronShellContext,
-    )->Result<(),Error>
+    ) -> Result<(), Error>
     {
         println!("handle_api_call!");
         builder.to_cycle_kind = Option::Some(Cycle::Present);
@@ -333,41 +331,42 @@ println!("HANDLE");
         let message = builder.build(context.seq().clone())?;
         let bind = context.configs().binds.get(&self.info.config.bind.artifact).unwrap();
 
+        println!("got a message with payloads: {}", message.payloads.len());
+        let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
 
-                println!("got a message with payloads: {}", message.payloads.len());
-                let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
+        match api.as_str() {
+            "neutron_api" => {
+                // need some test to make sure this is actually a neutron
+                if !bind.kind.eq("Neutron")
+                {
+                    self.panic(format!("attempt for non Neutron to access neutron_api {}", bind.kind));
+                } else {
+                    let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
+                    match call.as_str() {
+                        "create_mechtron" => {
+                            println!("READY TO CREATE A MECHTRON!");
 
-                        match api.as_str() {
-                            "neutron_api" => {
-                                // need some test to make sure this is actually a neutron
-                                if !bind.kind.eq("Neutron")
-                                {
-                                    self.panic(format!("attempt for not Neutron to access neutron_api {}", bind.kind));
-                                } else {
-                                    let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
-                                         match call.as_str() {
-                                            "create_mechtron" => {
-                                                println!("READY TO CREATE A MECHTRON!");
-                                                // now get the state of the mechtron
-                                                let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
+println!("ARTIFACT FOR PAYLOAD: {}", message.payloads[1].schema.to());
+println!("TAINT {}", message.payloads[1].buffer.get::<bool>(&path!["taint"])?);
+                            // now get the state of the mechtronmessage.payloads
+                            let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
 
-                                                        // very bad to be cloning the bytes here...
-                                                        let create_message = message.payloads[2].buffer.read_bytes().to_vec();
-                                                        let create_message = Message::from_bytes(create_message, context.configs())?;
-                                                        context.neutron_api_create(new_mechtron_state, create_message);
-                                                    }
-
-                                             _ => {return Err(format!("we don't have an api {} call {}", api, call).into());}
-                                         }
-
-                                }
-                            }
-                            _ => { return Err(format!("we don't have an api {}", api).into()); }
+                            println!("got state!");
+                            // very wasteful to be cloning the bytes here...
+                            let create_message = message.payloads[2].buffer.read_bytes().to_vec();
+                            println!("tovec!");
+                            let create_message = Message::from_bytes(create_message, context.configs())?;
+                            println!("sending to context.neutron_api_create()!");
+                            context.neutron_api_create(new_mechtron_state, create_message);
                         }
 
-                 Ok(())
+                        _ => { return Err(format!("we don't have an api {} call {}", api, call).into()); }
+                    }
                 }
+            }
+            _ => { return Err(format!("we don't have an api {}", api).into()); }
+        }
 
-
-
+        Ok(())
+    }
 }

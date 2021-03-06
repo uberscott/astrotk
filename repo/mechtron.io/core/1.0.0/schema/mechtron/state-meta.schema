@@ -1,8 +1,8 @@
 struct( { fields: {
 
   id: struct({fields:{
-       seq_id: string(),
-       id: string()
+       seq_id: i64(),
+       id: i64()
   }}),
 
   mechtron_config: string(),

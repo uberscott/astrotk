@@ -42,7 +42,7 @@ impl NeutronApiCallCreateMechtron {
                  schema: CORE_SCHEMA_META_API.clone(),
               },
               Payload{
-                 buffer: call.state.data.read_only(),
+                 buffer: call.state.meta.read_only(),
                  schema: CORE_SCHEMA_META_STATE.clone(),
               },
                Message::to_payload(call.create_message,configs)?

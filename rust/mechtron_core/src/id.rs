@@ -28,6 +28,13 @@ impl Id {
             id: buffer.get(&path.with(path!["id"]))?,
         })
     }
+
+    pub fn from_buffer(path: &Path, buffer: &Buffer ) -> Result<Self, Error> {
+        Ok(Id {
+            seq_id: buffer.get(&path.with(path!["seq_id"]))?,
+            id: buffer.get(&path.with(path!["id"]))?,
+        })
+    }
 }
 
 pub struct IdSeq {

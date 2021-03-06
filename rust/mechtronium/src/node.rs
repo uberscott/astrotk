@@ -85,16 +85,16 @@ impl <'configs> Node<'configs> {
 
     pub fn shutdown(&self) {}
 
-    pub fn create(&self, spark: SimSpark) -> Result<(Id,Id), Error> {
+    pub fn create_sim_from_scratch(&self, config: Arc<SimConfig>) -> Result<Id, Error> {
 
         if self.local.is_none()
         {
             return Err("local is none".into())
         }
 
-        let id = self.local.as_ref().unwrap().sources.create_sim(spark)?;
+        let id = self.local.as_ref().unwrap().sources.create_sim()?;
 
-       Ok((id,id))
+       Ok(id)
     }
 
     pub fn send( &self, message: Message )

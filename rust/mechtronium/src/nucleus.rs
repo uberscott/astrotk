@@ -11,23 +11,23 @@ use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
 use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{BindConfig, Configs, Keeper, NucleusConfig, SimConfig, SimSpark, MechtronConfig};
+use mechtron_core::configs::{BindConfig, Configs, Keeper, MechtronConfig, NucleusConfig, SimConfig, SimSpark};
 use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq, StateKey};
-use mechtron_core::id::Revision;
 use mechtron_core::id::MechtronKey;
+use mechtron_core::id::Revision;
 use mechtron_core::mechtron::MechtronContext;
-use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageKind, Payload, To, MechtronLayer, MessageBuilder};
+use mechtron_core::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
 use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
 
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::mechtron::{CreatePayloadsBuilder, MechtronKernel, Neutron, TronInfo, TronShellState};
+use crate::mechtron::{CreatePayloadsBuilder, MechtronKernel, Neutron, Simtron, TronInfo, TronShellState};
+use crate::mechtron_shell::MechtronShell;
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{Lookup, PhasicStateStructure, StateHistory};
 use crate::router::{HasNucleus, Router};
-use crate::mechtron_shell::MechtronShell;
 
 pub trait NucleiContainer
 {
@@ -78,8 +78,8 @@ impl<'nuclei> Nuclei<'nuclei> {
         return Ok(nucleus.clone());
     }
 
-    pub fn create_sim(&self, spark: SimSpark ) -> Result<Id, Error> {
-        let nucleus = Nucleus::sim( spark, self.context.clone() )?;
+    pub fn create_sim(&self) -> Result<Id, Error> {
+        let nucleus = Nucleus::create_sim( self.context.clone() )?;
         let id = nucleus.info.id.clone();
         self.add(nucleus)?;
         Ok(id)
@@ -154,6 +154,7 @@ impl <'context> NucleusContext<'context>
         let bind = self.cache.configs.binds.get(&config.bind.artifact)?;
         let rtn: Box<MechtronKernel> = match bind.kind.as_str() {
             "Neutron" => Neutron::init()? as Box<MechtronKernel>,
+            "Simtron" => Simtron::init()? as Box<MechtronKernel>,
             _ => return Err(format!("we don't have a tron of kind {}", bind.kind).into()),
         };
 
@@ -175,8 +176,7 @@ pub struct Nucleus<'nucleus> {
 impl<'nucleus> Nucleus<'nucleus> {}
 
 impl<'nucleus> Nucleus<'nucleus> {
-    fn sim(
-        spark: SimSpark,
+    fn create_sim(
         context: NucleusContext<'nucleus>,
     ) -> Result<Self, Error> {
         let sim_id = context.seq.next();
@@ -404,13 +404,13 @@ impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
         self.state.get(key)
     }
 
-    fn lookup_nucleus(&self, name: &str) -> Result<Id,Error> {
-       let lookup = Lookup::new(self.state.clone(), self.head.clone() );
-       lookup.lookup_nucleus(self.info.id.clone(),name)
+    fn lookup_nucleus(&self, name: &str) -> Result<Id, Error> {
+        let lookup = Lookup::new(self.state.clone(), self.head.clone());
+        lookup.lookup_nucleus(self.info.id.clone(), name)
     }
-    fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error> {
-        let lookup = Lookup::new(self.state.clone(), self.head.clone() );
-      lookup.lookup_tron(nucleus_id,name)
+    fn lookup_mechtron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error> {
+        let lookup = Lookup::new(self.state.clone(), self.head.clone());
+        lookup.lookup_tron(nucleus_id, name)
     }
 
     fn revision(&self) -> &Revision {
@@ -426,6 +426,7 @@ impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
     }
 
     fn neutron_api_create(&self, state: State, create: Message)  {
+        println!("hello from neutron_api_create()");
 
 /*        let config = self.configs().binds.get(&config)?;
         let tron = init_tron(&config)?;
@@ -491,23 +492,40 @@ impl<'cycle> NucleusCycle<'cycle> {
             messaging: PhasicMessagingStructure::new(),
             outbound: OutboundMessaging::new(),
             revision: revision,
-            history:history,
+            history: history,
             config: config,
             phase: "default".to_string()
         })
     }
 
+    fn shell(
+        &self,
+        key: &MechtronKey,
+    ) -> Result<(MechtronShell, Arc<Mutex<State>>), Error> {
+        let state = self.state.get(key)?;
 
-    fn panic( &self, error: Box<dyn Debug>)
-    {
-        println!( "nucleus cycle panic! {:?}",error )
+        let config = {
+            state.lock()?.get_mechtron_config()
+        };
+
+        let info = TronInfo {
+            key: key.clone(),
+            config: config.clone(),
+        };
+
+        let shell = MechtronShell::new(self.context.mechtron_kernel_for(&config)?, info);
+        Ok((shell, state))
     }
 
 
+    fn panic(&self, error: Error)
+    {
+        println!("nucleus cycle panic! {:?}", error)
+    }
+
 
     fn bootstrap(&mut self) -> Result<(), Error> {
-
-println!("BOOTSTRAP NUCLEUS");
+        println!("BOOTSTRAP NUCLEUS");
         let mut seq = self.context.seq.clone();
 
         let timestamp = timestamp();
@@ -515,9 +533,9 @@ println!("BOOTSTRAP NUCLEUS");
         let neutron_key = MechtronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0));
 
         let config = self.configs().mechtrons.get(&CORE_MECHTRON_NEUTRON)?;
-        let neutron_info = TronInfo{
+        let neutron_info = TronInfo {
             config: config.clone(),
-            key: neutron_key.clone()
+            key: neutron_key.clone(),
         };
 
         // first we create a neutron for the simulation nucleus
@@ -525,7 +543,6 @@ println!("BOOTSTRAP NUCLEUS");
         let mut neutron_create_payload_builder =
             CreatePayloadsBuilder::new(self.configs(), neutron_info.config.clone())?;
 
-println!("GOT HERE");
         let create = Message::multi_payload(
             seq,
             MessageKind::Create,
@@ -540,80 +557,78 @@ println!("GOT HERE");
                 port: "create".to_string(),
                 cycle: Cycle::Present,
                 phase: "default".to_string(),
-                delivery: DeliveryMoment::Cyclic,
+                delivery: DeliveryMoment::Phasic,
                 layer: MechtronLayer::Kernel,
             },
             CreatePayloadsBuilder::payloads(self.configs(), neutron_create_payload_builder),
         );
 
-        let mut neutron_state = State::new(self.configs(), neutron_info.config.clone() )?;
+        let mut neutron_state = State::new(self.configs(), neutron_info.config.clone())?;
 
-
-println!("NOW HERE");
 
         neutron_state.set_creation_cycle(-1);
         neutron_state.set_creation_timestamp(0);
         neutron_state.set_taint(false);
         let neutron_config = self.configs().binds.get(&CORE_BIND_NEUTRON)?;
-println!("OK, OKAY.......... HERE");
         let mut kernel = self.context.mechtron_kernel_for(&neutron_info.config)?;
         let mut neutron = MechtronShell::new(kernel, neutron_info.clone());
-println!("AND....... HERE");
         neutron.create(&create, self, &mut neutron_state);
 
         if neutron_state.is_tainted()?
         {
             return Err("neutron tainted after create".into());
         }
+        let neutron_state = Mutex::new(neutron_state);
 
-println!( "0 TAINTED: {}",neutron_state.is_tainted()?);
+        // insert the neutron_state into the PhasicStateStructure
+        self.state.add(neutron_info.key.clone(), Arc::new(neutron_state));
 
 
-println!("HELLO");
-        let mut messages = vec!();
         // now we CREATE each named mechtron in the neutron_config
-        for mechtron_config_ref in self.config.mectrons.as_slice()
         {
-            println!("creating mechtron: {}",mechtron_config_ref.name.as_ref().unwrap().clone());
-            let mechtron_config = self.context.cache.configs.mechtrons.get(&mechtron_config_ref.artifact)?;
+            let mut messages = vec!();
+            for mechtron_config_ref in self.config.mectrons.as_slice()
+            {
+                println!("creating mechtron: {}", mechtron_config_ref.name.as_ref().unwrap().clone());
+                let mechtron_config = self.context.cache.configs.mechtrons.get(&mechtron_config_ref.artifact)?;
 
-            let mut create_payloads_builder = CreatePayloadsBuilder::new(self.configs(), mechtron_config.clone())?;
-            create_payloads_builder.set_config(mechtron_config.as_ref());
-            let message = Message::multi_payload(
-                self.context.seq.clone(),
-                MessageKind::Create,
-                mechtron_core::message::From {
-                    tron: neutron_info.key.clone(),
-                    cycle: -1,
-                    timestamp,
-                    layer: MechtronLayer::Shell
-                },
-                To {
-                    tron: neutron_info.key.clone(),
-                    port: "create".to_string(),
-                    cycle: Cycle::Present,
-                    phase: "default".to_string(),
-                    delivery: DeliveryMoment::Cyclic,
-                    layer: MechtronLayer::Kernel,
-                },
-                CreatePayloadsBuilder::payloads(self.configs(), create_payloads_builder),
-            );
+                let mut create_payloads_builder = CreatePayloadsBuilder::new(self.configs(), mechtron_config.clone())?;
+                create_payloads_builder.set_config(mechtron_config.as_ref());
+                let message = Message::multi_payload(
+                    self.context.seq.clone(),
+                    MessageKind::Create,
+                    mechtron_core::message::From {
+                        tron: neutron_info.key.clone(),
+                        cycle: -1,
+                        timestamp,
+                        layer: MechtronLayer::Shell,
+                    },
+                    To {
+                        tron: neutron_info.key.clone(),
+                        port: "create".to_string(),
+                        cycle: Cycle::Present,
+                        phase: "default".to_string(),
+                        delivery: DeliveryMoment::Phasic,
+                        layer: MechtronLayer::Kernel,
+                    },
+                    CreatePayloadsBuilder::payloads(self.configs(), create_payloads_builder),
+                );
 
-            messages.push(Arc::new(message) );
+                messages.push(Arc::new(message));
+            }
+
+            // send all create messages to neutron
+            {
+                let mut neutron_state = self.state.get( &neutron_key )?;
+                let mut neutron_state = neutron_state.lock()?;
+                neutron.inbound(&messages, self, & mut neutron_state);
+                if neutron_state.is_tainted()?
+                {
+                    return Err("bootstrap failed.  neutron is tainted".into());
+                }
+            }
+
         }
-
-        if neutron_state.is_tainted()?
-        {
-            return Err("bootstrap failed.  neutron is tainted".into());
-        }
-        println!( "1 TAINTED: {}",neutron_state.is_tainted()?);
-        let state = Mutex::new(neutron_state);
-        {
-           let mut state = &mut state.lock()?;
-            neutron.inbound(&messages, self, state);
-        }
-
-        self.state.add(neutron_info.key.clone(), Arc::new(state));
 
 
         Ok(())
@@ -652,7 +667,7 @@ println!("HELLO");
         match self.state.intake(key, state)
         {
             Ok(_) => {}
-            Err(e) => self.panic(Box::new(e))
+            Err(e) => self.panic(e)
         }
     }
 
@@ -709,7 +724,6 @@ println!("HELLO");
 
         let info = self.context.info_for(message.to.tron.clone(), &CORE_BIND_NEUTRON)?;
         let neutron = Neutron {};
-//        neutron.create_mechtron(info, self, neutron_state, message);
 
         Ok(())
     }
@@ -732,7 +746,7 @@ pub trait MechtronShellContext<'cycle>
     fn revision(&self) -> &Revision;
     fn get_state(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error>;
     fn lookup_nucleus(&self, name: &str) -> Result<Id, Error>;
-    fn lookup_tron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error>;
+    fn lookup_mechtron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error>;
     fn timestamp(&self) -> u64;
     fn seq(&self)->Arc<IdSeq>;
 
@@ -772,13 +786,13 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
     }
 
 
-    fn lookup_tron(
+    fn lookup_mechtron(
         &self,
         nucleus_id: &Id,
         name: &str,
     ) -> Result<MechtronKey, Error> {
-        let lookup = Lookup::new( self.history.clone(), self.revision.clone() );
-        lookup.lookup_tron(nucleus_id,name)
+        let lookup = Lookup::new(self.history.clone(), self.revision.clone());
+        lookup.lookup_tron(nucleus_id, name)
     }
 
     fn timestamp(&self) -> u64 {
@@ -789,9 +803,41 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
         self.context.seq.clone()
     }
 
-    fn neutron_api_create(&self, state: State, create: Message)
+    fn neutron_api_create(&self, mut state: State, create_message: Message)
     {
-        unimplemented!()
+        let config = state.config.clone();
+        let mechtron_id = state.get_mechtron_id();
+        match mechtron_id {
+            Err(e) => { self.panic(e.into()) }
+            Ok(mechtron_id) => {
+                match self.context.mechtron_kernel_for(&config)
+                {
+                    Err(e) => {
+                        self.panic(e);
+                    }
+                    Ok(kernel) => {
+                        let key = MechtronKey::new(self.info.id, mechtron_id);
+                        let info = TronInfo {
+                            key: key.clone(),
+                            config: config.clone(),
+                        };
+
+                        let mut shell = MechtronShell::new(kernel, info);
+println!("neutron_api_create() -> shell");
+                        shell.create(&create_message, self, &mut state);
+println!("neutron_api_create() -> after ");
+
+                        match self.state.insert(key, state)
+                        {
+                            Err(e) => {
+                                self.panic(e);
+                            }
+                            Ok(_) => {}
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1070,7 +1116,7 @@ mod message
         use mechtron_core::configs::Configs;
         use mechtron_core::core::*;
         use mechtron_core::id::{Id, IdSeq, MechtronKey};
-        use mechtron_core::message::{Cycle, DeliveryMoment, Message, MessageBuilder, MessageKind, Payload, To, MechtronLayer};
+        use mechtron_core::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
         use mechtron_core::message::DeliveryMoment::Cyclic;
 
         use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
@@ -1359,7 +1405,7 @@ mod state
     use std::rc::Rc;
     use std::sync::{Arc, Mutex, RwLock};
 
-    use mechtron_core::id::{Id, Revision, StateKey, MechtronKey};
+    use mechtron_core::id::{Id, MechtronKey, Revision, StateKey};
     use mechtron_core::state::{ReadOnlyState, State};
 
     use crate::mechtron::TronInfo;
@@ -1481,13 +1527,20 @@ mod state
             Ok(())
         }
 
-        pub fn add(&mut self, key: MechtronKey, state: Arc<Mutex<State>> ) -> Result<(), Error> {
+        pub fn insert(&self, key: MechtronKey, state: State) -> Result<(), Error> {
+            let mut store = self.store.write()?;
+            store.insert(key, Arc::new(Mutex::new(state)));
+            Ok(())
+        }
+
+
+        pub fn add(&mut self, key: MechtronKey, state: Arc<Mutex<State>>) -> Result<(), Error> {
             let mut store = self.store.write()?;
             store.insert(key, state);
             Ok(())
         }
 
-        pub fn get(&mut self, key: &MechtronKey) -> Result<Arc<Mutex<State>>, Error> {
+        pub fn get(&self, key: &MechtronKey) -> Result<Arc<Mutex<State>>, Error> {
             let store = self.store.read()?;
             let rtn = store.get(key);
 
@@ -1522,7 +1575,7 @@ mod state
         use mechtron_core::buffers::Buffer;
         use mechtron_core::configs::Configs;
         use mechtron_core::core::*;
-        use mechtron_core::id::{Id, Revision, StateKey, MechtronKey};
+        use mechtron_core::id::{Id, MechtronKey, Revision, StateKey};
         use mechtron_core::state::State;
 
         use crate::nucleus::state::StateHistory;
@@ -1683,14 +1736,14 @@ mod test
     use std::cell::RefCell;
     use std::sync::Arc;
 
+    use mechtron_core::artifact::Artifact;
+    use mechtron_core::configs::SimSpark;
     use mechtron_core::core::*;
     use mechtron_core::id::{Id, MechtronKey};
     use mechtron_core::message::*;
     use mechtron_core::util::PingPayloadBuilder;
 
     use crate::node::Node;
-    use mechtron_core::artifact::Artifact;
-    use mechtron_core::configs::SimSpark;
 
     fn create_node() ->Node<'static>
     {
@@ -1707,8 +1760,12 @@ mod test
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
         let node = Node::new(Option::Some(cache));
 
-        node.create( SimSpark{} ).unwrap();
+        let sim_id = node.create_sim_from_scratch(SIM_CONFIG.clone()).unwrap();
 
+
+
+
+        // verify sim exists
         //let (sim_id, nucleus_id) = node.create_source_sim(SIM_CONFIG.clone() ).unwrap();
 
         node.shutdown();
