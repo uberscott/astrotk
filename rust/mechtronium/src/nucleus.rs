@@ -22,7 +22,7 @@ use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
 
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::mechtron::{CreatePayloadsBuilder, MechtronKernel, Neutron, Simtron, TronInfo, TronShellState};
+use crate::mechtron::{BlankMechtron, CreatePayloadsBuilder, MechtronKernel, Neutron, Simtron, TronInfo, TronShellState};
 use crate::mechtron_shell::MechtronShell;
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
@@ -40,19 +40,27 @@ pub struct Nuclei<'nuclei> {
 }
 
 impl<'nuclei> Nuclei<'nuclei> {
-
     pub fn new(cache: Arc<Cache<'nuclei>>,
                seq: Arc<IdSeq>,
-               router: Arc<dyn Router+'static>) -> Self {
-        Nuclei {
+               router: Arc<dyn Router + 'static>) -> Arc<Self> {
+        let rtn = Arc::new(Nuclei {
             nuclei: RwLock::new(HashMap::new()),
-            context: NucleusContext{
+            context: NucleusContext {
                 cache: cache,
                 seq: seq,
-                router: router
-            }
-        }
+                router: router,
+                nuclei: RefCell::new(Option::None),
+            },
+        });
+        rtn.set_arc_ref_to_self(rtn.clone());
+        rtn
     }
+
+    pub fn set_arc_ref_to_self(&self, myself: Arc<Nuclei<'nuclei>>)
+    {
+        self.context.nuclei.replace(Option::Some(Arc::downgrade(&myself)));
+    }
+
 
     pub fn has_nucleus(&self, id: &Id) -> bool {
         let nuclei = self.nuclei.read();
@@ -79,7 +87,13 @@ impl<'nuclei> Nuclei<'nuclei> {
     }
 
     pub fn create_sim(&self, sim_config: Arc<SimConfig>) -> Result<Id, Error> {
-        let nucleus = Nucleus::create_sim( sim_config, self.context.clone() )?;
+        let nucleus = Nucleus::create_sim(sim_config, self.context.clone())?;
+
+        if nucleus.is_panic()
+        {
+            return Err(nucleus.panic_message().unwrap().into())
+        }
+
         let id = nucleus.info.id.clone();
         self.add(nucleus)?;
         Ok(id)
@@ -87,11 +101,16 @@ impl<'nuclei> Nuclei<'nuclei> {
 
     pub fn create(&self, sim_id: Id, lookup_name: Option<String>, config: Arc<NucleusConfig> ) -> Result<Id, Error> {
         let id = self.context.seq.next();
-        let mut nucleus = Nucleus::new( id, sim_id, self.context.clone(), config.clone() )?;
+        let mut nucleus = Nucleus::new(id, sim_id, self.context.clone(), config.clone())?;
 
         nucleus.bootstrap(HashMap::new())?;
 
-        self.add( nucleus )?;
+        if nucleus.is_panic()
+        {
+            return Err(nucleus.panic_message().unwrap().into())
+        }
+
+        self.add(nucleus)?;
         Ok(id)
     }
 
@@ -126,12 +145,14 @@ pub struct NucleusInfo
     pub sim_id: Id
 }
 
+
 #[derive(Clone)]
 pub struct NucleusContext<'context>
 {
     pub cache: Arc<Cache<'context>>,
     pub seq: Arc<IdSeq>,
     pub router: Arc<dyn Router+'static>,
+    pub nuclei: RefCell<Option<Weak<Nuclei<'context>>>>
 }
 
 impl <'context> NucleusContext<'context>
@@ -142,25 +163,36 @@ impl <'context> NucleusContext<'context>
         artifact: &Artifact,
     ) -> Result<TronInfo, Error> {
         let config = self.cache.configs.mechtrons.get(&artifact)?;
+        let bind = self.cache.configs.binds.get(&config.bind.artifact)?;
 
         Ok(TronInfo {
             key: key,
             config: config,
+            bind: bind
         })
     }
 
     pub fn mechtron_kernel_for(&self, config: &MechtronConfig) -> Result<Box<dyn MechtronKernel>, Error> {
-
         let bind = self.cache.configs.binds.get(&config.bind.artifact)?;
-        let rtn: Box<MechtronKernel> = match bind.kind.as_str() {
-            "Neutron" => Neutron::init()? as Box<MechtronKernel>,
-            "Simtron" => Simtron::init()? as Box<MechtronKernel>,
+        let rtn: Box<dyn MechtronKernel> = match bind.kind.as_str() {
+            "Neutron" => Neutron::init()? as Box<dyn MechtronKernel>,
+            "Simtron" => Simtron::init()? as Box<dyn MechtronKernel>,
+            "BlankMechtron" => BlankMechtron::init()? as Box<dyn MechtronKernel>,
             _ => return Err(format!("we don't have a tron of kind {}", bind.kind).into()),
         };
 
         Ok(rtn)
     }
 
+    pub fn get_nuclei(&self) -> Option<Arc<Nuclei<'context>>>
+    {
+        // we unwrap it because if it hasn't been set then that's a panic error,
+        // whereas if the reference is gone, that just means the system is probably in the
+        // state of shutting down
+        let option = &self.nuclei.borrow();
+        let option = option.as_ref().unwrap();
+        return option.upgrade();
+    }
 }
 
 pub struct Nucleus<'nucleus> {
@@ -169,7 +201,8 @@ pub struct Nucleus<'nucleus> {
     messaging: CyclicMessagingStructure,
     head: Revision,
     context: NucleusContext<'nucleus>,
-    config: Arc<NucleusConfig>
+    config: Arc<NucleusConfig>,
+    panic: RefCell<Option<String>>,
 }
 
 
@@ -210,7 +243,8 @@ impl<'nucleus> Nucleus<'nucleus> {
             messaging: CyclicMessagingStructure::new(),
             head: Revision { cycle: -1 },
             context: context,
-            config: config
+            config: config,
+            panic: RefCell::new(Option::None),
         };
 
         Ok(nucleus)
@@ -219,6 +253,16 @@ impl<'nucleus> Nucleus<'nucleus> {
     fn neutron_key(&self) -> MechtronKey
     {
         MechtronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0))
+    }
+
+    pub fn is_panic(&self) -> bool
+    {
+        self.panic.borrow().is_some()
+    }
+
+    pub fn panic_message(&self) -> Option<String>
+    {
+        self.panic.borrow().clone()
     }
 
     pub fn intake_message(&self, message: Arc<Message>) {
@@ -261,11 +305,10 @@ impl<'nucleus> Nucleus<'nucleus> {
 
         shell.extra(message.as_ref(),self, state);
 
-        if !shell.panic
+        if !shell.is_panic()
         {
             self.handle_outbound(shell.flush());
-        }
-        else {
+        } else {
             println!("experienced shell panic!");
         }
     }
@@ -286,10 +329,12 @@ println!("Sending message of type: {:?} ", &message.kind );
         key: &StateKey,
     ) -> Result<(MechtronShell, Arc<ReadOnlyState>), Error> {
         let mut state = self.state.get(key)?;
+        let bind = self.context.cache.configs.binds.get(&state.config.bind.artifact)?;
 
         let info = TronInfo {
             key: key.tron.clone(),
             config: state.config.clone(),
+            bind: bind
        };
 
         let shell = MechtronShell::new(self.context.mechtron_kernel_for(&state.config)?, info );
@@ -300,9 +345,16 @@ println!("Sending message of type: {:?} ", &message.kind );
         let mut states = vec!();
         let mut messages = vec!();
         {
-            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone(),self.config.clone())?;
+            let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone(), self.config.clone())?;
 
             nucleus_cycle.bootstrap(meta)?;
+
+            if nucleus_cycle.is_panic()
+            {
+                let panic_message = nucleus_cycle.panic.borrow().clone().unwrap();
+                self.panic(panic_message.clone());
+                return Err(panic_message.into())
+            }
 
             let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
             for state in tmp_states
@@ -397,6 +449,7 @@ impl<'nucleus> MechtronContext<'nucleus> for Nucleus<'nucleus>
     }
 }
 
+
 impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
 {
     fn configs<'get>(&'get self) -> &'get Configs<'nucleus> {
@@ -459,6 +512,16 @@ impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
         unimplemented!()
     }
 
+    fn create_api_create_nucleus(&self, nucleus_config: Arc<NucleusConfig>) -> Result<Id,Error>{
+        unimplemented!()
+    }
+
+    fn panic(&self, error: String) {
+        if !self.is_panic()
+        {
+            self.panic.replace(Option::Some(error));
+        }
+    }
 }
 
 struct NucleusData<'cycle>
@@ -476,7 +539,8 @@ struct NucleusCycle<'cycle> {
     context: NucleusContext<'cycle>,
     config: Arc<NucleusConfig>,
     history: Arc<StateHistory>,
-    phase: String
+    phase: String,
+    panic: RefCell<Option<String>>,
 }
 
 impl<'cycle> NucleusCycle<'cycle> {
@@ -497,7 +561,8 @@ impl<'cycle> NucleusCycle<'cycle> {
             revision: revision,
             history: history,
             config: config,
-            phase: "default".to_string()
+            phase: "default".to_string(),
+            panic: RefCell::new(Option::None),
         })
     }
 
@@ -507,13 +572,16 @@ impl<'cycle> NucleusCycle<'cycle> {
     ) -> Result<(MechtronShell, Arc<Mutex<State>>), Error> {
         let state = self.state.get(key)?;
 
-        let config = {
-            state.lock()?.get_mechtron_config()
+        let (config, bind) = {
+            let config = state.lock()?.get_mechtron_config();
+            let bind = self.context.cache.configs.binds.get(&config.bind.artifact)?;
+            (config, bind)
         };
 
         let info = TronInfo {
             key: key.clone(),
             config: config.clone(),
+            bind: bind,
         };
 
         let shell = MechtronShell::new(self.context.mechtron_kernel_for(&config)?, info);
@@ -523,11 +591,18 @@ impl<'cycle> NucleusCycle<'cycle> {
 
     fn panic(&self, error: Error)
     {
-        println!("nucleus cycle panic! {:?}", error)
+        if !self.is_panic()
+        {
+            self.panic.replace(Option::Some(format!("nucleus cycle panic! {:?}", error)));
+        }
     }
 
+    fn is_panic(&self) -> bool
+    {
+        self.panic.borrow().is_some()
+    }
 
-    fn bootstrap(&mut self, meta: HashMap<String,String>) -> Result<(), Error> {
+    fn bootstrap(&mut self, meta: HashMap<String, String>) -> Result<(), Error> {
         println!("BOOTSTRAP NUCLEUS");
         let mut seq = self.context.seq.clone();
 
@@ -536,9 +611,11 @@ impl<'cycle> NucleusCycle<'cycle> {
         let neutron_key = MechtronKey::new(self.info.id.clone(), Id::new(self.info.id.seq_id, 0));
 
         let config = self.configs().mechtrons.get(&CORE_MECHTRON_NEUTRON)?;
+        let bind = self.context.cache.configs.binds.get(&config.bind.artifact)?;
         let neutron_info = TronInfo {
             config: config.clone(),
             key: neutron_key.clone(),
+            bind: bind,
         };
 
         // first we create a neutron for the simulation nucleus
@@ -757,9 +834,11 @@ pub trait MechtronShellContext<'cycle>
     fn lookup_nucleus(&self, name: &str) -> Result<Id, Error>;
     fn lookup_mechtron(&self, nucleus_id: &Id, name: &str) -> Result<MechtronKey, Error>;
     fn timestamp(&self) -> u64;
-    fn seq(&self)->Arc<IdSeq>;
+    fn seq(&self) -> Arc<IdSeq>;
+    fn panic(&self, error: String);
 
-    fn neutron_api_create(&self, state: State, create: Message );
+    fn neutron_api_create(&self, state: State, create: Message);
+    fn create_api_create_nucleus(&self, nucleus_config: Arc<NucleusConfig>) -> Result<Id, Error>;
 }
 
 
@@ -812,6 +891,13 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
         self.context.seq.clone()
     }
 
+    fn panic(&self, error: String) {
+        if self.panic.borrow().is_none()
+        {
+            self.panic.replace(Option::Some(error));
+        }
+    }
+
     fn neutron_api_create(&self, mut state: State, create_message: Message)
     {
         let config = state.config.clone();
@@ -826,15 +912,23 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
                     }
                     Ok(kernel) => {
                         let key = MechtronKey::new(self.info.id, mechtron_id);
+                        let bind = match self.context.cache.configs.binds.get(&config.bind.artifact) {
+                            Ok(bind) => bind,
+                            Err(e) => {
+                                self.panic(e.into());
+                                return ()
+                            }
+                        };
                         let info = TronInfo {
                             key: key.clone(),
                             config: config.clone(),
+                            bind: bind,
                         };
 
                         let mut shell = MechtronShell::new(kernel, info);
-println!("neutron_api_create() -> shell");
+                        println!("neutron_api_create() -> shell");
                         shell.create(&create_message, self, &mut state);
-println!("neutron_api_create() -> after ");
+                        println!("neutron_api_create() -> after ");
 
                         match self.state.insert(key, state)
                         {
@@ -843,6 +937,28 @@ println!("neutron_api_create() -> after ");
                             }
                             Ok(_) => {}
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    fn create_api_create_nucleus(&self, nucleus_config: Arc<NucleusConfig>) -> Result<Id, Error> {
+        match self.context.get_nuclei()
+        {
+            None => {
+                self.panic("could not get nuclei".into());
+                Err("could not get nuclei".into())
+            }
+            Some(nuclei) => {
+                match nuclei.create(self.info.sim_id.clone(), Option::None, nucleus_config)
+                {
+                    Ok(id) => {
+                        Ok(id)
+                    }
+                    Err(e) => {
+                        self.panic(e.clone());
+                        Err(e)
                     }
                 }
             }

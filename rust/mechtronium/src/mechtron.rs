@@ -12,7 +12,7 @@ use no_proto::collection::struc::NP_Struct;
 use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
-use mechtron_core::api::NeutronApiCallCreateMechtron;
+use mechtron_core::api::{NeutronApiCallCreateMechtron, CreateApiCallCreateNucleus};
 use mechtron_core::artifact::Artifact;
 use mechtron_core::buffers;
 use mechtron_core::buffers::{Buffer, Path};
@@ -28,6 +28,7 @@ use crate::error::Error;
 use crate::node::Node;
 use crate::nucleus::{MechtronShellContext, Nucleus};
 use std::collections::hash_map::RandomState;
+use mechtron_core::message::MessageKind::Create;
 
 pub trait MechtronKernel {
     fn create(
@@ -97,16 +98,19 @@ pub struct MessagePort {
 pub struct TronInfo {
     pub key: MechtronKey,
     pub config: Arc<MechtronConfig>,
+    pub bind: Arc<BindConfig>,
 }
 
 impl TronInfo {
     pub fn new(
         key: MechtronKey,
         tron_config: Arc<MechtronConfig>,
+        bind: Arc<BindConfig>,
     ) -> Self {
         TronInfo {
             key: key,
             config: tron_config,
+            bind: bind
         }
     }
 }
@@ -182,7 +186,7 @@ impl Neutron {
     }
 
 
-    fn create_mechtrons(
+    fn inbound__create_mechtrons(
         info: TronInfo,
         context: &dyn MechtronShellContext,
         state: &mut MutexGuard<State>,
@@ -191,14 +195,14 @@ impl Neutron {
         let mut builders = vec!();
         for message in messages
         {
-           let builder = Neutron::create_mechtron(info.clone(),context,state,message.clone())?;
+           let builder = Neutron::inbound__create_mechtron(info.clone(), context, state, message.clone())?;
            builders.push(builder);
         }
 
         Ok(Option::Some(builders))
     }
 
-    pub fn create_mechtron(
+    fn inbound__create_mechtron(
         info: TronInfo,
         context: &dyn MechtronShellContext,
         neutron_state: &mut MutexGuard<State>,
@@ -253,7 +257,6 @@ println!("CREATE MECHTRON {}",new_mechtron_config);
         builder.to_nucleus_id=Option::Some(info.key.nucleus.clone());
         builder.to_tron_id=Option::Some(info.key.mechtron.clone());
         builder.to_cycle_kind=Option::Some(Cycle::Present);
-        println!("Neutron::create_mechtron() replacing payloads");
         builder.payloads.replace(Option::Some(NeutronApiCallCreateMechtron::payloads(call,context.configs())?));
 
         Ok(builder)
@@ -316,7 +319,7 @@ impl MechtronKernel for Neutron {
     fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>, &Vec<Arc<Message>>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
 
         match port{
-            "create" => Ok(Neutron::create_mechtrons),
+            "create" => Ok(Neutron::inbound__create_mechtrons),
             _ => Err(format!("port not available: {}", port).into())
         }
     }
@@ -360,7 +363,53 @@ impl MechtronKernel for Simtron{
 
         state.data.set(&path!["config"], sim_config.source.to() )?;
 
+
+        // now create each of the Nucleus in turn
+
+        let mut builders = vec!();
+        for nucleus_ref in &sim_config.nucleus
+        {
+            let create_api_call_create_nucleus = CreateApiCallCreateNucleus::new(  nucleus_ref.clone() );
+            let mut builder = MessageBuilder::new();
+            builder.kind = Option::Some(MessageKind::Api);
+            builder.to_layer = Option::Some(MechtronLayer::Shell);
+            builder.to_nucleus_id=Option::Some(info.key.nucleus.clone());
+            builder.to_tron_id=Option::Some(info.key.mechtron.clone());
+            builder.to_cycle_kind=Option::Some(Cycle::Present);
+            builder.payloads.replace(Option::Some(CreateApiCallCreateNucleus::payloads(create_api_call_create_nucleus,context.configs())?));
+            builders.push( builder );
+        }
+
         println!("Simtron created: {}",sim_config.source.to());
+
+        Ok(Option::Some(builders))
+    }
+
+    fn update(&self, phase: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+
+    fn port(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &mut MutexGuard<State>, &Vec<Arc<Message>>) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+
+    fn extra(&self, port: &str) -> Result<fn(TronInfo, &dyn MechtronShellContext, &ReadOnlyState, &Message) -> Result<Option<Vec<MessageBuilder>>, Error>, Error> {
+        unimplemented!()
+    }
+}
+
+
+pub struct BlankMechtron{}
+impl BlankMechtron{
+    pub fn init() -> Result<Box<MechtronKernel>, Error> {
+        Ok(Box::new(BlankMechtron{}))
+    }
+}
+
+impl MechtronKernel for BlankMechtron{
+    fn create(&self, info: TronInfo, context: &dyn MechtronShellContext, state: &mut State, create_message: &Message) -> Result<Option<Vec<MessageBuilder>>, Error> {
+
+        println!("BlankMechtron created!");
 
         Ok(Option::None)
     }

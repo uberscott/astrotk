@@ -102,7 +102,6 @@ impl<'config> Configs<'config> {
 
     pub fn cache_core(&mut self)->Result<(),Error>
     {
-
         self.cache(&CORE_BIND_NEUTRON)?;
         self.cache(&CORE_BIND_SIMTRON)?;
 
@@ -116,6 +115,7 @@ impl<'config> Configs<'config> {
         self.cache(&CORE_SCHEMA_NEUTRON_STATE)?;
 
         self.cache(&CORE_SCHEMA_NUCLEUS_LOOKUP_NAME_MESSAGE)?;
+        self.cache(&CORE_SCHEMA_ARTIFACT)?;
         self.cache(&CORE_SCHEMA_PING)?;
         self.cache(&CORE_SCHEMA_PONG)?;
         self.cache(&CORE_SCHEMA_TEXT)?;
@@ -279,10 +279,19 @@ pub struct WasmRef{
 pub struct BindConfig {
     pub kind: String,
     pub name: String,
+    pub panic_escalation: PanicEscalation,
     pub nucleus_lookup_name: Option<String>,
     pub source: Artifact,
     pub state: StateConfig,
     pub message: MessageConfig,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum PanicEscalation
+{
+    None,
+    Nucleus,
+    Simulation
 }
 
 struct NucleusConfigArtifactCacher;
@@ -290,7 +299,15 @@ struct NucleusConfigArtifactCacher;
 impl Cacher<NucleusConfig> for NucleusConfigArtifactCacher
 {
     fn artifacts(&self, config: Arc<NucleusConfig>) -> Result<Vec<Artifact>, Error> {
-        Ok(vec!())
+        let mut rtn = vec!();
+
+        for mechtron in &config.mectrons
+        {
+            rtn.push( mechtron.artifact.clone() );
+        }
+
+println!("........ CACHING {:?}",&rtn );
+        Ok(rtn)
     }
 }
 
@@ -511,6 +528,7 @@ pub struct TronConfigRefYaml {
 pub struct BindYaml {
     kind: String,
     name: String,
+    panic_escalation: Option<PanicEscalation>,
     state: Option<StateConfigYaml>,
     message: Option<MessageConfigYaml>,
 }
@@ -614,7 +632,7 @@ impl BindYaml {
             kind: self.kind.clone(),
             source: artifact.clone(),
             name: self.name.clone(),
-
+            panic_escalation: self.panic_escalation.as_ref().unwrap_or(&PanicEscalation::None).clone(),
             message: match &self.message {
                 None => Default::default(),
                 Some(messages) => MessageConfig {
@@ -778,7 +796,7 @@ struct NucleusConfigYaml
 {
     name: Option<String>,
     description: Option<String>,
-    phases: Vec<PhaseConfigYaml>,
+    phases: Option<Vec<PhaseConfigYaml>>,
     mechtrons: Vec<MechtronConfigRefYaml>
 }
 
@@ -806,7 +824,12 @@ impl NucleusConfigYaml
         Ok(NucleusConfig{
             name: self.name.clone(),
             description: self.description.clone(),
-            phases: self.phases.iter().map( |p| PhaseConfig{ name: p.name.clone() } ).collect(),
+            phases: match &self.phases {
+                None => vec!(),
+                Some(phases) => {
+                    phases.iter().map( |p| PhaseConfig{ name: p.name.clone() } ).collect()
+                }
+            },
             mectrons:self.mechtrons.iter().map( |p| MechtronConfigRef{ name: p.name.clone(), artifact: p.artifact.to_artifact(&default_bundle,Option::Some("mechtron")).unwrap() } ).collect()
         })
     }

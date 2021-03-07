@@ -2,7 +2,7 @@ use std::alloc::System;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Weak};
 
 use wasmer::{Cranelift, JIT, Module, Store};
 
@@ -112,7 +112,7 @@ impl<'configs> Drop for Node<'configs>
 }
 
 pub struct Local<'configs> {
-    sources: Nuclei<'configs>,
+    sources: Arc<Nuclei<'configs>>,
     router: Arc<dyn Router+'static>,
     seq: Arc<IdSeq>,
     cache: Arc<Cache<'configs>>

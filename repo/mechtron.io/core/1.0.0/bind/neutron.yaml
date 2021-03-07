@@ -1,5 +1,6 @@
 kind: Neutron
 name: Neutron
+panic_escalation: Nucleus
 state: 
   artifact:
     path: schema/neutron/state.schema

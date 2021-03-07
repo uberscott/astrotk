@@ -17,12 +17,15 @@ use mechtron_core::util::PongPayloadBuilder;
 use crate::error::Error;
 use crate::mechtron::{MechtronKernel, TronInfo, TronShellState};
 use crate::nucleus::MechtronShellContext;
+use mechtron_core::api::CreateApiCallCreateNucleus;
+use mechtron_core::artifact::Artifact;
+use mechtron_core::configs::PanicEscalation;
 
 pub struct MechtronShell {
     pub tron: Box<dyn MechtronKernel>,
     pub info: TronInfo,
     pub outbound: RefCell<Vec<Message>>,
-    pub panic: bool,
+    pub panic: RefCell<Option<String>>,
 }
 
 
@@ -32,7 +35,7 @@ impl MechtronShell {
             tron: tron,
             info: info,
             outbound: RefCell::new(vec!()),
-            panic: false,
+            panic: RefCell::new(Option::None),
         }
     }
 
@@ -43,7 +46,25 @@ impl MechtronShell {
 
     fn panic<E: Debug>(&self, error: E)
     {
-        println!("PANIC: TronShell got unexpected error {:?}", error);
+        if !self.is_panic()
+        {
+            let message = format!("PANIC: TronShell got unexpected error {:?}", error);
+            println!("{}",&message);
+            self.panic.replace(Option::Some(message));
+        }
+    }
+
+    pub fn check( &self, context: &dyn MechtronShellContext )
+    {
+        if self.is_panic() && (self.info.bind.panic_escalation == PanicEscalation::Nucleus || self.info.bind.panic_escalation == PanicEscalation::Simulation )
+        {
+            context.panic( self.panic.borrow().as_ref().unwrap().clone() );
+        }
+    }
+
+    pub fn is_panic(&self) -> bool
+    {
+        self.panic.borrow().is_some()
     }
 
     fn reject(&mut self, message: &Message, reason: &str, context: &dyn MechtronShellContext, layer: MechtronLayer)
@@ -98,6 +119,7 @@ impl MechtronShell {
             Err(error) => {
                 self.panic(error);
                 state.set_taint(true);
+                self.check(context);
             }
         }
     }
@@ -266,13 +288,11 @@ impl MechtronShell {
         builders: Option<Vec<MessageBuilder>>,
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error> {
-        println!("HANDLE");
         match builders {
             None => Ok(()),
             Some(builders) => {
                 for mut builder in builders
                 {
-                    println!("builder: {:?}", builder.kind.as_ref().unwrap().clone());
                     builder.from = Option::Some(self.from(context, MechtronLayer::Kernel));
 
                     if builder.to_nucleus_lookup_name.is_some()
@@ -319,7 +339,6 @@ impl MechtronShell {
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error>
     {
-        println!("handle_api_call!");
         builder.to_cycle_kind = Option::Some(Cycle::Present);
         builder.to_nucleus_id = Option::Some(self.info.key.nucleus.clone());
         builder.to_tron_id = Option::Some(self.info.key.mechtron.clone());
@@ -331,7 +350,6 @@ impl MechtronShell {
         let message = builder.build(context.seq().clone())?;
         let bind = context.configs().binds.get(&self.info.config.bind.artifact).unwrap();
 
-        println!("got a message with payloads: {}", message.payloads.len());
         let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
 
         match api.as_str() {
@@ -344,26 +362,31 @@ impl MechtronShell {
                     let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
                     match call.as_str() {
                         "create_mechtron" => {
-                            println!("READY TO CREATE A MECHTRON!");
-
-println!("ARTIFACT FOR PAYLOAD: {}", message.payloads[1].schema.to());
-println!("TAINT {}", message.payloads[1].buffer.get::<bool>(&path!["taint"])?);
                             // now get the state of the mechtronmessage.payloads
                             let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
 
-                            println!("got state!");
                             // very wasteful to be cloning the bytes here...
                             let create_message = message.payloads[2].buffer.read_bytes().to_vec();
                             let create_message = Message::from_bytes(create_message, context.configs())?;
-                            println!("create_message. meta {}", create_message.meta.is_some() );
-                            println!("sending to context.neutron_api_create()!");
                             context.neutron_api_create(new_mechtron_state, create_message);
                         }
-
                         _ => { return Err(format!("we don't have an api {} call {}", api, call).into()); }
                     }
                 }
-            }
+            },
+            "create_api" => {
+                let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
+                match call.as_str(){
+                    "create_nucleus" => {
+                        let nucleus_config = CreateApiCallCreateNucleus::nucleus_config_artifact( &message.payloads )?;
+                        let nucleus_config = Artifact::from(&nucleus_config)?;
+                        context.configs().cache( &nucleus_config )?;
+                        let nucleus_config = context.configs().nucleus.get(&nucleus_config)?;
+                        context.create_api_create_nucleus(nucleus_config);
+                    },
+                    _ => { return Err(format!("we don't have an api {} call {}", api, call).into()); }
+                }
+            },
             _ => { return Err(format!("we don't have an api {}", api).into()); }
         }
 
