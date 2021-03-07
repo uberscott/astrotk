@@ -53,6 +53,7 @@ struct({fields: {
     delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
     layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
   }}),
-  payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) })
+  payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) }),
+  meta: map( { value: string() } )
 
 }})

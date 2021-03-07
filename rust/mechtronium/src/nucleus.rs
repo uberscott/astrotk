@@ -78,8 +78,8 @@ impl<'nuclei> Nuclei<'nuclei> {
         return Ok(nucleus.clone());
     }
 
-    pub fn create_sim(&self) -> Result<Id, Error> {
-        let nucleus = Nucleus::create_sim( self.context.clone() )?;
+    pub fn create_sim(&self, sim_config: Arc<SimConfig>) -> Result<Id, Error> {
+        let nucleus = Nucleus::create_sim( sim_config, self.context.clone() )?;
         let id = nucleus.info.id.clone();
         self.add(nucleus)?;
         Ok(id)
@@ -89,7 +89,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         let id = self.context.seq.next();
         let mut nucleus = Nucleus::new( id, sim_id, self.context.clone(), config.clone() )?;
 
-        nucleus.bootstrap()?;
+        nucleus.bootstrap(HashMap::new())?;
 
         self.add( nucleus )?;
         Ok(id)
@@ -177,6 +177,7 @@ impl<'nucleus> Nucleus<'nucleus> {}
 
 impl<'nucleus> Nucleus<'nucleus> {
     fn create_sim(
+        sim_config: Arc<SimConfig>,
         context: NucleusContext<'nucleus>,
     ) -> Result<Self, Error> {
         let sim_id = context.seq.next();
@@ -186,7 +187,10 @@ impl<'nucleus> Nucleus<'nucleus> {
 
         let nucleus = Nucleus::new( id, sim_id, context, config )?;
 
-        nucleus.bootstrap()?;
+        let mut bootstrap_meta = HashMap::new();
+        bootstrap_meta.insert( "sim_config".to_string(), sim_config.source.to().clone() );
+
+        nucleus.bootstrap(bootstrap_meta.clone())?;
 
         Ok(nucleus)
     }
@@ -292,13 +296,13 @@ println!("Sending message of type: {:?} ", &message.kind );
         Ok((shell, state))
     }
 
-    fn bootstrap(&self) -> Result<(), Error> {
+    fn bootstrap(&self, meta: HashMap<String,String> ) -> Result<(), Error> {
         let mut states = vec!();
         let mut messages = vec!();
         {
             let mut nucleus_cycle = NucleusCycle::init(self.info.clone(), self.context.clone(), self.head.clone(), self.state.clone(),self.config.clone())?;
 
-            nucleus_cycle.bootstrap()?;
+            nucleus_cycle.bootstrap(meta)?;
 
             let (tmp_states, tmp_messages) = nucleus_cycle.commit()?;
             for state in tmp_states
@@ -309,7 +313,6 @@ println!("Sending message of type: {:?} ", &message.kind );
             {
                 messages.push(message);
             }
-
         }
 
         for (key, state) in states {
@@ -524,7 +527,7 @@ impl<'cycle> NucleusCycle<'cycle> {
     }
 
 
-    fn bootstrap(&mut self) -> Result<(), Error> {
+    fn bootstrap(&mut self, meta: HashMap<String,String>) -> Result<(), Error> {
         println!("BOOTSTRAP NUCLEUS");
         let mut seq = self.context.seq.clone();
 
@@ -543,7 +546,7 @@ impl<'cycle> NucleusCycle<'cycle> {
         let mut neutron_create_payload_builder =
             CreatePayloadsBuilder::new(self.configs(), neutron_info.config.clone())?;
 
-        let create = Message::multi_payload(
+        let create = Message::longform(
             seq,
             MessageKind::Create,
             mechtron_core::message::From {
@@ -560,7 +563,10 @@ impl<'cycle> NucleusCycle<'cycle> {
                 delivery: DeliveryMoment::Phasic,
                 layer: MechtronLayer::Kernel,
             },
+            Option::None,
             CreatePayloadsBuilder::payloads(self.configs(), neutron_create_payload_builder),
+             Option::Some(meta.clone()),
+            Option::None
         );
 
         let mut neutron_state = State::new(self.configs(), neutron_info.config.clone())?;
@@ -594,7 +600,7 @@ impl<'cycle> NucleusCycle<'cycle> {
 
                 let mut create_payloads_builder = CreatePayloadsBuilder::new(self.configs(), mechtron_config.clone())?;
                 create_payloads_builder.set_config(mechtron_config.as_ref());
-                let message = Message::multi_payload(
+                let message = Message::longform(
                     self.context.seq.clone(),
                     MessageKind::Create,
                     mechtron_core::message::From {
@@ -611,7 +617,10 @@ impl<'cycle> NucleusCycle<'cycle> {
                         delivery: DeliveryMoment::Phasic,
                         layer: MechtronLayer::Kernel,
                     },
+                    Option::None,
                     CreatePayloadsBuilder::payloads(self.configs(), create_payloads_builder),
+                    Option::Some(meta.clone()),
+                    Option::None
                 );
 
                 messages.push(Arc::new(message));
@@ -1755,18 +1764,14 @@ mod test
     fn test_create_sim()
     {
         let cache = Node::default_cache();
-        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:hello-world-simulation.yaml:sim").unwrap();
+        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
         cache.configs.sims.cache(&SIM_CONFIG ).unwrap();
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
         let node = Node::new(Option::Some(cache));
 
         let sim_id = node.create_sim_from_scratch(SIM_CONFIG.clone()).unwrap();
 
-
-
-
         // verify sim exists
-        //let (sim_id, nucleus_id) = node.create_source_sim(SIM_CONFIG.clone() ).unwrap();
 
         node.shutdown();
     }

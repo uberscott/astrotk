@@ -1,0 +1,6 @@
+name: Hello World Simulation
+nucleus:
+- name: main
+  artifact:
+    path: hello-world/nucleus/main.yaml
+ 

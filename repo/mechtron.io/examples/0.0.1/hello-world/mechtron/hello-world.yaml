@@ -1,0 +1,8 @@
+name: "Hello World"
+wasm:
+  artifact:
+    path: hello-world/wasm/hello-world.wasm
+bind:
+  artifact:
+    path: hello-world/bind/hello-world.yaml
+

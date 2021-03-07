@@ -1,0 +1,6 @@
+name: hello-world-nucleus
+description: "create a single mechtron that logs 'hello world'"
+mechtrons:
+- name: "Hello World"
+  artifact:
+    path: hello-world/mechtron/hello-world.yaml

@@ -681,7 +681,7 @@ impl BindYaml {
             },
             nucleus_lookup_name: None,
         });
-    --}
+    }
 }
 
 
@@ -696,8 +696,6 @@ pub struct SimConfig {
 #[derive(Clone)]
 pub struct NucleusConfigRef{
     pub name: Option<String>,
-    pub auto: Option<bool>,
-    pub kind: Option<String>,
     pub artifact: Artifact,
 }
 
@@ -765,8 +763,6 @@ impl SimConfigYaml {
                 Some(nuclei) => nuclei.iter().map( |nucleus|{
                     NucleusConfigRef{
                         name: nucleus.name.clone(),
-                        kind: nucleus.kind.clone(),
-                        auto: nucleus.auto.clone(),
                         artifact: nucleus.artifact.to_artifact(&artifact.bundle, Option::Some("nucleus")).unwrap()
                     }
                 }).collect()

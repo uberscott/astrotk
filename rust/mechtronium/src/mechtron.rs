@@ -27,6 +27,7 @@ use mechtron_core::util::PongPayloadBuilder;
 use crate::error::Error;
 use crate::node::Node;
 use crate::nucleus::{MechtronShellContext, Nucleus};
+use std::collections::hash_map::RandomState;
 
 pub trait MechtronKernel {
     fn create(
@@ -338,8 +339,29 @@ impl Simtron{
 }
 
 impl MechtronKernel for Simtron{
-    fn create(&self, info: TronInfo, context: &dyn MechtronShellContext, state: &mut State, create: &Message) -> Result<Option<Vec<MessageBuilder>>, Error> {
-        println!("Simtron created!");
+    fn create(&self, info: TronInfo, context: &dyn MechtronShellContext, state: &mut State, create_message: &Message) -> Result<Option<Vec<MessageBuilder>>, Error> {
+
+        let sim_config = match &create_message.meta
+        {
+            None => {
+                return Err("bootstrap meta is not set".into())
+            }
+            Some(bootstrap_meta) => match bootstrap_meta.get("sim_config")
+            {
+                None => {
+                    return Err("sim_config is not set in bootstrap_meta".into())
+                }
+                Some(sim_config_artifact) => {
+                    let artifact = Artifact::from(sim_config_artifact.as_str())?;
+                    context.configs().sims.get(&artifact)?
+                }
+            }
+        };
+
+        state.data.set(&path!["config"], sim_config.source.to() )?;
+
+        println!("Simtron created: {}",sim_config.source.to());
+
         Ok(Option::None)
     }
 

@@ -750,9 +750,9 @@ impl Message {
         Ok((Buffer::bytes(buffer)))
     }
 
-    pub fn from_bytes<'configs>(
+    pub fn from_bytes(
         bytes: Vec<u8>,
-        configs: &Configs<'configs>,
+        configs: &Configs,
     ) -> Result<Self, Error> {
         let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE)?;
         let buffer = factory.open_buffer(bytes);
@@ -779,6 +779,24 @@ impl Message {
             payloads.push(Payload::from(&path, &buffer, configs )?);
         }
 
+        let meta= match buffer.get_keys(&path!["meta"]) {
+            Ok(option) => match option {
+                None => Option::None,
+                Some(keys) => {
+                    let path = Path::new(path!["meta"]);
+                    let mut rtn = HashMap::new();
+
+                    for key in keys{
+                        rtn.insert(key.clone(), buffer.get(&path.with(path![&key.as_str()] ))?);
+                    }
+
+                    Option::Some(rtn)
+                }
+            }
+            Err(_) => Option::None
+        };
+
+
         Ok(Message {
             id: id,
             kind: kind,
@@ -786,7 +804,7 @@ impl Message {
             to: to,
             callback: callback,
             payloads: payloads,
-            meta: Option::None,
+            meta: meta,
             transaction: Option::None,
         })
     }

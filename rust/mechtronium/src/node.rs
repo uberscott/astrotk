@@ -92,7 +92,7 @@ impl <'configs> Node<'configs> {
             return Err("local is none".into())
         }
 
-        let id = self.local.as_ref().unwrap().sources.create_sim()?;
+        let id = self.local.as_ref().unwrap().sources.create_sim(config)?;
 
        Ok(id)
     }

@@ -1,4 +1,5 @@
 struct({fields:{
+  config: string(),
   
   nucleus: list( { of: 
      struct({fields:{

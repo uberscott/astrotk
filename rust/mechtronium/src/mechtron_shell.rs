@@ -354,8 +354,8 @@ println!("TAINT {}", message.payloads[1].buffer.get::<bool>(&path!["taint"])?);
                             println!("got state!");
                             // very wasteful to be cloning the bytes here...
                             let create_message = message.payloads[2].buffer.read_bytes().to_vec();
-                            println!("tovec!");
                             let create_message = Message::from_bytes(create_message, context.configs())?;
+                            println!("create_message. meta {}", create_message.meta.is_some() );
                             println!("sending to context.neutron_api_create()!");
                             context.neutron_api_create(new_mechtron_state, create_message);
                         }
