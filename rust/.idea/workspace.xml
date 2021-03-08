@@ -16,20 +16,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/mechtron/src/buffers.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mechtron/src/cache.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/mechtron_wasm_membrane.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/src/error.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/wasm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/src/wasm.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_wasm_membrane/src/wasm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/src/wasm.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../wasm/example/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../wasm/example/Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/Makefile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../wasm/example/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/src/lib.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -95,7 +85,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test wasm::test::test_wasm">
+  <component name="RunManager" selected="Cargo.Test wasm::test::test_logs">
     <configuration default="true" type="ArquillianTestNG" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -169,9 +159,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test nucleus::test::test_ping_neutron" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib nucleus::test::test_ping_neutron -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
+    <configuration name="Test wasm::test::test_logs" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_wasm_membrane --lib wasm::test::test_logs -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_wasm_membrane" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -234,18 +224,18 @@
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test nucleus::test::test_create_node" />
-      <item itemvalue="Cargo.Test nucleus::test::test_ping_neutron" />
       <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
       <item itemvalue="Cargo.Tests in 'mechtron_wasm_membrane'" />
       <item itemvalue="Cargo.Test wasm::test::test_wasm" />
+      <item itemvalue="Cargo.Test wasm::test::test_logs" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test wasm::test::test_logs" />
         <item itemvalue="Cargo.Test wasm::test::test_wasm" />
         <item itemvalue="Cargo.Tests in 'mechtron_wasm_membrane'" />
         <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
         <item itemvalue="Cargo.Test nucleus::test::test_create_node" />
-        <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
       </list>
     </recent_temporary>
   </component>

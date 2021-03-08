@@ -45,7 +45,6 @@ impl WasmMembrane{
             values[i].set(string[i] );
         }
 
-        //let str = ptr.get_utf8_string(memory, string.len() as u32).unwrap();
 
         Ok(buffer)
     }
@@ -138,20 +137,46 @@ impl WasmMembrane {
         let mut host  = Arc::new(RwLock::new(WasmHost::new()));
 
 
-        /*
         let imports = imports! { "env"=>{
         "mechtronium_log"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
-                println!("mechtronium_log CALLED!");
-            } ),
-        "lobot"=>Function::new_native(module.store(),|| {
-                println!("hello lobot!");
+                let host = env.host.read();
+                if host.is_err( )
+                {
+                  return;
+                }
+
+                let host = host.unwrap();
+
+                let membrane = host.membrane.as_ref();
+                if membrane.is_none()
+                {
+                  return;
+                }
+                let membrane = membrane.unwrap().upgrade();
+
+                if membrane.is_none()
+                {
+                  return;
+                }
+                let membrane = membrane.unwrap();
+
+                let mut memory = membrane.instance.exports.get_memory("memory");
+
+                if memory.is_err()
+                {
+                  return;
+                }
+
+                let memory = memory.unwrap();
+
+                let str = ptr.get_utf8_string(memory, len as u32).unwrap();
+                println!("FROM WEBASSEMBLY: {}",str);
             } ),
 
         } };
 
-         */
 
-        let imports = imports!{};
+//        let imports = imports!{};
 
         let instance = Instance::new(&module, &imports)?;
 
@@ -171,6 +196,7 @@ impl WasmMembrane {
 
         return Ok(membrane);
     }
+
 
     fn log(&self, ptr: i32, len: i32) {}
 }
@@ -227,6 +253,7 @@ mod test
 
         let membrane = WasmMembrane::new(module).unwrap();
 
+        membrane.wasm_test_log("Helllo this is a log");
 
         Ok(())
     }

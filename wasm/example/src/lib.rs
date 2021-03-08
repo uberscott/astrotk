@@ -1,24 +1,20 @@
+#[macro_use]
+extern crate wasm_bindgen;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::__rt::std::alloc::{Layout,alloc,dealloc};
 use wasm_bindgen::__rt::std::mem;
-use mechtron_core::error::Error;
+//use mechtron_core::error::Error;
 use wasm_bindgen::__rt::core::slice;
 
 
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+//#[cfg(feature = "wee_alloc")]
+//#[global_allocator]
+//static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-#[wasm_bindgen]
 extern "C"
 {
-   // pub fn mechtronium_log( ptr: *const u8, len: i32);
-
-
-    #[wasm_bindgen]
-    #[no_mangle]
-    pub fn lobot();
+    fn mechtronium_log( ptr: *const u8, len: i32);
 }
 
 
@@ -26,8 +22,7 @@ extern "C"
 pub fn log( string: &str ){
     unsafe
     {
-        lobot();
-        //mechtronium_log(string.as_ptr(), string.len() as _);
+        mechtronium_log(string.as_ptr(), string.len() as _);
         //mechtronium_log(string.len() as _);
     }
 }
