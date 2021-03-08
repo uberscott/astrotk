@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/mechtron_common/mechtron_core.iml" filepath="$PROJECT_DIR$/mechtron_common/mechtron_core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/mechtron_wasm_membrane/mechtron_wasm_membrane.iml" filepath="$PROJECT_DIR$/mechtron_wasm_membrane/mechtron_wasm_membrane.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/rust.iml" filepath="$PROJECT_DIR$/.idea/rust.iml" />
     </modules>
   </component>

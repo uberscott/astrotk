@@ -1,25 +1,69 @@
-mod utils;
 
-use mechtron_wasm::*;
-use no_proto::buffer::NP_Buffer;
-use no_proto::buffer_ro::NP_Buffer_RO;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::__rt::std::alloc::{Layout,alloc,dealloc};
+use wasm_bindgen::__rt::std::mem;
+use mechtron_core::error::Error;
+use wasm_bindgen::__rt::core::slice;
 
-#[no_mangle]
-pub extern "C" fn mechtron_create(ctx: &MechtronContext, create_message: &NP_Buffer_RO, content: &mut NP_Buffer ) -> Result<(),Box<std::error::Error>>
+
+#[cfg(feature = "wee_alloc")]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+#[wasm_bindgen]
+extern "C"
 {
-   log("actor_create() called! XX");
-   let name = create_message.get::<String>(&[&"name"]);
-   log( format!("name result {:?}",name).as_str());
-   let name = name.unwrap().unwrap();
-   content.set(&[&"name"], name.clone());
-   let age = create_message.get::<i32>(&[&"age"]).unwrap().unwrap();
+   // pub fn mechtronium_log( ptr: *const u8, len: i32);
 
-   log( format!("name is: {}",name.as_str()).as_str() );
 
-   content.set( &[&"age"], age+1 );
-
-   return Ok(());
+    #[wasm_bindgen]
+    #[no_mangle]
+    pub fn lobot();
 }
 
 
 
+pub fn log( string: &str ){
+    unsafe
+    {
+        lobot();
+        //mechtronium_log(string.as_ptr(), string.len() as _);
+        //mechtronium_log(string.len() as _);
+    }
+}
+
+fn mechtronium_read_string( ptr: *mut u8, len: i32 ) -> String
+{
+    unsafe{
+        String::from_raw_parts( ptr, len as _, len as _ )
+    }
+
+}
+
+#[wasm_bindgen]
+pub fn wasm_alloc(len: i32) -> *mut u8 {
+    let rtn = unsafe {
+        let align = mem::align_of::<u8>();
+        let size = mem::size_of::<u8>();
+        let layout = Layout::from_size_align(size*(len as usize),align).unwrap();
+        alloc(layout)
+    };
+    rtn
+}
+
+#[wasm_bindgen]
+pub fn wasm_dealloc(ptr: *mut u8, len: i32) {
+    unsafe {
+        let align = mem::align_of::<u8>();
+        let size = mem::size_of::<u8>();
+        let layout = Layout::from_size_align(size*(len as usize),align).unwrap();
+        dealloc(ptr, layout)
+    };
+}
+
+#[wasm_bindgen]
+pub fn wasm_test_log( ptr: *mut u8, len: i32 )
+{
+    let str = mechtronium_read_string(ptr, len );
+    log( str.as_str() );
+}

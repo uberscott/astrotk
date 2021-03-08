@@ -11,19 +11,26 @@
     <cargoProject FILE="$PROJECT_DIR$/mechtron_common/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/mechtron/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/main/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm_membrane/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/bind/neutron.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/bind/neutron.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/bind/simtron.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/bind/simtron.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron/src/buffers.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron/src/cache.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/mechtron_wasm_membrane.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/src/error.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/api.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/api.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/configs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/core.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/wasm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_wasm_membrane/src/wasm.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../wasm/example/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../wasm/example/Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/Makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../wasm/example/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/../wasm/example/src/lib.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -70,6 +77,9 @@
     <property name="com.intellij.openapi.externalSystem.service.settings.ExternalSystemGroupConfigurable" value="SELECTIVE" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/mechtron_wasm/src" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
+    <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtron_wasm/src/lib.rs" value="true" />
+    <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtron_wasm/src/wasm.rs" value="true" />
+    <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtron_wasm_membrane/src/wasm.rs" value="true" />
     <property name="settings.editor.selected.configurable" value="build.tools" />
   </component>
   <component name="RecentsManager">
@@ -78,13 +88,14 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/mechtron_wasm/src" />
       <recent name="$PROJECT_DIR$/mechtron_core/src" />
       <recent name="$PROJECT_DIR$/mechtron_common/src" />
       <recent name="$PROJECT_DIR$/mechtron/src" />
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test nucleus::test::test_create_sim">
+  <component name="RunManager" selected="Cargo.Test wasm::test::test_wasm">
     <configuration default="true" type="ArquillianTestNG" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -98,7 +109,7 @@
         <option name="Make" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Expand mechtronium::nucleus [rust]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+    <configuration name="Expand mechtronium::nucleus [rust]" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="expand --lib --color=always --theme=GitHub --tests nucleus" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtronium" />
       <option name="channel" value="DEFAULT" />
@@ -116,21 +127,6 @@
     <configuration name="Run" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="run --package rust --bin rust" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test nucleus::test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib nucleus::test" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -188,6 +184,21 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test wasm::test::test_wasm" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_wasm_membrane --lib wasm::test::test_wasm -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_wasm_membrane" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --package rust --lib tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -203,22 +214,38 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Tests in 'mechtron_wasm_membrane'" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_wasm_membrane" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <list>
+      <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
-      <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
       <item itemvalue="Cargo.Test nucleus::test::test_create_node" />
-      <item itemvalue="Cargo.Test nucleus::test" />
       <item itemvalue="Cargo.Test nucleus::test::test_ping_neutron" />
       <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
+      <item itemvalue="Cargo.Tests in 'mechtron_wasm_membrane'" />
+      <item itemvalue="Cargo.Test wasm::test::test_wasm" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test wasm::test::test_wasm" />
+        <item itemvalue="Cargo.Tests in 'mechtron_wasm_membrane'" />
         <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
-        <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
-        <item itemvalue="Cargo.Test nucleus::test::test_ping_neutron" />
-        <item itemvalue="Cargo.Test nucleus::test" />
         <item itemvalue="Cargo.Test nucleus::test::test_create_node" />
+        <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
       </list>
     </recent_temporary>
   </component>
@@ -252,7 +279,7 @@
       <workItem from="1614438907351" duration="1335000" />
       <workItem from="1614447127924" duration="6742000" />
       <workItem from="1614719901799" duration="38584000" />
-      <workItem from="1614860823054" duration="102685000" />
+      <workItem from="1614860823054" duration="138215000" />
     </task>
     <servers />
   </component>
