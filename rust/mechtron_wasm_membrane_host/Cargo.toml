@@ -1,5 +1,5 @@
 [package]
-name = "mechtron_wasm_membrane"
+name = "mechtron_wasm_membrane_host"
 version = "0.1.0"
 authors = ["Scott Williams <scott@mightydevco.com>"]
 edition = "2018"

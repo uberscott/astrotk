@@ -4,5 +4,6 @@ members = [
   "mechtronium",
   "mechtron_core",
   "mechtron",
-  "mechtron_wasm_membrane"
+  "mechtron_wasm_membrane_guest",
+  "mechtron_wasm_membrane_host"
   ]

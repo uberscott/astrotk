@@ -36,7 +36,6 @@ impl WasmMembrane{
 
     pub fn write_string(&self, string: &str )->Result<WasmBuffer,Error>
     {
-
         let string = string.as_bytes();
         let mut memory = self.instance.exports.get_memory("memory")?;
         let buffer = self.wasm_alloc(string.len() as _ )?;
@@ -44,7 +43,6 @@ impl WasmMembrane{
         for i in 0..string.len() {
             values[i].set(string[i] );
         }
-
 
         Ok(buffer)
     }
@@ -135,7 +133,6 @@ impl WasmMembrane {
 
         let mut guest = Arc::new(RwLock::new(WasmGuest::new() ));
         let mut host  = Arc::new(RwLock::new(WasmHost::new()));
-
 
         let imports = imports! { "env"=>{
         "mechtronium_log"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
