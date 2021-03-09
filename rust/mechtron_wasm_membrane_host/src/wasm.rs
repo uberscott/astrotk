@@ -8,31 +8,21 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::string::FromUtf8Error;
+use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, Weak, RwLock};
 
-use wasmer::{imports, Array, Function, FunctionType, ImportObject, Instance, Module, Resolver, Val, ValType, Value, WasmPtr, WasmerEnv, InstantiationError, ExportError, NativeFunc, RuntimeError};
+use wasmer::{Array, ExportError, Function, FunctionType, ImportObject, imports, Instance, InstantiationError, Memory, Module, NativeFunc, Resolver, RuntimeError, Val, ValType, Value, WasmerEnv, WasmPtr};
+
 use crate::error::Error;
 
-pub struct WasmMembrane{
+pub struct WasmMembrane {
     module: Module,
     instance: Instance,
     guest: Arc<RwLock<WasmGuest>>,
-    host:  Arc<RwLock<WasmHost>>,
+    host: Arc<RwLock<WasmHost>>,
 }
 
 impl WasmMembrane{
-    /*
-    fn alloc_buffer(&mut self, len: i32) -> i32 {
-        return self
-            .instance
-            .exports
-            .get_native_function::<i32, i32>("alloc_buffer")
-            .unwrap()
-            .call(len)
-            .unwrap();
-    }
-     */
 
     pub fn write_string(&self, string: &str )->Result<WasmBuffer,Error>
     {
@@ -47,7 +37,7 @@ impl WasmMembrane{
         Ok(buffer)
     }
 
-    pub fn write_buffer(&self, bytes: Vec<u8> )->Result<WasmBuffer,Error>
+    pub fn write_buffer(&self, bytes: &Vec<u8> )->Result<WasmBuffer,Error>
     {
         let mut memory = self.instance.exports.get_memory("memory")?;
         let buffer = self.wasm_alloc(bytes.len() as _ )?;
@@ -59,11 +49,46 @@ impl WasmMembrane{
         Ok(buffer)
     }
 
-
     pub fn wasm_alloc( &self, len: i32 )->Result<WasmBuffer,Error>
     {
         let buffer = WasmBuffer::new( self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_alloc").unwrap().call(len.clone())?, len as u32);
         Ok(buffer)
+    }
+
+    pub fn alloc_buffer(&self, len: i32 ) ->Result<i32,Error>
+    {
+        let buffer_id= self.instance.exports.get_native_function::<i32,i32>("wasm_alloc_buffer").unwrap().call(len.clone())?;
+        Ok(buffer_id)
+    }
+
+
+    pub fn store_buffer(&self, buffer: &Vec<u8> ) ->Result<i32,Error>
+    {
+        let wasm_buffer = self.write_buffer(buffer)?;
+        let buffer_id = self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),i32>("wasm_assign_buffer").unwrap().call(wasm_buffer.ptr,wasm_buffer.len as _)?;
+        Ok(buffer_id)
+    }
+
+    pub fn read_buffer(&self, buffer_id: i32 ) ->Result<Vec<u8>,Error>
+    {
+        let ptr = self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_get_buffer_ptr").unwrap().call(buffer_id )?;
+        let len = self.instance.exports.get_native_function::<i32,i32>("wasm_get_buffer_len").unwrap().call(buffer_id )?;
+println!("len {} ",len);
+        let memory = self.instance.exports.get_memory("memory")?;
+        let values = ptr.deref(memory, 0, len as u32).unwrap();
+        let mut rtn = vec!();
+        for i in 0..values.len() {
+           rtn.push( values[i].get() )
+        }
+
+        Ok(rtn)
+    }
+
+
+    pub fn wasm_dealloc_buffer( &self, buffer_id: i32 )->Result<(),Error>
+    {
+        self.instance.exports.get_native_function::<i32,()>("wasm_dealloc_buffer").unwrap().call(buffer_id.clone())?;
+        Ok(())
     }
 
     pub fn wasm_dealloc(&self, buffer: WasmBuffer ) ->Result<(),Error>
@@ -81,16 +106,39 @@ impl WasmMembrane{
     pub fn wasm_test_log(&self, message: &str)->Result<(),Error>
     {
         let buffer = self.write_string(message )?;
-        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_test_log").unwrap().call(buffer.ptr,buffer.len as _)?;
+        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_test_log")?.call(buffer.ptr,buffer.len as _)?;
         Ok(())
     }
 
     pub fn wasm_test_cache(&self, message: &str)->Result<(),Error>
     {
         let buffer = self.write_string(message )?;
-        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_test_cache").unwrap().call(buffer.ptr,buffer.len as _)?;
+        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_test_cache")?.call(buffer.ptr,buffer.len as _)?;
         Ok(())
     }
+
+    pub fn wasm_test_invoke_stateful(&self) ->Result<(),Error>
+    {
+        let struct_key= self.write_string("mechtronium_test_struct")?;
+        let method_key= self.write_string("mechtronium_test_method")?;
+
+        let request_buffer_key = self.write_string("+Goodbye" )?;
+        let state_buffer_out = "Hello".as_bytes().to_vec();
+        let state_buffer_id = self.store_buffer( &state_buffer_out  )?;
+
+        let call = self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32,i32,WasmPtr<u8,Array>,i32,WasmPtr<u8,Array>,i32),i32>("wasm_stateful_invoke")?;
+        let response_buffer_id = call.call(struct_key.ptr,struct_key.len as _, state_buffer_id, method_key.ptr,method_key.len as _, request_buffer_key.ptr,request_buffer_key.len as _ )?;
+
+        let response_buffer = self.read_buffer(response_buffer_id)?;
+        let state_buffer= self.read_buffer(state_buffer_id)?;
+
+//        self.wasm_dealloc_buffer(state_buffer_id);
+//        self.wasm_dealloc_buffer(response_buffer_id);
+        println!("Response: {}",response_buffer.len());
+        println!("State: {}",state_buffer.len());
+        Ok(())
+    }
+
 }
 
 #[derive(Clone)]
@@ -145,7 +193,7 @@ impl WasmHost{
 
     fn panic(&self, error: Error)
     {
-        println!("{:?}",error);
+        println!("{:?}", error);
     }
 }
 
@@ -154,101 +202,84 @@ struct Env {
     host: Arc<RwLock<WasmHost>>,
 }
 
+impl Env
+{
+    pub fn unwrap(&self) -> Result<Arc<WasmMembrane>, Error>
+    {
+        let host = self.host.read();
+        if host.is_err()
+        {
+            println!("WasmMembrane: could not acquire host lock");
+            return Err("could not acquire host lock".into());
+        }
+
+        let host = host.unwrap();
+
+        let membrane = host.membrane.as_ref();
+        if membrane.is_none()
+        {
+            println!("WasmMembrane: membrane is not set");
+            return Err("membrane is not set".into());
+        }
+        let membrane = membrane.unwrap().upgrade();
+
+        if membrane.is_none()
+        {
+            println!("WasmMembrane: could not upgrade membrane reference");
+            return Err("could not upgrade membrane reference".into());
+        }
+        let membrane = membrane.unwrap();
+        let mut memory = membrane.instance.exports.get_memory("memory");
+        if memory.is_err()
+        {
+            println!("WasmMembrane: could not access wasm memory");
+            return Err("could not access wasm memory".into());
+        }
+        Ok(membrane)
+    }
+}
+
 impl WasmMembrane {
     pub fn new(module: Module) -> Result<Arc<Self>, Error> {
-
-        let mut guest = Arc::new(RwLock::new(WasmGuest::new() ));
-        let mut host  = Arc::new(RwLock::new(WasmHost::new()));
+        let mut guest = Arc::new(RwLock::new(WasmGuest::new()));
+        let mut host = Arc::new(RwLock::new(WasmHost::new()));
 
         let imports = imports! { "env"=>{
         "mechtronium_log"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
-                let host = env.host.read();
-                if host.is_err( )
+                match env.unwrap()
                 {
-                  return;
+                   Ok(membrane)=>{
+                        let mut memory = membrane.instance.exports.get_memory("memory").unwrap();
+                        let str = ptr.get_utf8_string(memory, len as u32).unwrap();
+                        println!("FROM WEBASSEMBLY: {}",str);
+                   },
+                   Err(_)=>{}
                 }
-
-                let host = host.unwrap();
-
-                let membrane = host.membrane.as_ref();
-                if membrane.is_none()
-                {
-                  return;
-                }
-                let membrane = membrane.unwrap().upgrade();
-
-                if membrane.is_none()
-                {
-                  return;
-                }
-                let membrane = membrane.unwrap();
-
-                let mut memory = membrane.instance.exports.get_memory("memory");
-
-                if memory.is_err()
-                {
-                  return;
-                }
-
-                let memory = memory.unwrap();
-
-                let str = ptr.get_utf8_string(memory, len as u32).unwrap();
-                println!("FROM WEBASSEMBLY: {}",str);
             }),
-            "mechtronium_cache"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
-                let host = env.host.read();
-                if host.is_err( )
+        "mechtronium_cache"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
+                match env.unwrap()
                 {
-                  return;
+                   Ok(membrane)=>{
+                      let mut memory = membrane.instance.exports.get_memory("memory").unwrap();
+                      let str = ptr.get_utf8_string(memory, len as u32).unwrap();
+                      let key = membrane.write_string("cache_key");
+                      if key.is_err() {
+                         return;
+                      }
+                      let key = key.unwrap();
+
+                      let buffer = membrane.write_buffer( "some buffer".as_bytes().to_vec().as_ref() );
+                      if buffer.is_err() {
+                        return;
+                      }
+                      let buffer = buffer.unwrap();
+                      membrane.wasm_cache(key,buffer);
+                   },
+                   Err(_)=>{}
                 }
-
-                let host = host.unwrap();
-
-                let membrane = host.membrane.as_ref();
-                if membrane.is_none()
-                {
-                  return;
-                }
-                let membrane = membrane.unwrap().upgrade();
-
-                if membrane.is_none()
-                {
-                  return;
-                }
-                let membrane = membrane.unwrap();
-
-                let mut memory = membrane.instance.exports.get_memory("memory");
-
-                if memory.is_err()
-                {
-                  return;
-                }
-
-                let memory = memory.unwrap();
-
-                let str = ptr.get_utf8_string(memory, len as u32).unwrap();
-
-                let key = membrane.write_string("cache_key");
-                if key.is_err()
-                {
-                  return;
-                }
-                let key = key.unwrap();
-
-                let buffer = membrane.write_buffer( "some buffer".as_bytes().to_vec() );
-                if buffer.is_err()
-                {
-                  return;
-                }
-                let buffer = buffer.unwrap();
-
-                membrane.wasm_cache(key,buffer);
             })
-
         } };
 
-
-//        let imports = imports!{};
 
         let instance = Instance::new(&module, &imports)?;
 
@@ -276,14 +307,16 @@ impl WasmMembrane {
 #[cfg(test)]
 mod test
 {
-    use wasmer::{Store, JIT, Cranelift, Module};
     use std::fs::File;
     use std::io::Read;
+    use std::sync::Arc;
+
+    use wasmer::{Cranelift, JIT, Module, Store};
+
     use crate::error::Error;
     use crate::wasm::WasmMembrane;
 
-    #[test]
-    fn test_wasm() -> Result<(), Error>
+    fn membrane() -> Result<Arc<WasmMembrane>, Error>
     {
         let path = "../../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm";
 
@@ -292,14 +325,20 @@ mod test
         file.read_to_end(&mut data)?;
 
         let store = Store::new(&JIT::new(Cranelift::default()).engine());
-        println!("Compiling module...");
         let module = Module::new(&store, data)?;
-
         let membrane = WasmMembrane::new(module).unwrap();
+
+        Ok(membrane)
+    }
+
+
+    #[test]
+    fn test_wasm() -> Result<(), Error>
+    {
+        let membrane = membrane()?;
 
         let len = 2048;
         let buffer = membrane.wasm_alloc(len.clone())?;
-
         let memory = membrane.instance.exports.get_memory("memory")?;
 
         membrane.wasm_dealloc(buffer)?;
@@ -313,20 +352,8 @@ mod test
     #[test]
     fn test_logs() -> Result<(), Error>
     {
-        let path = "../../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm";
-
-        let mut file = File::open(path)?;
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
-
-        let store = Store::new(&JIT::new(Cranelift::default()).engine());
-        println!("Compiling module...");
-        let module = Module::new(&store, data)?;
-
-        let membrane = WasmMembrane::new(module).unwrap();
-
+        let membrane = membrane()?;
         membrane.wasm_test_log("Helllo this is a log");
-
         Ok(())
     }
 
@@ -334,20 +361,16 @@ mod test
     #[test]
     fn test_cache() -> Result<(), Error>
     {
-        let path = "../../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm";
+        let membrane = membrane()?;
+        membrane.wasm_test_cache("CACHE TEST")?;
+        Ok(())
+    }
 
-        let mut file = File::open(path)?;
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
-
-        let store = Store::new(&JIT::new(Cranelift::default()).engine());
-        println!("Compiling module...");
-        let module = Module::new(&store, data)?;
-
-        let membrane = WasmMembrane::new(module).unwrap();
-
-        membrane.wasm_test_cache("CACHE TEST");
-
+    #[test]
+    fn test_wasm_invoke() -> Result<(), Error>
+    {
+        let membrane = membrane()?;
+        membrane.wasm_test_invoke_stateful()?;
         Ok(())
     }
 }

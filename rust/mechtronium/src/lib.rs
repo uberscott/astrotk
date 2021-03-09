@@ -10,7 +10,6 @@ pub mod nucleus;
 pub mod scheduler;
 pub mod simulation;
 pub mod mechtron;
-pub mod wasm;
 pub mod router;
 pub mod error;
 pub mod cache;

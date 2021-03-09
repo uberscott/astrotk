@@ -62,3 +62,14 @@ impl From<std::io::Error> for Error{
         }
     }
 }
+
+/*
+impl From<Box<NoneError>> for Error{
+    fn from(e: Box<NoneError>) -> Self {
+        Error{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+ */

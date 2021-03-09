@@ -467,6 +467,7 @@ dependencies = [
 name = "mechtron_wasm_membrane_guest"
 version = "0.1.0"
 dependencies = [
+ "lazy_static",
  "wasm-bindgen",
 ]
 
