@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
+use std::cell::{RefCell, Cell};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
@@ -23,6 +23,123 @@ pub struct WasmMembrane {
 }
 
 impl WasmMembrane{
+
+    pub fn init(&self)->bool
+    {
+        let mut pass = true;
+        match self.instance.exports.get_memory("memory")
+        {
+            Ok(_) => {
+                self.log("wasm", "verified: memory");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: memory. could not access wasm memory. (expecting the memory module named 'memory')");
+                pass=false
+            }
+        }
+
+        match self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_alloc")
+        {
+            Ok(_) => {
+                self.log("wasm", "verified: wasm_alloc( i32 ) -> * const u8");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: wasm_alloc( i32 ) -> * const u8");
+                pass=false
+            }
+        }
+        match self.instance.exports.get_native_function::<i32,i32>("wasm_alloc_buffer"){
+            Ok(_) => {
+                self.log("wasm", "verified: wasm_alloc_buffer( i32 ) -> i32");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: wasm_alloc_buffer( i32 ) -> i32");
+                pass=false
+            }
+        }
+        match self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_get_buffer_ptr"){
+            Ok(_) => {
+                self.log("wasm", "verified: wasm_get_buffer_ptr( i32 ) -> *const u8");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: wasm_get_buffer_ptr( i32 ) -> *const u8");
+                pass=false
+            }
+        }
+        match self.instance.exports.get_native_function::<i32,i32>("wasm_get_buffer_len"){
+            Ok(_) => {
+                self.log("wasm", "verified: wasm_get_buffer_len( i32 ) -> i32");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: wasm_get_buffer_len( i32 ) -> i32");
+                pass=false
+            }
+        }
+        match self.instance.exports.get_native_function::<i32,()>("wasm_dealloc_buffer"){
+            Ok(_) => {
+                self.log("wasm", "verified: wasm_dealloc_buffer( i32 )");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: wasm_dealloc_buffer( i32 )");
+                pass=false
+            }
+        }
+        match self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_dealloc"){
+            Ok(_) => {
+                self.log("wasm", "verified: wasm_dealloc( *mut u8, i32)");
+            }
+            Err(_) => {
+                self.log("wasm", "failed: wasm_dealloc( *mut u8, i32)");
+                pass=false
+            }
+        }
+
+
+        {
+            let test = "Test write string";
+            match self.write_string(test){
+                Ok(string_buffer) => {
+
+                    self.log("wasm", "passed: write_string()");
+                },
+                Err(e) => {
+                    self.log("wasm", format!("failed: write_string() test {:?}", e).as_str());
+                    pass = false;
+
+                }
+            };
+        }
+
+
+        match self.instance.exports.get_native_function::<(),()>("wasm_init"){
+            Ok(func) => {
+
+                self.log("wasm", "verified: wasm_init( )");
+                match func.call()
+                {
+                    Ok(_) => {
+                        self.log("wasm", "passed: wasm_init( )");
+                    }
+                    Err(e) => {
+
+                        self.log("wasm", format!("failed: wasm_init( ).  {:?}", e).as_str());
+                    }
+                }
+            }
+            Err(e) => {
+                self.log("wasm", format!("failed: wasm_init( ) {:?}", e).as_str());
+                pass=false
+            }
+        }
+
+
+        pass
+    }
+
+    pub fn log( &self, log_type:&str, message: &str )
+    {
+        println!("{} : {}",log_type,message);
+    }
 
     pub fn write_string(&self, string: &str )->Result<WasmBuffer,Error>
     {
@@ -73,7 +190,6 @@ impl WasmMembrane{
     {
         let ptr = self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_get_buffer_ptr").unwrap().call(buffer_id )?;
         let len = self.instance.exports.get_native_function::<i32,i32>("wasm_get_buffer_len").unwrap().call(buffer_id )?;
-println!("len {} ",len);
         let memory = self.instance.exports.get_memory("memory")?;
         let values = ptr.deref(memory, 0, len as u32).unwrap();
         let mut rtn = vec!();
@@ -245,13 +361,14 @@ impl WasmMembrane {
         let mut host = Arc::new(RwLock::new(WasmHost::new()));
 
         let imports = imports! { "env"=>{
-        "mechtronium_log"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
+        "mechtronium_log"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,type_ptr:WasmPtr<u8,Array>,type_len:i32,ptr:WasmPtr<u8,Array>,len:i32| {
                 match env.unwrap()
                 {
                    Ok(membrane)=>{
                         let mut memory = membrane.instance.exports.get_memory("memory").unwrap();
+                        let log_type= type_ptr.get_utf8_string(memory, type_len as u32).unwrap();
                         let str = ptr.get_utf8_string(memory, len as u32).unwrap();
-                        println!("FROM WEBASSEMBLY: {}",str);
+                        membrane.log(log_type.as_str(),str.as_str());
                    },
                    Err(_)=>{}
                 }
@@ -299,10 +416,79 @@ impl WasmMembrane {
 
         return Ok(membrane);
     }
-
-
-    fn log(&self, ptr: i32, len: i32) {}
 }
+
+struct WasmBufferLocker
+{
+    membrane: Arc<WasmMembrane>,
+    buffers: RwLock<HashMap<String,i32>>
+}
+
+impl WasmBufferLocker
+{
+    pub fn new( membrane: Arc<WasmMembrane> ) -> Self
+    {
+        WasmBufferLocker
+        {
+            membrane: membrane.clone(),
+            buffers: RwLock::new( HashMap::new() )
+        }
+    }
+
+    pub fn store_buffer( &self, key: &str, buffer: &Vec<u8>)->Result<(),Error>
+    {
+        let buffer_id = self.membrane.store_buffer(buffer)?;
+        let mut buffers = self.buffers.write()?;
+        if buffers.contains_key(&key.to_string() )
+        {
+            return Err(format!("buffer locker already contains buffer named {} ", key).into());
+        }
+
+        buffers.insert( key.to_string(), buffer_id );
+
+        Ok(())
+    }
+
+    pub fn remove_buffer( &self, key: &str ) -> Result<(),Error>
+    {
+        let mut buffers = self.buffers.write()?;
+        let buffer_id = buffers.remove(&key.to_string() );
+
+        if buffer_id.is_none()
+        {
+            return Ok(());
+        }
+
+        let buffer_id = buffer_id.unwrap();
+
+        self.membrane.wasm_dealloc_buffer(buffer_id)?;
+
+        Ok(())
+    }
+
+    pub fn remove_all(&self)->Result<(),Error>
+    {
+        let mut buffers = self.buffers.write()?;
+
+        for buffer_id in buffers.values()
+        {
+            self.membrane.wasm_dealloc_buffer(buffer_id.clone())?;
+        }
+
+        buffers.clear();
+
+        Ok(())
+    }
+}
+
+impl Drop for WasmBufferLocker
+{
+    fn drop(&mut self) {
+        self.remove_all();
+    }
+}
+
+
 
 #[cfg(test)]
 mod test
@@ -326,7 +512,8 @@ mod test
 
         let store = Store::new(&JIT::new(Cranelift::default()).engine());
         let module = Module::new(&store, data)?;
-        let membrane = WasmMembrane::new(module).unwrap();
+        let mut membrane = WasmMembrane::new(module).unwrap();
+        membrane.init();
 
         Ok(membrane)
     }

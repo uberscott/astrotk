@@ -1,4 +1,5 @@
 use wasmer::{InstantiationError, RuntimeError, ExportError, CompileError};
+use std::sync::PoisonError;
 
 #[derive(Debug)]
 pub struct Error
@@ -22,6 +23,14 @@ impl From<InstantiationError> for Error{
     }
 }
 
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(e: PoisonError<T>) -> Self {
+        Error {
+            error: format!("{:?}", e)
+        }
+    }
+}
 impl From<&str> for Error{
     fn from(e: &str) -> Self {
         Error{
@@ -30,6 +39,13 @@ impl From<&str> for Error{
     }
 }
 
+impl From<String> for Error{
+    fn from(e: String) -> Self {
+        Error{
+            error: format!("{:?}",e)
+        }
+    }
+}
 
 impl From<RuntimeError> for Error{
     fn from(e: RuntimeError) -> Self {

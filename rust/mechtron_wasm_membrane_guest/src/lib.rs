@@ -20,11 +20,9 @@ use wasm_bindgen::__rt::std::sync::atomic::AtomicI32;
 use crate::error::Error;
 
 
-lazy_static!{
-
+lazy_static! {
   static ref BUFFERS: RwLock<HashMap<i32,BufferInfo>> = RwLock::new(HashMap::new());
   static ref BUFFER_INDEX: AtomicI32 = AtomicI32::new(0);
-  static ref STRUCTS: RwLock<HashMap<String,Struct>> = RwLock::new(HashMap::new());
 }
 
 struct BufferInfo
@@ -32,57 +30,20 @@ struct BufferInfo
     len: usize,
     ptr: AtomicPtr<u8>
 }
-
-struct Struct<STATE,REQUEST,RESPONSE>
-{
-    methods: HashMap<String,StatefulMethod<STATE,REQUEST,RESPONSE>>
-}
-
-struct StatefulMethod<STATE,REQUEST,RESPONSE> where
-{
-    state_in_transformer: Box<dyn InboundTransformer<STATE>>,
-    state_out_transformer: Box<dyn OutboundTransformer<STATE>>,
-    request_transformer: Box<dyn InboundTransformer<REQUEST>>,
-    response_transformer: Box<dyn OutboundTransformer<RESPONSE>>,
-    method: Box<dyn Fn(STATE,REQUEST)->Result<(RESPONSE,STATE),Error>>
-}
-
-impl <STATE,REQUEST,RESPONSE> StatefulMethod<STATE,REQUEST,RESPONSE>
-{
-   pub fn invoke( &self, state: Vec<u8>, request: Vec<u8> )->Result<(Vec<u8>,Vec<u8>),Error>
-   {
-       let state = self.state_in_transformer.transform(state);
-       let request = self.request_transformer.transform(request);
-       let (response,state) = (self.method)(state,request)?;
-       let response = self.response_transformer.transform(response);
-       let state = self.state_out_transformer.transform(state);
-       Ok((response,state))
-   }
-}
-
-trait InboundTransformer<T>
-{
-    fn transform( &self, buffer: Vec<u8> )->T;
-}
-
-trait OutboundTransformer<T>
-{
-    fn transform( &self, out: T )->Vec<u8>;
-}
-
-
-
 extern "C"
 {
-    fn mechtronium_log( ptr: *const u8, len: i32);
+
+    fn wasm_init();
+
+    fn mechtronium_log( type_ptr: *const u8, type_len: i32, message_ptr: *const u8, message_len: i32);
+
     fn mechtronium_cache( ptr: *const u8, len: i32);
 }
 
-pub fn log( string: &str ){
-    AtomicI32::new(0);
+pub fn log( log_type: &str, string: &str ){
     unsafe
         {
-            mechtronium_log(string.as_ptr(), string.len() as _ );
+            mechtronium_log(log_type.as_ptr(), log_type.len() as _, string.as_ptr(), string.len() as _ );
         }
 }
 
@@ -125,7 +86,7 @@ pub fn wasm_dealloc(ptr: *mut u8, len: i32) {
 pub fn wasm_test_log( ptr: *mut u8, len: i32 )
 {
     let str = mechtronium_read_string(ptr, len);
-    log( str.as_str() );
+    log( "wasm-test", str.as_str() );
 }
 
 #[wasm_bindgen]
@@ -133,7 +94,6 @@ pub fn wasm_cache( key_ptr: *mut u8, key_len: i32, ptr: *mut u8, len: i32)
 {
     let key = mechtronium_read_string(key_ptr, key_len );
     let buffer = mechtronium_read_buffer(ptr,len);
-    log(format!("CACHE KEY {}",key).as_str() );
 }
 
 #[wasm_bindgen]
@@ -208,6 +168,7 @@ pub fn wasm_assign_buffer(ptr: *mut u8, len: i32) -> i32{
 
 
 
+/*
 
 #[wasm_bindgen]
 pub fn wasm_stateful_invoke(struct_ptr: *mut u8, struct_len: i32,
@@ -255,3 +216,5 @@ pub fn wasm_stateful_invoke(struct_ptr: *mut u8, struct_len: i32,
 
     return response_buffer_id
 }
+
+ */

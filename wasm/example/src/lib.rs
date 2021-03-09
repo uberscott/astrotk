@@ -1,8 +1,12 @@
-use mechtron_wasm_membrane_guest::{wasm_test_log, log};
+#[macro_use]
+extern crate wasm_bindgen;
 
-pub fn init()
+use mechtron_wasm_membrane_guest::{log};
+
+#[no_mangle]
+pub extern "C" fn wasm_init()
 {
-    log("hello");
+    log("init","hello from WASM");
 }
 
 
