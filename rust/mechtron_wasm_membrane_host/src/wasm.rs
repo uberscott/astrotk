@@ -47,6 +47,19 @@ impl WasmMembrane{
         Ok(buffer)
     }
 
+    pub fn write_buffer(&self, bytes: Vec<u8> )->Result<WasmBuffer,Error>
+    {
+        let mut memory = self.instance.exports.get_memory("memory")?;
+        let buffer = self.wasm_alloc(bytes.len() as _ )?;
+        let values = buffer.ptr.deref(memory, 0, bytes.len() as u32).unwrap();
+        for i in 0..bytes.len() {
+            values[i].set(bytes[i] );
+        }
+
+        Ok(buffer)
+    }
+
+
     pub fn wasm_alloc( &self, len: i32 )->Result<WasmBuffer,Error>
     {
         let buffer = WasmBuffer::new( self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_alloc").unwrap().call(len.clone())?, len as u32);
@@ -59,10 +72,23 @@ impl WasmMembrane{
         Ok(())
     }
 
+    pub fn wasm_cache(&self, key: WasmBuffer, buffer: WasmBuffer ) ->Result<(),Error>
+    {
+        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32,WasmPtr<u8,Array>,i32),()>("wasm_cache").unwrap().call(key.ptr,key.len as _,buffer.ptr,buffer.len as _)?;
+        Ok(())
+    }
+
     pub fn wasm_test_log(&self, message: &str)->Result<(),Error>
     {
         let buffer = self.write_string(message )?;
         self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_test_log").unwrap().call(buffer.ptr,buffer.len as _)?;
+        Ok(())
+    }
+
+    pub fn wasm_test_cache(&self, message: &str)->Result<(),Error>
+    {
+        let buffer = self.write_string(message )?;
+        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_test_cache").unwrap().call(buffer.ptr,buffer.len as _)?;
         Ok(())
     }
 }
@@ -168,7 +194,56 @@ impl WasmMembrane {
 
                 let str = ptr.get_utf8_string(memory, len as u32).unwrap();
                 println!("FROM WEBASSEMBLY: {}",str);
-            } ),
+            }),
+            "mechtronium_cache"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,ptr:WasmPtr<u8,Array>,len:i32| {
+                let host = env.host.read();
+                if host.is_err( )
+                {
+                  return;
+                }
+
+                let host = host.unwrap();
+
+                let membrane = host.membrane.as_ref();
+                if membrane.is_none()
+                {
+                  return;
+                }
+                let membrane = membrane.unwrap().upgrade();
+
+                if membrane.is_none()
+                {
+                  return;
+                }
+                let membrane = membrane.unwrap();
+
+                let mut memory = membrane.instance.exports.get_memory("memory");
+
+                if memory.is_err()
+                {
+                  return;
+                }
+
+                let memory = memory.unwrap();
+
+                let str = ptr.get_utf8_string(memory, len as u32).unwrap();
+
+                let key = membrane.write_string("cache_key");
+                if key.is_err()
+                {
+                  return;
+                }
+                let key = key.unwrap();
+
+                let buffer = membrane.write_buffer( "some buffer".as_bytes().to_vec() );
+                if buffer.is_err()
+                {
+                  return;
+                }
+                let buffer = buffer.unwrap();
+
+                membrane.wasm_cache(key,buffer);
+            })
 
         } };
 
@@ -251,6 +326,27 @@ mod test
         let membrane = WasmMembrane::new(module).unwrap();
 
         membrane.wasm_test_log("Helllo this is a log");
+
+        Ok(())
+    }
+
+
+    #[test]
+    fn test_cache() -> Result<(), Error>
+    {
+        let path = "../../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm";
+
+        let mut file = File::open(path)?;
+        let mut data = Vec::new();
+        file.read_to_end(&mut data)?;
+
+        let store = Store::new(&JIT::new(Cranelift::default()).engine());
+        println!("Compiling module...");
+        let module = Module::new(&store, data)?;
+
+        let membrane = WasmMembrane::new(module).unwrap();
+
+        membrane.wasm_test_cache("CACHE TEST");
 
         Ok(())
     }
