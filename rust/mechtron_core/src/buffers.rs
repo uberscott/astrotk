@@ -191,9 +191,18 @@ impl ReadOnlyBuffer {
         }
     }
 
+    pub fn opt_get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Option<X>
+        where X: NP_Value<'get> + NP_Scalar<'get>,
+    {
+        match self.get( path )
+        {
+            Ok(rtn)=>Option::Some(rtn),
+            Err(_)=>Option::None
+        }
+    }
+
     pub fn get<'get, X: 'get>(&'get self, path: &Vec<String>) -> Result<X, Error>
-    where
-        X: NP_Value<'get> + NP_Scalar<'get>,
+    where X: NP_Value<'get> + NP_Scalar<'get>,
     {
         let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();

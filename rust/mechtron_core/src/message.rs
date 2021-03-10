@@ -20,88 +20,6 @@ use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 use crate::core::*;
 use std::cell::{Cell, RefCell};
 
-static ID: &'static str = r#"
-struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }})
-"#;
-
-/*
-static MESSAGE_SCHEMA: &'static str = r#"
-struct({fields: {
-  id:struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }}),
-  kind: enum({choices: ["State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic", "Api"]}),
-  from: struct({fields: {
-    tron: struct({fields: {
-      nucleus: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }}),
-      tron: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }})
-    }}),
-    cycle: i64(),
-    timestamp: u64(),
-    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
-  }}),
-  to: struct({fields: {
-    tron: struct({fields: {
-      nucleus: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }}),
-      tron: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }})
-    }}),
-    port: string(),
-    cycle: i64(),
-    phase: string(),
-    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
-    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
-  }}),
-  callback: struct({fields: {
-    tron: struct({fields: {
-      nucleus: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }}),
-      tron: struct({fields: {
-        seq_id: i64(),
-        id: i64()
-      }})
-    }}),
-    port: string(),
-    cycle: i64(),
-    phase: string(),
-    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
-    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
-  }}),
-  payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) })
-
-}})
-
-
-"#;
-
- */
-
-static MESSAGE_BUILDERS_SCHEMA: &'static str = r#"{
-"type": "string"
-}"#;
-
-lazy_static! {
-//    static ref MESSAGES_FACTORY: NP_Factory<'static> = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
-    static ref MESSAGE_BUILDERS_FACTORY: NP_Factory<'static> =
-        NP_Factory::new_json(MESSAGE_BUILDERS_SCHEMA).unwrap();
-}
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct To {
@@ -497,7 +415,7 @@ impl MessageBuilder {
 
     pub fn build(&self, seq: Arc<IdSeq>) -> Result<Message, Error> {
         self.validate_build()?;
-        let payloads= self.payloads.replace(Option::None);
+        let payloads = self.payloads.replace(Option::None);
 
         Ok(Message {
             id: seq.next(),
@@ -515,7 +433,7 @@ impl MessageBuilder {
                     Some(r) => r.clone(),
                     None => DeliveryMoment::Cyclic,
                 },
-                layer: match &self.to_layer{
+                layer: match &self.to_layer {
                     Some(r) => r.clone(),
                     None => MechtronLayer::Kernel,
                 },
@@ -531,21 +449,17 @@ impl MessageBuilder {
         builders: Vec<MessageBuilder>,
         configs: &Configs
     ) -> Result<Buffer, Error> {
-
-
-
         let mut buffer = {
-          let factory = configs.schemas.get( &CORE_SCHEMA_MESSAGE_BUILDERS )?;
-          let buffer = factory.new_buffer(Option::Some(builders.len()*128));
-          let buffer = Buffer::new(buffer);
-          buffer
+            let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE_BUILDERS)?;
+            let buffer = factory.new_buffer(Option::Some(builders.len() * 128));
+            let buffer = Buffer::new(buffer);
+            buffer
         };
 
-        for index in 0..builders.len(){
+        for index in 0..builders.len() {
             let builder = &builders[index];
-            builder.append_to_buffer(Path::new(path![index.to_string()]), & mut buffer )?;
+            builder.append_to_buffer(Path::new(path![index.to_string()]), &mut buffer)?;
         }
-
 
         return Ok(buffer);
     }
@@ -557,62 +471,61 @@ impl MessageBuilder {
     ) -> Result<(), Error> {
         self.validate_build()?;
 
-        buffer.set( &path.with(path!("kind")), NP_Enum::Some(message_kind_to_string(&message.kind).to_string()))?;
+        buffer.set(&path.with(path!("kind")), NP_Enum::Some(message_kind_to_string(&self.kind.as_ref().unwrap().clone()).to_string()))?;
         if self.from.is_some()
         {
-            self.from.unwrap().append(&path.push(path!("from")), buffer )?
+            self.from.as_ref().unwrap().append(&path.push(path!("from")), buffer)?
         }
         {
-           let path = path.push( path!["to"]);
-           if self.to_nucleus_lookup_name.is_some()
-           {
-             buffer.set(&path.with(path!["nucleus_lookup_name"]), self.to_nucleus_lookup_name.unwrap())?;
-           }
-           if self.to_tron_lookup_name.is_some()
-           {
-             buffer.set(&path.with(path!["tron_lookup_name"]), self.to_tron_lookup_name.unwrap())?;
-           }
-           if self.to_tron_id.is_some()
-           {
-              self.to_tron_id.unwrap().append( &path.push(path!["tron_id"]), buffer )?
-           }
-           if self.to_nucleus_id.is_some()
-           {
-              self.to_nucleus_id.unwrap().append( &path.push(path!["nucleus_id"]), buffer )?
-           }
-           buffer.set(&path.with(path!["port"]), self.to_port.unwrap() )?;
-           buffer.set(&path.with(path!["phase"]), self.to_phase.unwrap() )?;
-           buffer.set(&path.with(path!["cycle_kind"]), NP_Enum::Some( match self.to_cycle_kind.unwrap() {
+            let path = path.push(path!["to"]);
+            if self.to_nucleus_lookup_name.is_some()
+            {
+                buffer.set(&path.with(path!["nucleus_lookup_name"]), self.to_nucleus_lookup_name.as_ref().unwrap().clone())?;
+            }
+            if self.to_tron_lookup_name.is_some()
+            {
+                buffer.set(&path.with(path!["tron_lookup_name"]), self.to_tron_lookup_name.as_ref().unwrap().clone())?;
+            }
+            if self.to_tron_id.is_some()
+            {
+                self.to_tron_id.unwrap().append(&path.push(path!["tron_id"]), buffer)?
+            }
+            if self.to_nucleus_id.is_some()
+            {
+                self.to_nucleus_id.unwrap().append(&path.push(path!["nucleus_id"]), buffer)?
+            }
+            buffer.set(&path.with(path!["port"]), self.to_port.as_ref().unwrap().clone())?;
+            buffer.set(&path.with(path!["phase"]), self.to_phase.as_ref().unwrap().clone())?;
+            buffer.set(&path.with(path!["cycle_kind"]), NP_Enum::Some(match self.to_cycle_kind.as_ref().unwrap().clone() {
                 Cycle::Exact(_) => "Exact".to_string(),
                 Cycle::Present => "Present".to_string(),
                 Cycle::Next => "Next".to_string()
-            } )  );
+            }));
 
-            match self.to_cycle_kind.unwrap()
+            match self.to_cycle_kind.as_ref().unwrap()
             {
                 Cycle::Exact(cycle) => {
-                    buffer.set(&path.with(path!["cycle"]),cycle)?;
+                    buffer.set(&path.with(path!["cycle"]), cycle.clone() )?;
                 }
-                _ => {}
+                Cycle::Present => {}
+                Cycle::Next => {}
             }
 
-            buffer.set(&path.with(path!["delivery"]), NP_Enum::Some( match self.to_delivery.unwrap() {
+            buffer.set(&path.with(path!["delivery"]), NP_Enum::Some(match self.to_delivery.as_ref().unwrap().clone() {
                 DeliveryMoment::Cyclic => "Cyclic".to_string(),
                 DeliveryMoment::Phasic => "Phasic".to_string(),
                 DeliveryMoment::ExtraCyclic => "ExtraCyclic".to_string()
-            } )  );
+            }));
 
 
-            buffer.set(&path.with(path!["layer"]), NP_Enum::Some( match self.to_layer.unwrap() {
+            buffer.set(&path.with(path!["layer"]), NP_Enum::Some(match self.to_layer.as_ref().unwrap().clone() {
                 MechtronLayer::Kernel => "Kernel".to_string(),
                 MechtronLayer::Shell => "Shell".to_string()
-            } )  );
-
-
+            }));
         }
 
         {
-            let path = path.push(path!("payloads", payload_index.to_string()));
+            let path = path.push(path!("payloads"));
             let payloads = self.payloads.replace(Option::None).unwrap();
             let mut payload_index = 0;
             for payload in payloads
@@ -625,16 +538,109 @@ impl MessageBuilder {
         if self.meta.is_some()
         {
             let path = path.push(path!("meta"));
-            for key in self.meta.unwrap().keys()
+            for key in self.meta.as_ref().unwrap().clone().keys()
             {
-                buffer.set( &path.with(path![key]), self.meta.unwrap().get(key).clone() )?;
+                buffer.set(&path.with(path![key]), self.meta.as_ref().unwrap().get(key).clone().unwrap().clone())?;
             }
         }
 
         Ok(())
     }
 
+    pub fn from_buffer(buffer: Vec<u8>, configs: &Configs) -> Result<Vec<MessageBuilder>, Error>
+    {
+        let buffer = {
+            let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE_BUILDERS)?;
+            let buffer = factory.open_buffer(buffer);
+            let buffer = Buffer::new(buffer);
+            buffer.read_only()
+        };
+
+        let mut builders = vec!();
+        for index in 0..buffer.get_length(&path![])?
+        {
+            let path = Path::new(path![index.to_string()]);
+            let mut builder = MessageBuilder::new();
+            builder.kind = Option::Some(string_to_message_kind(buffer.get::<NP_Enum>(&path.with(path!["kind"]))?.to_str())?);
+
+            if buffer.is_set::<i64>(&path.with(path!["from", "cycle"]))?
+            {
+                From::from(&path.push(path!["from"]), &buffer)?;
+            }
+
+            {
+                let path = path.push(path!["to"]);
+                builder.to_nucleus_lookup_name = buffer.opt_get(&path.with(path!["nucleus_lookup_name"]));
+                builder.to_tron_lookup_name = buffer.opt_get(&path.with(path!["tron_lookup_name"]));
+                if buffer.is_set::<i64>(&path.with(path!["tron_id","id"]))?
+                {
+                    builder.to_tron_id = Option::Some(Id::from( &path.push( path!["tron_id"]), &buffer )?);
+                }
+
+                if buffer.is_set::<i64>(&path.with(path!["nucleus_id","id"]))?
+                {
+                    builder.to_nucleus_id= Option::Some(Id::from( &path.push( path!["nucleus_id"]), &buffer )?);
+                }
+
+                builder.to_port = buffer.opt_get(&path.with(path!["port"]));
+                builder.to_cycle_kind = match buffer.get::<NP_Enum>(&path.with(path!["cycle_kind"]))? {
+                    NP_Enum::None => { return Err("cycle_kind".into()) }
+                    NP_Enum::Some(cycle_kind) => Option::Some(match cycle_kind.as_str() {
+                        "Exact" => Cycle::Exact(buffer.get(&path.with(path!["cycle"]))?),
+                        "Present" => Cycle::Present,
+                        "Next"=> Cycle::Next,
+                        _=> Cycle::Next,
+                    })
+                };
+                builder.to_delivery = match buffer.get::<NP_Enum>(&path.with(path!["delivery"]))? {
+                    NP_Enum::None => { return Err("delivery_kind".into()) }
+                    NP_Enum::Some(delivery) => Option::Some(match delivery.as_str() {
+                        "Cyclic" => DeliveryMoment::Cyclic,
+                        "Phasic" => DeliveryMoment::Phasic,
+                        "ExtraCyclic" => DeliveryMoment::ExtraCyclic,
+                        _ => DeliveryMoment::Cyclic
+                    })
+                };
+                builder.to_layer = match buffer.get::<NP_Enum>(&path.with(path!["layer"]))? {
+                    NP_Enum::None => { return Err("layer".into()) }
+                    NP_Enum::Some(delivery) => Option::Some(match delivery.as_str() {
+                        "Shell" => MechtronLayer::Shell,
+                        "Kernel" => MechtronLayer::Kernel,
+                        _ => MechtronLayer::Kernel
+                    })
+                };
+            }
+
+            {
+                let path = path.push(path!["payloads"]);
+                let mut payloads = vec![];
+                for index in 0..buffer.get_length(&path.with(path![]))?
+                {
+                    payloads.push(Payload::from(&path.push(path![index.to_string()]), &buffer, configs)?);
+                }
+                builder.payloads.replace(Option::Some(payloads));
+            }
+
+            if buffer.get_length(&path.with(path!["meta"]))? > 0
+            {
+                let path = path.push(path!["meta"]);
+                let mut meta = HashMap::new();
+                for key in buffer.get_keys(&path.with(path![]))?.unwrap()
+                {
+                    let value = buffer.get::<String>(&path.with(path![key]))?;
+                    meta.insert(key, value);
+                }
+                builder.meta = Option::Some(meta);
+            }
+
+            builders.push(builder);
+        }
+
+        Ok(builders)
+    }
 }
+
+
 
 /*
 #[derive(Clone)]

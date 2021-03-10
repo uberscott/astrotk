@@ -246,7 +246,6 @@ impl WasmMembrane{
 
         let message_builders = self.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_create")?.call(kind.clone(), state.clone(), create_message.clone() )?;
 
-        MessageBuilder::
 
 
         Ok(())
