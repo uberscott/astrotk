@@ -527,47 +527,113 @@ impl MessageBuilder {
         })
     }
 
-    pub fn message_builders_to_buffer(
+    pub fn to_buffer(
         builders: Vec<MessageBuilder>,
-    ) -> Result<NP_Buffer<NP_Memory_Owned>, Error> {
-        let mut buffer = MESSAGE_BUILDERS_FACTORY.new_buffer(Option::None);
-        let mut index = 0;
-        for b in builders {
-            let result = b.append_to_buffer(&mut buffer, index);
-            match result {
-                Ok(_) => {}
-                Err(e) => {
-                    return Err(format!("error when append_to_buffer {}", e.to_string()).into())
-                }
-            };
-            index = index + 1;
+        configs: &Configs
+    ) -> Result<Buffer, Error> {
+
+
+
+        let mut buffer = {
+          let factory = configs.schemas.get( &CORE_SCHEMA_MESSAGE_BUILDERS )?;
+          let buffer = factory.new_buffer(Option::Some(builders.len()*128));
+          let buffer = Buffer::new(buffer);
+          buffer
+        };
+
+        for index in 0..builders.len(){
+            let builder = &builders[index];
+            builder.append_to_buffer(Path::new(path![index.to_string()]), & mut buffer )?;
         }
+
+
         return Ok(buffer);
     }
 
     pub fn append_to_buffer(
         &self,
-        buffer: &mut NP_Buffer<NP_Memory_Owned>,
-        index: usize,
+        path: Path,
+        buffer: &mut Buffer,
     ) -> Result<(), Error> {
-        self.validate()?;
-        let result = self.append_to_buffer_np_error(buffer, index);
-        match result {
-            Ok(_) => Ok(()),
-            Err(e) => Err("np_error".into()),
-        }
-    }
+        self.validate_build()?;
 
-    fn append_to_buffer_np_error(
-        &self,
-        buffer: &mut NP_Buffer<NP_Memory_Owned>,
-        index: usize,
-    ) -> Result<(), NP_Error> {
-        let index = index.to_string();
-        //        buffer.set(&[&index, &"kind"], message_kind_to_index(&self.kind.as_ref().unwrap()))?;
+        buffer.set( &path.with(path!("kind")), NP_Enum::Some(message_kind_to_string(&message.kind).to_string()))?;
+        if self.from.is_some()
+        {
+            self.from.unwrap().append(&path.push(path!("from")), buffer )?
+        }
+        {
+           let path = path.push( path!["to"]);
+           if self.to_nucleus_lookup_name.is_some()
+           {
+             buffer.set(&path.with(path!["nucleus_lookup_name"]), self.to_nucleus_lookup_name.unwrap())?;
+           }
+           if self.to_tron_lookup_name.is_some()
+           {
+             buffer.set(&path.with(path!["tron_lookup_name"]), self.to_tron_lookup_name.unwrap())?;
+           }
+           if self.to_tron_id.is_some()
+           {
+              self.to_tron_id.unwrap().append( &path.push(path!["tron_id"]), buffer )?
+           }
+           if self.to_nucleus_id.is_some()
+           {
+              self.to_nucleus_id.unwrap().append( &path.push(path!["nucleus_id"]), buffer )?
+           }
+           buffer.set(&path.with(path!["port"]), self.to_port.unwrap() )?;
+           buffer.set(&path.with(path!["phase"]), self.to_phase.unwrap() )?;
+           buffer.set(&path.with(path!["cycle_kind"]), NP_Enum::Some( match self.to_cycle_kind.unwrap() {
+                Cycle::Exact(_) => "Exact".to_string(),
+                Cycle::Present => "Present".to_string(),
+                Cycle::Next => "Next".to_string()
+            } )  );
+
+            match self.to_cycle_kind.unwrap()
+            {
+                Cycle::Exact(cycle) => {
+                    buffer.set(&path.with(path!["cycle"]),cycle)?;
+                }
+                _ => {}
+            }
+
+            buffer.set(&path.with(path!["delivery"]), NP_Enum::Some( match self.to_delivery.unwrap() {
+                DeliveryMoment::Cyclic => "Cyclic".to_string(),
+                DeliveryMoment::Phasic => "Phasic".to_string(),
+                DeliveryMoment::ExtraCyclic => "ExtraCyclic".to_string()
+            } )  );
+
+
+            buffer.set(&path.with(path!["layer"]), NP_Enum::Some( match self.to_layer.unwrap() {
+                MechtronLayer::Kernel => "Kernel".to_string(),
+                MechtronLayer::Shell => "Shell".to_string()
+            } )  );
+
+
+        }
+
+        {
+            let path = path.push(path!("payloads", payload_index.to_string()));
+            let payloads = self.payloads.replace(Option::None).unwrap();
+            let mut payload_index = 0;
+            for payload in payloads
+            {
+                Payload::dump(payload, &path.push(path![payload_index.to_string()]), buffer)?;
+                payload_index = payload_index + 1;
+            }
+        }
+
+        if self.meta.is_some()
+        {
+            let path = path.push(path!("meta"));
+            for key in self.meta.unwrap().keys()
+            {
+                buffer.set( &path.with(path![key]), self.meta.unwrap().get(key).clone() )?;
+            }
+        }
 
         Ok(())
     }
+
 }
 
 /*
@@ -682,6 +748,11 @@ impl Message {
             size = size + payload.buffer.size();
         }
         return size;
+    }
+
+
+    pub fn copy_to_bytes<'configs>(&self, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
+        Message::to_bytes(self.clone(), configs)
     }
 
     pub fn to_payload<'configs>(message:Message, configs: &Configs<'configs>) -> Result<Payload, Error> {

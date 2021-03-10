@@ -51,6 +51,27 @@ pub fn mechtron_test_cache()
     }
 }
 
+#[wasm_bindgen]
+pub fn wasm_test_panic()
+{
+    log("wasm", "testing panic!");
+    panic!()
+}
+
+#[wasm_bindgen]
+pub fn wasm_test_ok()
+{
+    log("wasm", "testing ok");
+}
+
+#[wasm_bindgen]
+pub fn mechtron_create( kind: i32,
+                        state: i32,
+                        create_message: i32 )->i32
+{
+
+}
+
 
                              #[wasm_bindgen]
 pub fn mechtron_message_port(kind: i32,

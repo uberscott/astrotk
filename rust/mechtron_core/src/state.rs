@@ -11,6 +11,7 @@ use no_proto::NP_Factory;
 use std::rc::Rc;
 use std::sync::Arc;
 use crate::error::Error;
+use no_proto::pointer::bytes::NP_Bytes;
 
 #[derive(Clone)]
 pub struct State {
@@ -69,8 +70,8 @@ println!("TAINT {} ",taint );
     }
 
 
-    pub fn from<'configs>(
-        configs: &Configs<'configs>,
+    pub fn from(
+        configs: &Configs,
         meta: Buffer,
         data: Buffer,
     ) -> Result<Self,Error> {
@@ -84,8 +85,63 @@ println!("TAINT {} ",taint );
             data: data,
             config:config
         })
+    }
 
+    pub fn to_buffer(&self, configs: &Configs )->Result<Vec<u8>,Error>
+    {
+        let mut buffer = {
+            let size = self.meta.len() + self.data.len() + 128;
+            let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;
+            let buffer = factory.new_buffer(Option::Some(size));
+            let mut buffer = Buffer::new(buffer);
+            buffer
+        };
 
+        buffer.set( &path!["config"], self.config.source.to() );
+        buffer.set( &path!["buffers", "meta"], self.meta.read_bytes() )?;
+        buffer.set( &path!["buffers", "data"], self.data.read_bytes() )?;
+
+        Ok(Buffer::bytes(buffer))
+    }
+
+    pub fn from_buffer( buffer: Vec<u8>, configs: &Configs )->Result<Self,Error>
+    {
+        let buffer = {
+            let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;
+            let buffer = factory.open_buffer(buffer);
+            let buffer = Buffer::new(buffer);
+            buffer
+        };
+
+        let (config, bind) = {
+            let config = buffer.get::<String>(&path!["config"])?;
+            let config = Artifact::from(&config)?;
+            let config = configs.mechtrons.get(&config)?;
+            let bind = configs.binds.get(&config.bind.artifact)?;
+            (config,bind)
+        };
+
+        let meta = {
+            let factory = configs.schemas.get(&CORE_SCHEMA_META_STATE)?;
+            let meta = buffer.get::<Vec<u8>>(&path!["buffers","meta"])?;
+            let meta = factory.open_buffer(meta);
+            let meta = Buffer::new(meta);
+            meta
+        };
+
+        let data = {
+            let factory = configs.schemas.get(&bind.state.artifact)?;
+            let data = buffer.get::<Vec<u8>>(&path!["buffers","data"])?;
+            let data = factory.open_buffer(data);
+            let data = Buffer::new(data);
+            data
+        };
+
+        Ok(State{
+            config: config,
+            meta: meta,
+            data: data
+        })
     }
 
     fn is_tainted(&self) -> Result<bool, Error> {

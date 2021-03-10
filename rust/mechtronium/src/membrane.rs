@@ -8,13 +8,16 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::string::FromUtf8Error;
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak, MutexGuard};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use mechtron_core::artifact::Artifact;
 use wasmer::{Array, ExportError, Function, FunctionType, ImportObject, imports, Instance, InstantiationError, Memory, Module, NativeFunc, Resolver, RuntimeError, Val, ValType, Value, WasmerEnv, WasmPtr};
 
 use crate::error::Error;
 use crate::cache::Cache;
+use mechtron_core::state::State;
+use mechtron_core::configs::Configs;
+use mechtron_core::message::{Message, MessageBuilder};
 
 pub struct WasmMembrane {
     module: Module,
@@ -25,7 +28,7 @@ pub struct WasmMembrane {
 
 impl WasmMembrane{
 
-    pub fn init(&self)->bool
+    pub fn init(&self)->Result<(),Error>
     {
         let mut pass = true;
         match self.instance.exports.get_memory("memory")
@@ -93,7 +96,7 @@ impl WasmMembrane{
         }
 
 
-        match self.instance.exports.get_native_function::<(),()>("wasm_init"){
+        match self.instance.exports.get_native_function::<(),()>("mechtron_init"){
             Ok(func) => {
 
                 self.log("wasm", "verified: wasm_init( )");
@@ -115,7 +118,11 @@ impl WasmMembrane{
         }
 
 
-        pass
+        match pass{
+            true => Ok(()),
+            false => Err("init failed".into())
+        }
+
     }
 
     pub fn log( &self, log_type:&str, message: &str )
@@ -231,9 +238,35 @@ impl WasmMembrane{
 
      */
 
+    pub fn invoke_create(&self, state: MutexGuard<Arc<State>>, create_message: Arc<Message>, configs: &Configs ) ->Result<(),Error>
+    {
+        let kind = self.write_string(state.config.kind.as_str() )?;
+        let state = self.write_buffer( &state.to_buffer(configs)? )?;
+        let create_message = self.write_buffer( &create_message.copy_to_bytes(configs)? )?;
+
+        let message_builders = self.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_create")?.call(kind.clone(), state.clone(), create_message.clone() )?;
+
+        MessageBuilder::
+
+
+        Ok(())
+    }
+
     pub fn test_cache(&self)->Result<(),Error>
     {
         self.instance.exports.get_native_function::<(),()>("mechtron_test_cache").unwrap().call()?;
+        Ok(())
+    }
+
+    pub fn test_panic(&self)->Result<(),Error>
+    {
+        self.instance.exports.get_native_function::<(),()>("wasm_test_panic").unwrap().call()?;
+        Ok(())
+    }
+
+    pub fn test_ok(&self)->Result<(),Error>
+    {
+        self.instance.exports.get_native_function::<(),()>("wasm_test_ok").unwrap().call()?;
         Ok(())
     }
 }
@@ -490,7 +523,7 @@ mod test
         let store = Store::new(&JIT::new(Cranelift::default()).engine());
         let module = Module::new(&store, data)?;
         let mut membrane = WasmMembrane::new(module, Node::default_cache()).unwrap();
-        membrane.init();
+        membrane.init()?;
 
         Ok(membrane)
     }
@@ -520,6 +553,23 @@ mod test
     }
 
 
+    #[test]
+    fn test_panic() -> Result<(), Error>
+    {
+        let membrane = membrane()?;
+
+        match membrane.test_panic()
+        {
+            Ok(_) => {
+                assert!(false)
+            }
+            Err(_) => {}
+        }
+
+        membrane.test_ok()?;
+
+        Ok(())
+    }
 
 
 }

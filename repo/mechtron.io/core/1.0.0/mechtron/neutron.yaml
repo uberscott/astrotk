@@ -1,4 +1,5 @@
 name: Neutron
+kind: Neutron
 wasm:
   artifact:
     path: wasm/neutron.wasm

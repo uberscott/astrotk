@@ -107,6 +107,8 @@ impl<'config> Configs<'config> {
 
         self.cache(&CORE_SCHEMA_EMPTY)?;
         self.cache(&CORE_SCHEMA_MESSAGE)?;
+        self.cache(&CORE_SCHEMA_MESSAGE_BUILDERS)?;
+        self.cache(&CORE_SCHEMA_STATE)?;
         self.cache(&CORE_SCHEMA_META_STATE)?;
         self.cache(&CORE_SCHEMA_META_CREATE)?;
         self.cache(&CORE_SCHEMA_META_API)?;
@@ -261,6 +263,7 @@ impl Parser<NucleusConfig> for NucleusConfigParser {
 pub struct MechtronConfig {
     pub source: Artifact,
     pub name: Option<String>,
+    pub kind: String,
     pub wasm: WasmRef,
     pub bind: BindRef,
 }
@@ -483,6 +486,7 @@ pub enum PayloadKind {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MechtronConfigYaml {
     name: Option<String>,
+    kind: String,
     wasm: WasmRefYaml,
     bind: BindRefYaml,
 }
@@ -509,6 +513,7 @@ impl MechtronConfigYaml {
         return Ok(MechtronConfig {
             source: artifact.clone(),
             name: self.name.clone(),
+            kind: self.kind.clone(),
             wasm: WasmRef {
                 artifact: self.wasm.artifact.to_artifact(default_bundle, Option::Some("wasm"))?
             },

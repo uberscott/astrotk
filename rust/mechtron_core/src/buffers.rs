@@ -86,6 +86,11 @@ impl Buffer {
         }
     }
 
+    pub fn len(&self)->usize
+    {
+        self.np_buffer.data_length()
+    }
+
     pub fn set<'set, X: 'set>(
         &'set mut self,
         path: &Vec<String>,
@@ -118,12 +123,17 @@ impl Buffer {
         }
     }
 
-    pub fn read_bytes(&mut self) -> &[u8] {
+    pub fn read_bytes(&self) -> &[u8] {
         return self.np_buffer.read_bytes();
     }
 
     pub fn bytes(buffer: Buffer) -> Vec<u8> {
         buffer.np_buffer.finish().bytes()
+    }
+
+    pub fn copy_bytes(&self) -> Vec<u8>
+    {
+        self.np_buffer.read_bytes().to_vec()
     }
 }
 

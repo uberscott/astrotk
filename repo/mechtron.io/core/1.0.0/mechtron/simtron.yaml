@@ -1,4 +1,5 @@
 name: Simtron
+kind: Simtron
 wasm:
   artifact:
     path: wasm/simtron.wasm
