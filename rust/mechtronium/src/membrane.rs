@@ -233,9 +233,7 @@ impl WasmMembrane{
 
     pub fn test_cache(&self)->Result<(),Error>
     {
-        println!("TESTING CACHE!");
         self.instance.exports.get_native_function::<(),()>("mechtron_test_cache").unwrap().call()?;
-        println!("SUCCESS!");
         Ok(())
     }
 }
@@ -358,7 +356,6 @@ impl  WasmMembrane {
             }),
             "mechtronium_load"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,artifact_id:i32|->i32 {
 
-println!("MECHTRONIUM LOAD");
                 match env.unwrap()
                 {
                    Ok(membrane)=>{

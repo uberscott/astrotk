@@ -16,9 +16,10 @@ use std::collections::{HashMap, HashSet};
 use crate::membrane::{mechtronium_consume_string, mechtronium_consume_buffer, mechtronium_cache, wasm_write_string, mechtronium_load, log};
 use mechtron_core::error::Error;
 use mechtron_core::core::*;
+use mechtron_core::configs::*;
 
 lazy_static! {
-  static ref ARTIFACT_REPO: WasmArtifactRepository = WasmArtifactRepository::new();
+  static ref CONFIGS: Configs<'static> = Configs::new(Arc::new(WasmArtifactRepository::new()));
 }
 
 extern "C"
@@ -29,12 +30,11 @@ extern "C"
 #[wasm_bindgen]
 pub fn mechtron_test_cache()
 {
-    let repo = WasmArtifactRepository::new();
-    match repo.cache(&CORE_SCHEMA_META_API)
+    match CONFIGS.artifacts.cache(&CORE_SCHEMA_META_API)
     {
         Ok(_) => {
             log( "cache", "cache worked");
-            match repo.load(&CORE_SCHEMA_META_API)
+            match CONFIGS.artifacts.load(&CORE_SCHEMA_META_API)
             {
                 Ok(l) => {
                     log( "cache", "loaded bytes");
@@ -116,6 +116,7 @@ impl ArtifactCache for WasmArtifactRepository
         {
             return Ok(());
         }
+        log("mechtron", format!("caching: {}",artifact.to()).as_str());
 
         let artifact_string_id = wasm_write_string(artifact.to() );
         unsafe{ mechtronium_cache( artifact_string_id ) };
@@ -139,9 +140,6 @@ impl ArtifactCache for WasmArtifactRepository
         Ok(buffer)
     }
 
-//    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error> {
-        unimplemented!()
-    }
 }
 
 trait Mechtron

@@ -5,13 +5,8 @@ use mechtron::membrane::log;
 
 
 #[no_mangle]
-pub extern "C" fn wasm_init()
+pub extern "C" fn mechtron_init()
 {
     log("init","hello from WASM");
 }
-
-
-
-
-
 
