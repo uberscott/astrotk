@@ -8,21 +8,21 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::env;
 use mechtron_core::error::Error;
 
-pub struct FileSystemArtifactRepository {
+pub struct MechtroniumArtifactRepository {
     repo_path: String,
     fetches: RwLock<HashSet<ArtifactBundle>>,
 }
 
-impl FileSystemArtifactRepository {
+impl MechtroniumArtifactRepository {
     pub fn new(repo_path: &str ) -> Self {
-        return FileSystemArtifactRepository {
+        return MechtroniumArtifactRepository {
             repo_path: repo_path.to_string(),
             fetches: RwLock::new(HashSet::new()),
         };
     }
 }
 
-impl ArtifactRepository for FileSystemArtifactRepository {
+impl ArtifactRepository for MechtroniumArtifactRepository {
     fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Error> {
         {
             let lock = self.fetches.read()?;
@@ -41,7 +41,7 @@ impl ArtifactRepository for FileSystemArtifactRepository {
     }
 }
 
-impl ArtifactCache for FileSystemArtifactRepository {
+impl ArtifactCache for MechtroniumArtifactRepository {
     fn cache(&self, artifact: &Artifact) -> Result<(), Error > {
 
 

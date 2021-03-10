@@ -174,7 +174,10 @@ impl ReadOnlyBuffer {
         let path = Vec::from_iter(path.iter().map(String::as_str));
         let path = path.as_slice();
         match self.np_buffer.get_length(path) {
-            Ok(option) => Ok(option.unwrap()),
+            Ok(option) => match option{
+                None => Err("none length".into()),
+                Some(b) => Ok(b)
+            },
             Err(e) => Err(format!("could not get {}", cat(path)).into()),
         }
     }

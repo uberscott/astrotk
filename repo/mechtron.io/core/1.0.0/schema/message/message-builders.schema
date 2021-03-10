@@ -1,6 +1,10 @@
-list({ of:
+list({of: 
 struct({fields: {
-    kind: enum({choices: ["Create","State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic","Api"]}),
+  id:struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+  kind: enum({choices: ["Create","State", "Update", "Content", "Request", "Response", "Command","Reject", "Panic","Api"]}),
   from: struct({fields: {
     tron: struct({fields: {
       nucleus: struct({fields: {
@@ -17,27 +21,42 @@ struct({fields: {
     layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
   }}),
   to: struct({fields: {
-    nucleus_lookup_name: string(),
-    tron_lookup_name: string(),
-    tron_id: struct({fields: {
+      nucleus_id: struct({fields: {
         seq_id: i64(),
         id: i64()
-    }}),
-    nucleus_id: struct({fields: {
+      }}),
+      tron_id: struct({fields: {
         seq_id: i64(),
         id: i64()
-    }}),
-
+      }}),
     port: string(),
+    cycle: i64(),
+    phase: string(),
     cycle_kind: enum({choices: ["Exact", "Present", "Next"], default: "Next"}),
+    delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
+    layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"}),
+    nucleus_lookup_name: string(),
+    tron_lookup_name: string()
+    
+  }}),
+  callback: struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    port: string(),
     cycle: i64(),
     phase: string(),
     delivery: enum({choices: ["Cyclic", "Phasic", "ExtraCyclic"], default: "Cyclic"}),
     layer: enum({choices: ["Shell", "Kernel"], default: "Kernel"})
   }}),
-}),
   payloads: list( {of: struct({fields: {artifact: string(),bytes: bytes()} }) }),
   meta: map( { value: string() } )
 
-}})
-})
+}}) })

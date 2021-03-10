@@ -20,7 +20,9 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/message.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/test.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,7 +91,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test membrane::test::test_panic">
+  <component name="RunManager" selected="Cargo.Test message::tests::test_message_builder">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -131,8 +133,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test membrane::test::test_cache (1)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib membrane::test::test_cache -- --exact" />
+    <configuration name="Test message::tests::check_message_builder_schema" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib message::tests::check_message_builder_schema -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -146,23 +148,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test membrane::test::test_cache" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib membrane::test::test_cache -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_wasm_membrane_guest" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test membrane::test::test_panic" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib membrane::test::test_panic -- --exact" />
+    <configuration name="Test message::tests::check_message_schema" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib message::tests::check_message_schema -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -176,9 +163,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test membrane::test::test_wasm" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib membrane::test::test_wasm -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_wasm_membrane_guest" />
+    <configuration name="Test message::tests::test_message_builder" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib message::tests::test_message_builder -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -191,9 +178,24 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test wasm::test::test_cache" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_wasm_membrane_host --lib wasm::test::test_cache -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_wasm_membrane_guest" />
+    <configuration name="Test message::tests::test_serialize_from" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib message::tests::test_serialize_from -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test message::tests::test_serialize_message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib message::tests::test_serialize_message -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -225,19 +227,19 @@
       <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
-      <item itemvalue="Cargo.Test wasm::test::test_cache" />
-      <item itemvalue="Cargo.Test membrane::test::test_wasm" />
-      <item itemvalue="Cargo.Test membrane::test::test_cache" />
-      <item itemvalue="Cargo.Test membrane::test::test_cache (1)" />
-      <item itemvalue="Cargo.Test membrane::test::test_panic" />
+      <item itemvalue="Cargo.Test message::tests::check_message_builder_schema" />
+      <item itemvalue="Cargo.Test message::tests::test_serialize_from" />
+      <item itemvalue="Cargo.Test message::tests::check_message_schema" />
+      <item itemvalue="Cargo.Test message::tests::test_message_builder" />
+      <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test membrane::test::test_panic" />
-        <item itemvalue="Cargo.Test membrane::test::test_cache (1)" />
-        <item itemvalue="Cargo.Test wasm::test::test_cache" />
-        <item itemvalue="Cargo.Test membrane::test::test_cache" />
-        <item itemvalue="Cargo.Test membrane::test::test_wasm" />
+        <item itemvalue="Cargo.Test message::tests::test_message_builder" />
+        <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
+        <item itemvalue="Cargo.Test message::tests::check_message_builder_schema" />
+        <item itemvalue="Cargo.Test message::tests::check_message_schema" />
+        <item itemvalue="Cargo.Test message::tests::test_serialize_from" />
       </list>
     </recent_temporary>
   </component>
@@ -274,7 +276,7 @@
       <workItem from="1614860823054" duration="138215000" />
       <workItem from="1615246767172" duration="15392000" />
       <workItem from="1615287379290" duration="36592000" />
-      <workItem from="1615338792690" duration="17703000" />
+      <workItem from="1615338792690" duration="26368000" />
     </task>
     <servers />
   </component>

@@ -12,7 +12,7 @@ use mechtron_core::core::*;
 use mechtron_core::id::{Id, IdSeq, MechtronKey};
 use mechtron_core::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment};
 
-use crate::artifact::FileSystemArtifactRepository;
+use crate::artifact::MechtroniumArtifactRepository;
 use crate::cache::Cache;
 use crate::error::Error;
 use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
@@ -32,7 +32,7 @@ impl <'configs> Node<'configs> {
 
     pub fn default_cache()->Arc<Cache<'static>>
     {
-        let repo = Arc::new(FileSystemArtifactRepository::new("../../repo/"));
+        let repo = Arc::new(MechtroniumArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
         let configs = Configs::new(repo.clone());
         let wasms = Keeper::new(

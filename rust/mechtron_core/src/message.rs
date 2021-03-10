@@ -316,6 +316,7 @@ pub enum MechtronLayer {
     Shell
 }
 
+#[derive(Clone)]
 pub struct MessageBuilder {
     pub kind: Option<MessageKind>,
     pub from: Option<From>,
@@ -469,7 +470,7 @@ impl MessageBuilder {
         path: Path,
         buffer: &mut Buffer,
     ) -> Result<(), Error> {
-        self.validate_build()?;
+        self.validate()?;
 
         buffer.set(&path.with(path!("kind")), NP_Enum::Some(message_kind_to_string(&self.kind.as_ref().unwrap().clone()).to_string()))?;
         if self.from.is_some()
@@ -565,7 +566,8 @@ impl MessageBuilder {
 
             if buffer.is_set::<i64>(&path.with(path!["from", "cycle"]))?
             {
-                From::from(&path.push(path!["from"]), &buffer)?;
+                let from = From::from(&path.push(path!["from"]), &buffer)?;
+                builder.from.replace(from);
             }
 
             {
@@ -621,7 +623,7 @@ impl MessageBuilder {
                 builder.payloads.replace(Option::Some(payloads));
             }
 
-            if buffer.get_length(&path.with(path!["meta"]))? > 0
+            if buffer.get_keys(&path.with(path!["meta"]))?.is_some()
             {
                 let path = path.push(path!["meta"]);
                 let mut meta = HashMap::new();
@@ -977,35 +979,112 @@ fn cat(path: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
 
     use no_proto::buffer::NP_Buffer;
     use no_proto::memory::NP_Memory_Ref;
     use no_proto::NP_Factory;
 
-    use crate::artifact::Artifact;
+    use crate::artifact::{Artifact, ArtifactBundle, ArtifactRepository, ArtifactCache};
     use crate::buffers::{Buffer, BufferFactories, Path};
     use crate::error::Error;
     use crate::id::{Id, IdSeq, MechtronKey};
+    use crate::core::*;
     use crate::message;
-    use crate::message::{Cycle, DeliveryMoment, From, ID, Message, MESSAGE_BUILDERS_SCHEMA, MESSAGE_SCHEMA, MessageKind, Payload, PayloadBuilder, To, MechtronLayer};
+    use std::collections::{HashSet, HashMap};
+    use std::fs::File;
+    use std::io::Read;
+    use crate::configs::Configs;
+    use crate::message::{To, Message, MessageKind, Cycle, DeliveryMoment, MechtronLayer, Payload, MessageBuilder};
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
-    struct BufferFactoriesImpl {}
-
-    impl BufferFactories<'_> for BufferFactoriesImpl {
-        fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'static>>, Error> {
-            Ok(Arc::new(NP_Factory::new(TEST_SCHEMA).unwrap()))
-        }
+    lazy_static!
+    {
+        static ref CONFIGS: Configs<'static>  = Configs::new(Arc::new(TestArtifactRepository::new("../../repo")));
     }
+
 
     #[test]
     fn check_message_schema() {
-        NP_Factory::new(MESSAGE_SCHEMA).unwrap();
+        CONFIGS.schemas.get(&CORE_SCHEMA_MESSAGE );
     }
 
     #[test]
+    fn check_message_builder_schema() {
+        CONFIGS.schemas.get(&CORE_SCHEMA_MESSAGE_BUILDERS );
+    }
+    #[test]
+    fn test_message_builder() {
+        let mut builder = MessageBuilder::new();
+        builder.kind = Option::Some(MessageKind::Create);
+//        builder.to_nucleus_id = Option::Some(Id::new(1,2));
+        builder.to_nucleus_lookup_name = Option::Some("some nucleus".to_string());
+        builder.to_tron_lookup_name= Option::Some("sometron".to_string());
+ //       builder.to_tron_id = Option::Some(Id::new( 3, 4 ));
+
+        let payload = {
+            let factory = CONFIGS.schemas.get( &CORE_SCHEMA_TEXT ).unwrap();
+            let mut buffer = factory.new_buffer(Option::None);
+            let mut buffer = Buffer::new(buffer);
+            buffer.set( &path!["text"], "Some TExt");
+            let buffer = buffer.read_only();
+            Payload{
+                buffer: buffer,
+                schema: CORE_SCHEMA_TEXT.clone()
+            }
+        };
+
+        builder.payloads.replace( Option::Some( vec![payload] ));
+        builder.from.replace(crate::message::From{
+            tron: MechtronKey::new(Id::new(5,3), Id::new( 335,66)),
+            cycle: 32,
+            timestamp: 3242343,
+            layer: MechtronLayer::Kernel
+        });
+
+        builder.to_delivery.replace(DeliveryMoment::ExtraCyclic);
+        builder.to_port.replace( "HelloPOrt".to_string() );
+        builder.to_cycle_kind.replace(Cycle::Exact(34));
+        builder.to_phase.replace("Default".to_string());
+        builder.to_layer.replace(MechtronLayer::Kernel);
+
+        let mut meta = HashMap::new();
+        meta.insert("One".to_string(), "Two ".to_string());
+        meta.insert("Three".to_string(), "Four ".to_string());
+        builder.meta.replace(meta.clone());
+
+        let copy = builder.clone();
+
+        let buffer = MessageBuilder::to_buffer(vec![builder], &CONFIGS ).unwrap();
+
+        let restore = MessageBuilder::from_buffer(Buffer::bytes(buffer),&CONFIGS).unwrap();
+
+        assert_eq!( copy.kind, restore[0].kind);
+        assert_eq!( copy.to_nucleus_lookup_name, restore[0].to_nucleus_lookup_name);
+        assert_eq!( copy.to_tron_lookup_name, restore[0].to_tron_lookup_name);
+        assert_eq!( copy.to_tron_id, restore[0].to_tron_id);
+        assert_eq!( copy.to_port, restore[0].to_port );
+        assert_eq!( copy.from, restore[0].from );
+
+        assert_eq!( copy.meta, restore[0].meta );
+
+        let b1 = copy.payloads.into_inner();
+        let b1 = &b1.unwrap()[0];
+        let b1 =  b1.buffer.read_bytes();
+        let b2 = &restore[0];
+        let b2 = &b2.payloads.borrow();
+        let b2 = &b2.as_ref().unwrap()[0];
+        let b2 = b2.buffer.read_bytes();
+        assert_eq!( b1, b2 )
+
+
+
+    }
+
+
+
+        #[test]
     fn check_ro_buffer() {
         let schema = r#"struct({fields: {
                          userId: string(),
@@ -1019,6 +1098,7 @@ mod tests {
 
         buffer.set(&path!("userId"), "hello").unwrap();
     }
+    /*
     #[test]
     fn test_serialize_id() {
         let np_factory = NP_Factory::new(ID).unwrap();
@@ -1039,9 +1119,11 @@ mod tests {
         assert_eq!(id, ser_id);
     }
 
+     */
+
     #[test]
     fn test_serialize_from() {
-        let np_factory = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
+        let np_factory = CONFIGS.schemas.get( &CORE_SCHEMA_MESSAGE ).unwrap();
         let np_buffer = np_factory.new_buffer(Option::None);
         let mut buffer = Buffer::new(np_buffer);
 
@@ -1069,7 +1151,7 @@ mod tests {
     #[test]
     fn test_serialize_to()
     {
-        let np_factory = NP_Factory::new(MESSAGE_SCHEMA).unwrap();
+        let np_factory = CONFIGS.schemas.get( &CORE_SCHEMA_MESSAGE ).unwrap();
         let np_buffer = np_factory.new_buffer(Option::None);
         let mut buffer = Buffer::new(np_buffer);
 
@@ -1094,9 +1176,9 @@ mod tests {
 
     #[test]
     fn test_serialize_message() {
-        let artifact = Artifact::from("mechtron.io:core:1.0.0:schema/empty.schema").unwrap();
-        let factories = BufferFactoriesImpl {};
-        let np_factory = factories.get(&artifact).unwrap();
+
+        let np_factory = CONFIGS.schemas.get( &CORE_SCHEMA_MESSAGE ).unwrap();
+        let artifact = CORE_SCHEMA_EMPTY.clone();
         let np_buffer = np_factory.new_buffer(Option::None);
         let mut buffer = Buffer::new(np_buffer);
         buffer.set(&path!("0"), "hello");
@@ -1136,9 +1218,9 @@ mod tests {
             payload.clone(),
         );
 
-        let bytes = Message::to_bytes(message.clone()).unwrap();
+        let bytes = Message::to_bytes(message.clone(), &CONFIGS).unwrap();
 
-        let new_message = Message::from_bytes(bytes, &factories).unwrap();
+        let new_message = Message::from_bytes(bytes, &CONFIGS).unwrap();
 
         assert_eq!(message.to, new_message.to);
         assert_eq!(message.from, new_message.from);
@@ -1152,5 +1234,102 @@ mod tests {
         );
 
         //assert_eq!(message,new_message);
+    }
+
+
+    pub struct TestArtifactRepository {
+        repo_path: String,
+        fetches: RwLock<HashSet<ArtifactBundle>>,
+    }
+
+    impl TestArtifactRepository {
+        pub fn new(repo_path: &str ) -> Self {
+            return TestArtifactRepository {
+                repo_path: repo_path.to_string(),
+                fetches: RwLock::new(HashSet::new()),
+            };
+        }
+    }
+
+    impl ArtifactRepository for TestArtifactRepository {
+        fn fetch(&self, bundle: &ArtifactBundle) -> Result<(), Error> {
+            {
+                let lock = self.fetches.read()?;
+                if lock.contains(bundle) {
+                    return Ok(());
+                }
+            }
+
+            let mut lock = self.fetches.write()?;
+            lock.insert(bundle.clone());
+
+            // at this time we don't do anything
+            // later we will pull a zip file from a public repository and
+            // extract the files to 'repo_path'
+            return Ok(());
+        }
+    }
+
+    impl ArtifactCache for TestArtifactRepository {
+        fn cache(&self, artifact: &Artifact) -> Result<(), Error > {
+
+
+            self.fetch( &artifact.bundle )?;
+            /*
+
+            let mut cache = self.cache.write()?;
+            if cache.contains_key(artifact) {
+                return Ok(());
+            }
+             */
+            //        let mut cache = cell.borrow_mut();
+//        let string = String::from_utf8(self.load(artifact)?)?;
+//        cache.insert(artifact.clone(), Arc::new(string));
+            return Ok(());
+        }
+
+        fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Error > {
+            {
+                let lock = self.fetches.read()?;
+                if !lock.contains(&artifact.bundle) {
+                    return Err(format!(
+                        "fetch must be called on bundle: {} before artifact can be loaded: {}",
+                        artifact.bundle.to(),
+                        artifact.to()
+                    )
+                        .into());
+                }
+            }
+
+            let mut path = String::new();
+            path.push_str(self.repo_path.as_str());
+            if !self.repo_path.ends_with("/") {
+                path.push_str("/");
+            }
+            path.push_str(artifact.bundle.group.as_str());
+            path.push_str("/");
+            path.push_str(artifact.bundle.id.as_str());
+            path.push_str("/");
+            path.push_str(artifact.bundle.version.to_string().as_str());
+            path.push_str("/");
+            path.push_str(artifact.path.as_str());
+
+            let mut file = File::open(path)?;
+            let mut data = Vec::new();
+            file.read_to_end(&mut data)?;
+            return Ok(data);
+        }
+
+        /*
+        fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error > {
+            let cache = self.cache.read()?;
+            let option = cache.get(artifact);
+
+            match option {
+                None => Err(format!("artifact is not cached: {}", artifact.to()).into()),
+                Some(rtn) => Ok(rtn.clone()),
+            }
+        }
+         */
     }
 }
