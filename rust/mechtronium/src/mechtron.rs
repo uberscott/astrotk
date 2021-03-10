@@ -21,7 +21,7 @@ use mechtron_core::core::*;
 use mechtron_core::id::{Id, MechtronKey, NucleusKey, Revision, StateKey};
 use mechtron_core::mechtron::MechtronContext;
 use mechtron_core::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload };
-use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
+use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta, NeutronStateInterface};
 use mechtron_core::util::PongPayloadBuilder;
 
 use crate::error::Error;
@@ -124,57 +124,7 @@ pub enum TronShellState<'readonly>
 
 pub struct Neutron {}
 
-pub struct NeutronStateInterface {}
 
-impl NeutronStateInterface {
-    fn add_mechtron(&self, state: &mut State, key: &MechtronKey, kind: String) -> Result<(), Error> {
-        println!("ADD MECHTRON...{}",kind);
-        let index = {
-                match state.data.get_length(&path!("mechtrons"))
-                {
-                    Ok(length) => {length}
-                    Err(_) => {0}
-                }
-        };
-
-        let path = Path::new(path!["mechtrons", index.to_string()]);
-        key.mechtron.append(&path.push(path!["id"]), &mut state.data)?;
-        state.data.set(&path.with(path!["kind"]), kind)?;
-        println!("MECHTRON ADDED...x");
-
-        Ok(())
-    }
-
-    fn set_mechtron_name(
-        &self,
-        state: &mut State,
-        name: &str,
-        key: &MechtronKey,
-    ) -> Result<(), Error> {
-        key.append(&Path::new(path!["mechtron_names"]), &mut state.meta);
-        Ok(())
-    }
-
-
-    fn set_mechtron_index
-    (
-        &self,
-        state: &mut State,
-        value: i64,
-    ) -> Result<(), Error> {
-        state.data.set( &path!["mechtron_index"], value );
-        Ok(())
-    }
-
-    fn set_mechtron_seq_id(
-        &self,
-        state: &mut State,
-        value: i64,
-    ) -> Result<(), Error> {
-        state.data.set( &path!["mechtron_seq_id"], value );
-        Ok(())
-    }
-}
 
 impl Neutron {
     pub fn init() -> Result<Box<MechtronKernel>, Error> {
@@ -221,7 +171,7 @@ println!("CREATE MECHTRON {}",new_mechtron_config);
         let new_mechtron_config = context.configs().mechtrons.get(&new_mechtron_config)?;
 
         // increment the neutron's mechtron_index
-        let mut mechtron_index = neutron_state.data.get::<i64>(&path!["mechtron_index"] )?;
+        let mut mechtron_index = neutron_state.buffers.get("data").unwrap().get::<i64>(&path!["mechtron_index"] )?;
         mechtron_index = mechtron_index +1;
         neutron_state_interface.set_mechtron_index(neutron_state, mechtron_index);
 
@@ -361,7 +311,7 @@ impl MechtronKernel for Simtron{
             }
         };
 
-        state.data.set(&path!["config"], sim_config.source.to() )?;
+        state.buffers.get_mut("data").unwrap().set(&path!["config"], sim_config.source.to() )?;
 
 
         // now create each of the Nucleus in turn

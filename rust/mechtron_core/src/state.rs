@@ -2,7 +2,7 @@ use crate::artifact::Artifact;
 use crate::buffers::{Buffer, BufferFactories, ReadOnlyBuffer, Path};
 use crate::configs::{Configs, Keeper, MechtronConfig, BindConfig};
 use crate::core::*;
-use crate::id::{StateKey, Id};
+use crate::id::{StateKey, Id, MechtronKey};
 use crate::message::Payload;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::error::NP_Error;
@@ -114,8 +114,6 @@ impl State {
         };
 
         buffer.set( &path!["config"], self.config.source.to() );
-
-
 
         buffer.set( &path!["meta"], self.meta.read_bytes() )?;
 
@@ -294,6 +292,28 @@ impl ReadOnlyState {
 
         return Ok(rtn);
     }
+
+    pub fn to_bytes(&self, configs: &Configs ) ->Result<Vec<u8>,Error>
+    {
+        let mut buffer = {
+            let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;
+            let buffer = factory.new_buffer(Option::None );
+            let mut buffer = Buffer::new(buffer);
+            buffer
+        };
+
+        buffer.set( &path!["config"], self.config.source.to() );
+
+        buffer.set( &path!["meta"], self.meta.read_bytes() )?;
+
+        let path = Path::new( path!["buffers"]);
+        for key in self.buffers.keys()
+        {
+            buffer.set(&path.with(path![key]), self.buffers.get(key).unwrap().read_bytes())?;
+        }
+
+        Ok(Buffer::bytes(buffer))
+    }
 }
 
 impl ReadOnlyStateMeta for ReadOnlyState {
@@ -334,6 +354,62 @@ pub trait StateMeta: ReadOnlyStateMeta {
     fn set_creation_cycle(&mut self, value: i64) -> Result<(), Error>;
     fn set_taint( &mut self, taint: bool );
 }
+
+
+pub struct NeutronStateInterface {}
+
+impl NeutronStateInterface {
+    pub fn add_mechtron(&self, state: &mut State, key: &MechtronKey, kind: String) -> Result<(), Error> {
+        println!("ADD MECHTRON...{}",kind);
+        let index = {
+            match state.buffers.get("data").unwrap().get_length(&path!("mechtrons"))
+            {
+                Ok(length) => {length}
+                Err(_) => {0}
+            }
+        };
+
+        let path = Path::new(path!["mechtrons", index.to_string()]);
+        key.mechtron.append(&path.push(path!["id"]), &mut state.buffers.get_mut("data").unwrap())?;
+        state.buffers.get_mut("data").unwrap().set(&path.with(path!["kind"]), kind)?;
+        println!("MECHTRON ADDED...x");
+
+        Ok(())
+    }
+
+    pub fn set_mechtron_name(
+        &self,
+        state: &mut State,
+        name: &str,
+        key: &MechtronKey,
+    ) -> Result<(), Error> {
+        key.append(&Path::new(path!["mechtron_names"]), &mut state.meta);
+        Ok(())
+    }
+
+
+    pub fn set_mechtron_index
+    (
+        &self,
+        state: &mut State,
+        value: i64,
+    ) -> Result<(), Error> {
+        state.buffers.get_mut("data").unwrap().set( &path!["mechtron_index"], value );
+        Ok(())
+    }
+
+    pub fn set_mechtron_seq_id(
+        &self,
+        state: &mut State,
+        value: i64,
+    ) -> Result<(), Error> {
+        state.buffers.get_mut("data").unwrap().set( &path!["mechtron_seq_id"], value );
+        Ok(())
+    }
+}
+
+
+
 #[cfg(test)]
 mod tests {
 use crate::core::*;

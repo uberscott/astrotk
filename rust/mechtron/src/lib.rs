@@ -13,13 +13,13 @@ use mechtron_core::state::State;
 use mechtron_core::artifact::{ArtifactRepository, ArtifactBundle, ArtifactCache, Artifact};
 use std::sync::{Arc, RwLock};
 use std::collections::{HashMap, HashSet};
-use crate::membrane::{mechtronium_consume_string, mechtronium_consume_buffer, mechtronium_cache, wasm_write_string, mechtronium_load, log};
+use crate::membrane::{mechtronium_consume_string, mechtronium_consume_buffer, mechtronium_cache, wasm_write_string, mechtronium_load, log,BUFFERS};
 use mechtron_core::error::Error;
 use mechtron_core::core::*;
 use mechtron_core::configs::*;
 
 lazy_static! {
-  static ref CONFIGS: Configs<'static> = Configs::new(Arc::new(WasmArtifactRepository::new()));
+  pub static ref CONFIGS: Configs<'static> = Configs::new(Arc::new(WasmArtifactRepository::new()));
 }
 
 extern "C"
@@ -64,13 +64,8 @@ pub fn wasm_test_ok()
     log("wasm", "testing ok");
 }
 
-#[wasm_bindgen]
-pub fn mechtron_create( kind: i32,
-                        state: i32,
-                        create_message: i32 )->i32
-{
 
-}
+
 
 
                              #[wasm_bindgen]

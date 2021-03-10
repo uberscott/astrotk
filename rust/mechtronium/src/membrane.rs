@@ -163,7 +163,6 @@ impl WasmMembrane{
         Ok(buffer_id)
     }
 
-
     fn get_buffer_ptr( &self, buffer_id: i32 )->Result<WasmPtr<u8,Array>,Error>
     {
         Ok(self.instance.exports.get_native_function::<i32, WasmPtr<u8, Array>>("wasm_get_buffer_ptr").unwrap().call(buffer_id)?)
@@ -205,52 +204,24 @@ impl WasmMembrane{
         Ok(())
     }
 
-    /*
-    pub fn wasm_cache(&self, key: WasmBuffer, buffer: WasmBuffer ) ->Result<(),Error>
+    pub fn inject_state(&self, state: &ReadOnlyState, configs: &Configs ) ->Result<i32,Error>
     {
-        self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32,WasmPtr<u8,Array>,i32),()>("wasm_cache").unwrap().call(key.ptr,key.len as _,buffer.ptr,buffer.len as _)?;
-        Ok(())
+        let state_buffer_id = self.write_buffer( &state.to_bytes(configs)?)?;
+        self.instance.exports.get_native_function::<i32,()>("wasm_inject_state").unwrap().call(state_buffer_id.clone() )?;
+        Ok(state_buffer_id)
     }
 
-
-
-    pub fn wasm_test_invoke_stateful(&self) ->Result<(),Error>
+    pub fn extract_state(&self, state: i32, configs: &Configs ) ->Result<State,Error>
     {
-        let struct_key= self.write_string("mechtronium_test_struct")?;
-        let method_key= self.write_string("mechtronium_test_method")?;
-
-        let request_buffer_key = self.write_string("+Goodbye" )?;
-        let state_buffer_out = "Hello".as_bytes().to_vec();
-        let state_buffer_id = self.store_buffer( &state_buffer_out  )?;
-
-        let call = self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32,i32,WasmPtr<u8,Array>,i32,WasmPtr<u8,Array>,i32),i32>("wasm_stateful_invoke")?;
-        let response_buffer_id = call.call(struct_key.ptr,struct_key.len as _, state_buffer_id, method_key.ptr,method_key.len as _, request_buffer_key.ptr,request_buffer_key.len as _ )?;
-
-        let response_buffer = self.read_buffer(response_buffer_id)?;
-        let state_buffer= self.read_buffer(state_buffer_id)?;
-
-//        self.wasm_dealloc_buffer(state_buffer_id);
-//        self.wasm_dealloc_buffer(response_buffer_id);
-        println!("Response: {}",response_buffer.len());
-        println!("State: {}",state_buffer.len());
-        Ok(())
+        self.instance.exports.get_native_function::<i32,()>("wasm_move_state_to_buffers").unwrap().call(state.clone() )?;
+        let bytes = self.read_buffer(state)?;
+        let state = State::from_bytes(bytes,configs)?;
+        Ok(state)
     }
 
-     */
-
-    pub fn inject_state(&self, state: ReadOnlyState, configs: &Configs ) ->Result<(),Error>
+    pub fn test_modify_state(&self, state: i32 )->Result<(),Error>
     {
-
-    }
-
-    pub fn invoke_create(&self, state: MutexGuard<Arc<State>>, create_message: Arc<Message>, configs: &Configs ) ->Result<(),Error>
-    {
-        let kind = self.write_string(state.config.kind.as_str() )?;
-        let state = self.write_buffer( &state.to_bytes(configs)? )?;
-        let create_message = self.write_buffer( &create_message.copy_to_bytes(configs)? )?;
-
-        let message_builders = self.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_create")?.call(kind.clone(), state.clone(), create_message.clone() )?;
-
+        self.instance.exports.get_native_function::<i32,()>("wasm_test_modify_state").unwrap().call(state.clone() )?;
         Ok(())
     }
 
@@ -513,6 +484,8 @@ mod test
     use crate::error::Error;
     use crate::membrane::WasmMembrane;
     use crate::node::Node;
+    use mechtron_core::core::*;
+    use mechtron_core::state::{State, StateMeta, ReadOnlyStateMeta};
 
     fn membrane() -> Result<Arc<WasmMembrane>, Error>
     {
@@ -573,5 +546,63 @@ mod test
         Ok(())
     }
 
+
+    #[test]
+    fn test_mechtron_create() -> Result<(), Error>
+    {
+        let membrane = membrane()?;
+
+        match membrane.test_panic()
+        {
+            Ok(_) => {
+                assert!(false)
+            }
+            Err(_) => {}
+        }
+
+        membrane.test_ok()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_inject_and_extract_state() -> Result<(), Error>
+    {
+        let cache = Node::default_cache();
+        let membrane = membrane()?;
+
+        let config = cache.configs.mechtrons.get(&CORE_MECHTRON_NEUTRON )?;
+        let mut state = State::new(&cache.configs,config.clone())?;
+        state.set_taint(true);
+
+        let state_buffer_id= membrane.inject_state(&state.read_only()?, &cache.configs )?;
+        let extracted_state = membrane.extract_state(state_buffer_id, &cache.configs )?;
+
+        assert_eq!(state.is_tainted()?, extracted_state.is_tainted()?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_grow_state() -> Result<(), Error>
+    {
+        let cache = Node::default_cache();
+        let membrane = membrane()?;
+
+        let config = cache.configs.mechtrons.get(&CORE_MECHTRON_NEUTRON )?;
+        let mut state = State::new(&cache.configs,config.clone())?;
+        state.set_taint(false);
+
+        let state_buffer_id= membrane.inject_state(&state.read_only()?, &cache.configs )?;
+
+        membrane.test_modify_state(state_buffer_id);
+
+        let updated_state = membrane.extract_state(state_buffer_id, &cache.configs )?;
+
+        assert!(!state.is_tainted()?);
+        assert!(updated_state.is_tainted()?);
+
+        Ok(())
+    }
 
 }

@@ -1786,10 +1786,10 @@ mod state
 
             let sim_id = Id::new(
                 neutron_state
-                    .data
+                    .buffers.get("data").unwrap()
                     .get::<i64>(&path![&"sim_id", &"seq_id"])?,
                 neutron_state
-                    .data
+                    .buffers.get("data").unwrap()
                     .get::<i64>(&path![&"sim_id", &"id"])?,
             );
 
@@ -1808,10 +1808,10 @@ mod state
 
             let nucleus_id = Id::new(
                 simtron_state
-                    .data
+                    .buffers.get("data").unwrap()
                     .get::<i64>(&path![&"nucleus_names", name, &"seq_id"])?,
                 simtron_state
-                    .data
+                    .buffers.get("data").unwrap()
                     .get::<i64>(&path![&"nucleus_names", name, &"id"])?,
             );
 
@@ -1836,10 +1836,10 @@ mod state
             let neutron_state = self.history.get(&state_key)?;
             let tron_id = Id::new(
                 neutron_state
-                    .data
+                    .buffers.get("data").unwrap()
                     .get::<i64>(&path![&"tron_names", name, &"seq_id"])?,
                 neutron_state
-                    .data
+                    .buffers.get("data").unwrap()
                     .get::<i64>(&path![&"tron_names", name, &"id"])?,
             );
 
