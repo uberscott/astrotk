@@ -322,7 +322,7 @@ impl Cacher<BindConfig> for BindCacher
         let mut rtn = vec!();
         let config = &config;
 
-        rtn.push( config.state.artifact.clone());
+        rtn.append( &mut config.state.buffers.iter().map(|b|b.artifact.clone()).collect());
         rtn.push(config.message.create.artifact.clone());
         for port in config.message.extra.values()
         {
@@ -426,13 +426,35 @@ pub struct PhaseConfig
 
 #[derive(Clone)]
 pub struct StateConfig {
+    pub buffers: Vec<BufferConfig>,
+}
+
+impl StateConfig
+{
+    pub fn get_buffer( &self, name: String )->Option<BufferConfig>
+    {
+        for buffer in &self.buffers
+        {
+            if name == buffer.name
+            {
+                return Option::Some(buffer.clone());
+            }
+        }
+        Option::None
+    }
+}
+
+#[derive(Clone)]
+pub struct BufferConfig{
+    pub name: String,
     pub artifact: Artifact,
+    pub rezero: bool
 }
 
 impl Default for StateConfig {
     fn default() -> Self {
         StateConfig{
-            artifact: Default::default()
+            buffers: vec!()
         }
     }
 }
@@ -614,7 +636,14 @@ pub struct CreateConfigYaml {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct StateConfigYaml {
+    buffers: Vec<BufferConfigYaml>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct BufferConfigYaml{
+    name: String,
     artifact: ArtifactYaml,
+    rezero: Option<bool>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -698,7 +727,9 @@ impl BindYaml {
             },
             state: match &self.state {
                 Some(state) => StateConfig {
-                    artifact: state.artifact.to_artifact(default_bundle, Option::Some("schema"))?,
+                    buffers: state.buffers.iter().map(|a| BufferConfig {  name: a.name.clone(),
+                                                                                           artifact: a.artifact.to_artifact(default_bundle, Option::Some("schema")).unwrap(),
+                                                                                           rezero: a.rezero.unwrap_or(false)} ).collect(),
                 },
                 None => Default::default(),
             },

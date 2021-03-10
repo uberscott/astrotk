@@ -19,10 +19,10 @@
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/configs.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron_core/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/message.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/artifact.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/state.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -91,7 +91,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test message::tests::test_message_builder">
+  <component name="RunManager" selected="Cargo.Test state::tests::test">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -178,8 +178,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests::test_serialize_from" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_core --lib message::tests::test_serialize_from -- --exact" />
+    <configuration name="Test message::tests::test_serialize_message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib message::tests::test_serialize_message -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -193,8 +193,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests::test_serialize_message" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_core --lib message::tests::test_serialize_message -- --exact" />
+    <configuration name="Test state::tests::test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtron_core --lib state::tests::test -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -228,18 +228,18 @@
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test message::tests::check_message_builder_schema" />
-      <item itemvalue="Cargo.Test message::tests::test_serialize_from" />
       <item itemvalue="Cargo.Test message::tests::check_message_schema" />
       <item itemvalue="Cargo.Test message::tests::test_message_builder" />
       <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
+      <item itemvalue="Cargo.Test state::tests::test" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test state::tests::test" />
         <item itemvalue="Cargo.Test message::tests::test_message_builder" />
         <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
         <item itemvalue="Cargo.Test message::tests::check_message_builder_schema" />
         <item itemvalue="Cargo.Test message::tests::check_message_schema" />
-        <item itemvalue="Cargo.Test message::tests::test_serialize_from" />
       </list>
     </recent_temporary>
   </component>
@@ -276,7 +276,7 @@
       <workItem from="1614860823054" duration="138215000" />
       <workItem from="1615246767172" duration="15392000" />
       <workItem from="1615287379290" duration="36592000" />
-      <workItem from="1615338792690" duration="26368000" />
+      <workItem from="1615338792690" duration="33299000" />
     </task>
     <servers />
   </component>

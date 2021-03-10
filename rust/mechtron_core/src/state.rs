@@ -12,19 +12,38 @@ use std::rc::Rc;
 use std::sync::Arc;
 use crate::error::Error;
 use no_proto::pointer::bytes::NP_Bytes;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct State {
+    pub config: Arc<MechtronConfig>,
     pub meta: Buffer,
-    pub data: Buffer,
-    pub config: Arc<MechtronConfig>
+    pub buffers: HashMap<String,Buffer>,
+    pub ext: HashMap<String,Buffer>,
+    pub scratch: HashMap<String,Buffer>
 }
 
 impl State {
-
-    pub fn new<'configs>(configs: &Configs<'configs>, config: Arc<MechtronConfig>) -> Result<Self, Error> {
-
+    pub fn new_buffers(configs: &Configs, config: Arc<MechtronConfig>) -> Result<HashMap<String,Buffer>, Error> {
         let bind = configs.binds.get( &config.bind.artifact )?;
+
+        let mut buffers = HashMap::new();
+        for buffer_config in &bind.state.buffers
+        {
+            let buffer= Buffer::new(
+                configs
+                    .schemas
+                    .get(&buffer_config.artifact)?
+                    .new_buffer(Option::None),
+            );
+            buffers.insert( buffer_config.name.clone() , buffer );
+        }
+
+
+        Ok(buffers)
+    }
+
+    pub fn new(configs: &Configs, config: Arc<MechtronConfig>) -> Result<Self, Error> {
 
         let mut meta = Buffer::new(
             configs
@@ -32,17 +51,17 @@ impl State {
                 .get(&CORE_SCHEMA_META_STATE)?
                 .new_buffer(Option::None),
         );
-        let data = Buffer::new(
-            configs
-                .schemas
-                .get(&bind.state.artifact)?
-                .new_buffer(Option::None),
-        );
-        meta.set(&path!["mechtron_config_artifact"], config.source.to());
+
+        meta.set(&path!["config"], config.source.to());
+
+        let mut buffers = State::new_buffers(configs,config.clone())?;
+
         Ok(State {
             meta: meta,
-            data: data,
-            config: config
+            buffers: buffers,
+            scratch: HashMap::new(),
+            ext: HashMap::new(),
+            config: config.clone()
         })
     }
 
@@ -52,19 +71,14 @@ impl State {
         meta: Buffer
     ) -> Result<Self,Error> {
 
-let taint= meta.get::<bool>(&path!["taint"])?;
-println!("TAINT {} ",taint );
-        let source = meta.get::<String>(&path!["mechtron_config"])?;
-        let source = Artifact::from(source.as_str() )?;
-        let config = configs.mechtrons.get( &source )?;
-        let bind = configs.binds.get(&config.bind.artifact )?;
-        let data_factory = configs.schemas.get( &bind.state.artifact )?;
-        let buffer = data_factory.new_buffer(Option::None);
-        let data = Buffer::new(buffer);
+        let config = configs.mechtrons.get(&Artifact::from(meta.get( &path!["config"] )? )? )?;
+        let mut buffers = State::new_buffers(configs,config.clone())?;
 
         Ok(State {
             meta: meta,
-            data: data,
+            buffers: buffers,
+            ext: HashMap::new(),
+            scratch: HashMap::new(),
             config:config
         })
     }
@@ -73,7 +87,7 @@ println!("TAINT {} ",taint );
     pub fn from(
         configs: &Configs,
         meta: Buffer,
-        data: Buffer,
+        buffers: HashMap<String,Buffer>,
     ) -> Result<Self,Error> {
 
         let source = meta.get::<String>(&path!["mechtron_config"])?;
@@ -82,15 +96,17 @@ println!("TAINT {} ",taint );
 
         Ok(State {
             meta: meta,
-            data: data,
+            buffers: buffers,
+            ext: HashMap::new(),
+            scratch: HashMap::new(),
             config:config
         })
     }
 
-    pub fn to_buffer(&self, configs: &Configs )->Result<Vec<u8>,Error>
+    pub fn to_bytes(&self, configs: &Configs ) ->Result<Vec<u8>,Error>
     {
         let mut buffer = {
-            let size = self.meta.len() + self.data.len() + 128;
+            let size = self.meta.len() +  128;
             let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;
             let buffer = factory.new_buffer(Option::Some(size));
             let mut buffer = Buffer::new(buffer);
@@ -98,17 +114,25 @@ println!("TAINT {} ",taint );
         };
 
         buffer.set( &path!["config"], self.config.source.to() );
-        buffer.set( &path!["buffers", "meta"], self.meta.read_bytes() )?;
-        buffer.set( &path!["buffers", "data"], self.data.read_bytes() )?;
+
+
+
+        buffer.set( &path!["meta"], self.meta.read_bytes() )?;
+
+        let path = Path::new( path!["buffers"]);
+        for key in self.buffers.keys()
+        {
+            buffer.set(&path.with(path![key]), self.buffers.get(key).unwrap().read_bytes())?;
+        }
 
         Ok(Buffer::bytes(buffer))
     }
 
-    pub fn from_buffer( buffer: Vec<u8>, configs: &Configs )->Result<Self,Error>
+    pub fn from_bytes(bytes: Vec<u8>, configs: &Configs ) ->Result<Self,Error>
     {
         let buffer = {
             let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;
-            let buffer = factory.open_buffer(buffer);
+            let buffer = factory.open_buffer(bytes);
             let buffer = Buffer::new(buffer);
             buffer
         };
@@ -123,24 +147,40 @@ println!("TAINT {} ",taint );
 
         let meta = {
             let factory = configs.schemas.get(&CORE_SCHEMA_META_STATE)?;
-            let meta = buffer.get::<Vec<u8>>(&path!["buffers","meta"])?;
+            let meta = buffer.get::<Vec<u8>>(&path!["meta"])?;
             let meta = factory.open_buffer(meta);
             let meta = Buffer::new(meta);
             meta
         };
 
-        let data = {
-            let factory = configs.schemas.get(&bind.state.artifact)?;
-            let data = buffer.get::<Vec<u8>>(&path!["buffers","data"])?;
-            let data = factory.open_buffer(data);
-            let data = Buffer::new(data);
-            data
+        let buffers = {
+            let mut buffers = HashMap::new();
+            let path = Path::new(path!["buffers"]);
+            for key in &buffer.get_keys(&path!["buffers"])?.unwrap()
+            {
+                let buffer_config = bind.state.get_buffer(key.clone());
+                if buffer_config.is_some()
+                {
+                    let buffer_config = buffer_config.unwrap();
+                    let factory = configs.schemas.get(&buffer_config.artifact)?;
+                    let buffer = buffer.get::<Vec<u8>>(&path.with(path![key.clone()]))?;
+                    let buffer = factory.open_buffer(buffer);
+                    let buffer = Buffer::new(buffer);
+                    buffers.insert(key.clone(), buffer);
+                }
+                else {
+                    println!("bad buffer config {}",key.clone());
+                }
+            }
+            buffers
         };
 
         Ok(State{
-            config: config,
             meta: meta,
-            data: data
+            buffers: buffers,
+            config: config,
+            scratch:HashMap::new(),
+            ext: HashMap::new()
         })
     }
 
@@ -149,16 +189,21 @@ println!("TAINT {} ",taint );
     }
 
     pub fn read_only(&self) -> Result<ReadOnlyState, Error> {
+        let mut buffers: HashMap<String,ReadOnlyBuffer> = HashMap::new();
+        for key in self.buffers.keys()
+        {
+            buffers.insert(key.clone(), self.buffers.get(key).unwrap().read_only());
+        }
         Ok(ReadOnlyState {
             config: self.config.clone(),
             meta: self.meta.read_only(),
-            data: self.data.read_only(),
+            buffers: buffers
         })
     }
 
     pub fn compact(&mut self) -> Result<(), Error> {
         self.meta.compact()?;
-        self.data.compact()?;
+//        self.data.compact()?;
 
         Ok(())
     }
@@ -212,15 +257,24 @@ impl ReadOnlyStateMeta for State {
 pub struct ReadOnlyState {
     pub config: Arc<MechtronConfig>,
     pub meta: ReadOnlyBuffer,
-    pub data: ReadOnlyBuffer,
+    pub buffers: HashMap<String,ReadOnlyBuffer>,
 }
 
 impl ReadOnlyState {
     pub fn copy(&self) -> State {
+
+        let mut buffers = HashMap::new();
+        for key in self.buffers.keys()
+        {
+            buffers.insert( key.clone(), self.buffers.get(key).unwrap().copy_to_buffer() );
+        }
+
         State {
             config: self.config.clone(),
             meta: self.meta.copy_to_buffer(),
-            data: self.data.copy_to_buffer(),
+            buffers : buffers,
+            ext: HashMap::new(),
+            scratch: HashMap::new()
         }
     }
 
@@ -234,11 +288,8 @@ impl ReadOnlyState {
             Payload {
                 buffer: state.meta,
                 schema: CORE_SCHEMA_META_STATE.clone(),
-            },
-            Payload {
-                buffer: state.data,
-                schema: bind.state.artifact.clone(),
-            },
+            }
+            // need Payloads::convert ...
         ];
 
         return Ok(rtn);
@@ -282,4 +333,51 @@ pub trait StateMeta: ReadOnlyStateMeta {
     fn set_creation_timestamp(&mut self, value: i64) -> Result<(), Error>;
     fn set_creation_cycle(&mut self, value: i64) -> Result<(), Error>;
     fn set_taint( &mut self, taint: bool );
+}
+#[cfg(test)]
+mod tests {
+use crate::core::*;
+use crate::state::{State, StateMeta};
+use crate::configs::*;
+
+    use std::sync::{Arc, RwLock};
+
+    use no_proto::buffer::NP_Buffer;
+    use no_proto::memory::NP_Memory_Ref;
+    use no_proto::NP_Factory;
+
+    use crate::artifact::{Artifact, ArtifactBundle, ArtifactRepository, ArtifactCache};
+    use crate::buffers::{Buffer, BufferFactories, Path};
+    use crate::error::Error;
+    use crate::id::{Id, IdSeq, MechtronKey};
+    use crate::core::*;
+    use crate::message::tests::*;
+    use std::collections::{HashSet, HashMap};
+    use std::fs::File;
+    use std::io::Read;
+    use crate::configs::Configs;
+    use crate::message::{To, Message, MessageKind, Cycle, DeliveryMoment, MechtronLayer, Payload, MessageBuilder};
+
+    lazy_static!
+    {
+        static ref CONFIGS: Configs<'static>  = Configs::new(Arc::new(TestArtifactRepository::new("../../repo")));
+    }
+
+    #[test]
+  pub fn test()
+  {
+      let config = CONFIGS.mechtrons.get(&CORE_MECHTRON_NEUTRON).unwrap();
+      let mut state = State::new(&CONFIGS, config ).unwrap();
+      state.set_taint(true);
+      state.set_creation_timestamp(1);
+      state.set_creation_cycle(2);
+
+      let bytes = state.to_bytes(&CONFIGS ).unwrap();
+
+      let new_state = State::from_bytes(bytes,&CONFIGS).unwrap();
+
+      assert_eq!( state.is_tainted().unwrap(), new_state.is_tainted().unwrap() );
+  }
+
+
 }

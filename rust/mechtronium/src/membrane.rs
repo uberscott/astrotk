@@ -15,7 +15,7 @@ use wasmer::{Array, ExportError, Function, FunctionType, ImportObject, imports, 
 
 use crate::error::Error;
 use crate::cache::Cache;
-use mechtron_core::state::State;
+use mechtron_core::state::{State, ReadOnlyState};
 use mechtron_core::configs::Configs;
 use mechtron_core::message::{Message, MessageBuilder};
 
@@ -238,15 +238,18 @@ impl WasmMembrane{
 
      */
 
+    pub fn inject_state(&self, state: ReadOnlyState, configs: &Configs ) ->Result<(),Error>
+    {
+
+    }
+
     pub fn invoke_create(&self, state: MutexGuard<Arc<State>>, create_message: Arc<Message>, configs: &Configs ) ->Result<(),Error>
     {
         let kind = self.write_string(state.config.kind.as_str() )?;
-        let state = self.write_buffer( &state.to_buffer(configs)? )?;
+        let state = self.write_buffer( &state.to_bytes(configs)? )?;
         let create_message = self.write_buffer( &create_message.copy_to_bytes(configs)? )?;
 
         let message_builders = self.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_create")?.call(kind.clone(), state.clone(), create_message.clone() )?;
-
-
 
         Ok(())
     }

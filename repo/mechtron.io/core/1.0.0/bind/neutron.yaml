@@ -2,8 +2,10 @@ kind: Neutron
 name: Neutron
 panic_escalation: Nucleus
 state: 
-  artifact:
-    path: schema/neutron/state.schema
+  buffers:
+  - name: data
+    artifact:
+      path: schema/neutron/state.schema
      
 message:
   inbound:

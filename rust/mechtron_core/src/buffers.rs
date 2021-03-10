@@ -135,6 +135,22 @@ impl Buffer {
     {
         self.np_buffer.read_bytes().to_vec()
     }
+
+    pub fn get_keys(&self, path: &Vec<String>) -> Result<Option<Vec<String>>, Error> {
+        let path = Vec::from_iter(path.iter().map(String::as_str));
+        let path = path.as_slice();
+        match self.np_buffer.get_collection(path) {
+            Ok(option) => match option{
+                None => Ok(Option::None),
+                Some(iter) => {
+                    let rtn = iter.map(|item| item.key.to_string() ).collect();
+                    Ok(Option::Some(rtn))
+                }
+            },
+            Err(e) => Err(format!("could not get {}", cat(path)).into()),
+        }
+    }
+
 }
 
 #[derive(Clone)]

@@ -1,5 +1,6 @@
 struct({ fields: {
   config: string(),
+  meta: bytes(),
   buffers: map( { value: 
      bytes()           
   })

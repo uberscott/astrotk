@@ -661,6 +661,8 @@ impl PayloadBuilder {
 }
  */
 
+
+
 #[derive(Clone)]
 pub struct Payload {
     pub buffer: ReadOnlyBuffer,
@@ -978,7 +980,7 @@ fn cat(path: &[&str]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::sync::{Arc, RwLock};
 
     use no_proto::buffer::NP_Buffer;

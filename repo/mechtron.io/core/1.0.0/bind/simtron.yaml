@@ -2,5 +2,7 @@ kind: Simtron
 name: Simtron
 panic_escalation: Simulation
 state: 
-  artifact:
-    path: schema/simtron/state.schema
+  buffers:
+  - name: data
+    artifact:
+      path: schema/simtron/state.schema
