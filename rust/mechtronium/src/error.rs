@@ -1,4 +1,4 @@
-use wasmer::CompileError;
+use wasmer::{CompileError, RuntimeError, ExportError, InstantiationError};
 use std::fmt::{Formatter, Debug};
 use core::fmt;
 use std::string::FromUtf8Error;
@@ -150,3 +150,34 @@ impl From<FromUtf8Error> for Error {
     }
 }
 
+impl From<RuntimeError> for Error{
+    fn from(e: RuntimeError) -> Self {
+        Error{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<ExportError> for Error{
+    fn from(e: ExportError) -> Self {
+        Error{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<CompileError> for Error{
+    fn from(e: CompileError) -> Self {
+        Error{
+            error: format!("{:?}",e)
+        }
+    }
+}
+
+impl From<InstantiationError> for Error{
+    fn from(e: InstantiationError) -> Self {
+        Error{
+            error: format!("{:?}",e)
+        }
+    }
+}

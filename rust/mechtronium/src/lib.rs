@@ -14,6 +14,7 @@ pub mod router;
 pub mod error;
 pub mod cache;
 pub mod mechtron_shell;
+pub mod membrane;
 
 
 #[cfg(test)]

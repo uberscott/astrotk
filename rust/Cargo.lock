@@ -444,7 +444,8 @@ name = "mechtron"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "mechtron_wasm_membrane_guest",
+ "lazy_static",
+ "mechtron_core",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "wee_alloc",
@@ -460,22 +461,6 @@ dependencies = [
  "semver",
  "serde",
  "serde_yaml",
- "uuid",
-]
-
-[[package]]
-name = "mechtron_wasm_membrane_guest"
-version = "0.1.0"
-dependencies = [
- "lazy_static",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "mechtron_wasm_membrane_host"
-version = "0.1.0"
-dependencies = [
- "wasmer",
 ]
 
 [[package]]
@@ -490,6 +475,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_yaml",
+ "wasmer",
 ]
 
 [[package]]
@@ -942,16 +928,6 @@ name = "unicode-xid"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
-
-[[package]]
-name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "getrandom",
- "serde",
-]
 
 [[package]]
 name = "version_check"

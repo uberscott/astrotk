@@ -8,6 +8,8 @@
       <sourceFolder url="file://$MODULE_DIR$/mechtron/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/mechtron_common/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/mechtron_core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/mechtron_wasm_membrane_guest/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/mechtron_wasm_membrane_host/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/main/target" />
       <excludeFolder url="file://$MODULE_DIR$/mechtronium/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

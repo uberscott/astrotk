@@ -143,7 +143,7 @@ pub trait ArtifactCache: Send + Sync {
 
     fn load(&self, artifact: &Artifact) -> Result<Vec<u8>, Error>;
 
-    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error >;
+//    fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error >;
 }
 
 

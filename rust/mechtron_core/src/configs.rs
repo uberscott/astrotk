@@ -161,7 +161,7 @@ impl<V> Keeper<V> {
 
         self.repo.cache(&artifact)?;
 
-        let str = self.repo.get(&artifact)?;
+        let str = String::from_utf8(self.repo.load(&artifact)?)?;
 
         let value = self.parser.parse(&artifact, str.as_ref())?;
         cache.insert(artifact.clone(), Arc::new(value));

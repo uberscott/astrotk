@@ -10,7 +10,6 @@ use mechtron_core::error::Error;
 
 pub struct FileSystemArtifactRepository {
     repo_path: String,
-    cache: RwLock<HashMap<Artifact, Arc<String>>>,
     fetches: RwLock<HashSet<ArtifactBundle>>,
 }
 
@@ -18,7 +17,6 @@ impl FileSystemArtifactRepository {
     pub fn new(repo_path: &str ) -> Self {
         return FileSystemArtifactRepository {
             repo_path: repo_path.to_string(),
-            cache: RwLock::new(HashMap::new()),
             fetches: RwLock::new(HashSet::new()),
         };
     }
@@ -48,14 +46,16 @@ impl ArtifactCache for FileSystemArtifactRepository {
 
 
         self.fetch( &artifact.bundle )?;
+        /*
 
         let mut cache = self.cache.write()?;
         if cache.contains_key(artifact) {
             return Ok(());
         }
+         */
         //        let mut cache = cell.borrow_mut();
-        let string = String::from_utf8(self.load(artifact)?)?;
-        cache.insert(artifact.clone(), Arc::new(string));
+//        let string = String::from_utf8(self.load(artifact)?)?;
+//        cache.insert(artifact.clone(), Arc::new(string));
         return Ok(());
     }
 
@@ -91,6 +91,7 @@ impl ArtifactCache for FileSystemArtifactRepository {
         return Ok(data);
     }
 
+    /*
     fn get(&self, artifact: &Artifact) -> Result<Arc<String>, Error > {
         let cache = self.cache.read()?;
         let option = cache.get(artifact);
@@ -100,6 +101,7 @@ impl ArtifactCache for FileSystemArtifactRepository {
             Some(rtn) => Ok(rtn.clone()),
         }
     }
+     */
 }
 
 

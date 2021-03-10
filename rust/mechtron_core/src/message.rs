@@ -10,7 +10,6 @@ use no_proto::memory::NP_Memory_Owned;
 use no_proto::NP_Factory;
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use no_proto::pointer::option::NP_Enum;
-use uuid::Uuid;
 
 use crate::artifact::Artifact;
 use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
