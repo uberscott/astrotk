@@ -6,11 +6,10 @@ use std::sync::{Arc, RwLock, Weak};
 
 use wasmer::{Cranelift, JIT, Module, Store};
 
-use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{Configs, Keeper, NucleusConfig, Parser, SimConfig, SimSpark};
-use mechtron_core::core::*;
-use mechtron_core::id::{Id, IdSeq, MechtronKey};
-use mechtron_core::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment};
+use mechtron_common::artifact::Artifact;
+use mechtron_common::core::*;
+use mechtron_common::id::{Id, IdSeq, MechtronKey};
+use mechtron_common::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment};
 
 use crate::artifact::MechtroniumArtifactRepository;
 use crate::cache::Cache;
@@ -19,6 +18,7 @@ use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
 use crate::router::{HasNucleus, LocalRouter, NetworkRouter, Router, SharedRouter};
 use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
+use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 
 pub struct Node<'configs> {
     pub local: Option<Arc<Local<'configs>>>,
@@ -237,7 +237,7 @@ struct WasmModuleParser {
 }
 
 impl Parser<Module> for WasmModuleParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, mechtron_core::error::Error> {
+    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, mechtron_common::error::Error> {
         let result = Module::new(&self.wasm_store, str);
         match result {
             Ok(module) => Ok(module),

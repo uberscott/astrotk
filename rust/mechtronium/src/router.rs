@@ -4,8 +4,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Weak;
 
-use mechtron_core::id::Id;
-use mechtron_core::message::Message;
+use mechtron_common::id::Id;
+use mechtron_common::message::Message;
 
 use crate::node::{Local, Node};
 use crate::nucleus::{Nuclei, NucleiContainer};

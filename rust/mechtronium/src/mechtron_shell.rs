@@ -8,21 +8,20 @@ use core::result::Result::{Err, Ok};
 use std::collections::HashMap;
 use std::sync::{Arc, MutexGuard};
 
-use mechtron_core::buffers::ReadOnlyBuffer;
-use mechtron_core::id::Id;
-use mechtron_core::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload};
-use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
-use mechtron_core::util::PongPayloadBuilder;
+use mechtron_common::buffers::ReadOnlyBuffer;
+use mechtron_common::id::Id;
+use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload};
+use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
+use mechtron_common::util::PongPayloadBuilder;
 
 use crate::error::Error;
-use crate::mechtron::{MechtronKernel, TronInfo, TronShellState};
-use crate::nucleus::MechtronShellContext;
-use mechtron_core::api::CreateApiCallCreateNucleus;
-use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::PanicEscalation;
+use crate::nucleus::{MechtronShellContext, TronInfo};
+use mechtron_common::api::CreateApiCallCreateNucleus;
+use mechtron_common::artifact::Artifact;
+use mechtron_common::configs::PanicEscalation;
 
 pub struct MechtronShell {
-    pub tron: Box<dyn MechtronKernel>,
+    pub tron: Box<MechtronKernel>,
     pub info: TronInfo,
     pub outbound: RefCell<Vec<Message>>,
     pub panic: RefCell<Option<String>>,
@@ -30,7 +29,7 @@ pub struct MechtronShell {
 
 
 impl MechtronShell {
-    pub fn new(tron: Box<dyn MechtronKernel>, info: TronInfo) -> Self {
+    pub fn new(tron: Box<MechtronKernel>, info: TronInfo) -> Self {
         MechtronShell {
             tron: tron,
             info: info,
@@ -88,8 +87,8 @@ impl MechtronShell {
         self.send(message);
     }
 
-    fn from(&self, context: &dyn MechtronShellContext, layer: MechtronLayer) -> mechtron_core::message::From {
-        mechtron_core::message::From {
+    fn from(&self, context: &dyn MechtronShellContext, layer: MechtronLayer) -> mechtron_common::message::From {
+        mechtron_common::message::From {
             tron: self.info.key.clone(),
             cycle: context.revision().cycle.clone(),
             timestamp: context.timestamp(),
@@ -392,4 +391,9 @@ impl MechtronShell {
 
         Ok(())
     }
+}
+
+pub struct MechtronKernel
+{
+
 }

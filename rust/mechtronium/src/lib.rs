@@ -7,7 +7,6 @@ extern crate mechtron_common;
 pub mod artifact;
 pub mod node;
 pub mod nucleus;
-pub mod scheduler;
 pub mod simulation;
 pub mod mechtron;
 pub mod router;

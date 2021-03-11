@@ -1,4 +1,4 @@
-use mechtron_core::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository};
+use mechtron_common::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -6,7 +6,7 @@ use std::io::Read;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 use std::env;
-use mechtron_core::error::Error;
+use mechtron_common::error::Error;
 
 pub struct MechtroniumArtifactRepository {
     repo_path: String,

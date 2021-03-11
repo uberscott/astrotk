@@ -58,7 +58,6 @@ impl Neutron {
 
         // and derive the new mechtron config
         let new_mechtron_config = new_mechtron_create_meta.get::<String>(&path![&"config"])?;
-println!("CREATE MECHTRON {}",new_mechtron_config);
         let new_mechtron_config = Artifact::from(&new_mechtron_config)?;
         let new_mechtron_config = CONFIGS.mechtrons.get(&new_mechtron_config)?;
 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use wasmer::{Module, Store};
 
-use mechtron_core::configs::{Configs, Keeper};
+use mechtron_common::configs::{Configs, Keeper};
 
 pub struct Cache<'configs>
 {

@@ -10,24 +10,24 @@ use std::time::{Instant, SystemTime};
 use no_proto::error::NP_Error;
 use no_proto::memory::NP_Memory_Owned;
 
-use mechtron_core::artifact::Artifact;
-use mechtron_core::configs::{BindConfig, Configs, Keeper, MechtronConfig, NucleusConfig, SimConfig, SimSpark};
-use mechtron_core::core::*;
-use mechtron_core::id::{Id, IdSeq, StateKey};
-use mechtron_core::id::MechtronKey;
-use mechtron_core::id::Revision;
-use mechtron_core::mechtron::MechtronContext;
-use mechtron_core::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
-use mechtron_core::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
+use mechtron_common::artifact::Artifact;
+use mechtron_common::configs::{BindConfig, Configs, Keeper, MechtronConfig, NucleusConfig, SimConfig, SimSpark};
+use mechtron_common::core::*;
+use mechtron_common::id::{Id, IdSeq, StateKey};
+use mechtron_common::id::MechtronKey;
+use mechtron_common::id::Revision;
+use mechtron_common::mechtron::MechtronContext;
+use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
+use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
 
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::mechtron::{BlankMechtron, CreatePayloadsBuilder, MechtronKernel, Neutron, Simtron, TronInfo, TronShellState};
 use crate::mechtron_shell::MechtronShell;
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{Lookup, PhasicStateStructure, StateHistory};
 use crate::router::{HasNucleus, Router};
+use crate::mechtron::CreatePayloadsBuilder;
 
 pub trait NucleiContainer
 {
@@ -157,6 +157,7 @@ pub struct NucleusContext<'context>
 
 impl <'context> NucleusContext<'context>
 {
+    /*
     pub fn info_for(
         &self,
         key: MechtronKey,
@@ -172,17 +173,8 @@ impl <'context> NucleusContext<'context>
         })
     }
 
-    pub fn mechtron_kernel_for(&self, config: &MechtronConfig) -> Result<Box<dyn MechtronKernel>, Error> {
-        let bind = self.cache.configs.binds.get(&config.bind.artifact)?;
-        let rtn: Box<dyn MechtronKernel> = match bind.kind.as_str() {
-            "Neutron" => Neutron::init()? as Box<dyn MechtronKernel>,
-            "Simtron" => Simtron::init()? as Box<dyn MechtronKernel>,
-            "BlankMechtron" => BlankMechtron::init()? as Box<dyn MechtronKernel>,
-            _ => return Err(format!("we don't have a tron of kind {}", bind.kind).into()),
-        };
+     */
 
-        Ok(rtn)
-    }
 
     pub fn get_nuclei(&self) -> Option<Arc<Nuclei<'context>>>
     {
@@ -291,7 +283,7 @@ impl<'nucleus> Nucleus<'nucleus> {
         let result = self.shell(&state_key);
         if result.is_err()
         {
-            let result = message.reject(mechtron_core::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp(), layer: MechtronLayer::Shell }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
+            let result = message.reject(mechtron_common::message::From { tron: self.neutron_key(), cycle: self.head.cycle, timestamp: timestamp(), layer: MechtronLayer::Shell }, "state_key had no content", self.context.seq.clone(), &self.context.cache.configs);
             if (result.is_err())
             {
                 println!("could not access this tron.");
@@ -626,7 +618,7 @@ impl<'cycle> NucleusCycle<'cycle> {
         let create = Message::longform(
             seq,
             MessageKind::Create,
-            mechtron_core::message::From {
+            mechtron_common::message::From {
                 tron: neutron_info.key.clone(),
                 cycle: -1,
                 timestamp,
@@ -680,7 +672,7 @@ impl<'cycle> NucleusCycle<'cycle> {
                 let message = Message::longform(
                     self.context.seq.clone(),
                     MessageKind::Create,
-                    mechtron_core::message::From {
+                    mechtron_common::message::From {
                         tron: neutron_info.key.clone(),
                         cycle: -1,
                         timestamp,
@@ -788,10 +780,14 @@ impl<'cycle> NucleusCycle<'cycle> {
             _ => Err("not implemented yet".into()),
         }
     }
+    pub fn valid_neutron_id(id: Id) -> bool {
+        return id.id == 0;
+    }
+
 
     fn process_create(&mut self, message: &Message) -> Result<(), Error> {
         // ensure this is addressed to a neutron
-        if !Neutron::valid_neutron_id(message.to.tron.mechtron.clone()) {
+        if !Nucleus::valid_neutron_id(message.to.tron.mechtron.clone()) {
             return Err(format!(
                 "not a valid neutron id: {:?}",
                 message.to.tron.mechtron.id.clone()
@@ -809,7 +805,6 @@ impl<'cycle> NucleusCycle<'cycle> {
         let mut neutron_state = self.state.get(&neutron_state_key.tron)?;
 
         let info = self.context.info_for(message.to.tron.clone(), &CORE_BIND_NEUTRON)?;
-        let neutron = Neutron {};
 
         Ok(())
     }
@@ -1028,9 +1023,9 @@ mod message
     use std::sync::{Arc, RwLock};
     use std::time::Instant;
 
-    use mechtron_core::error::Error;
-    use mechtron_core::id::MechtronKey;
-    use mechtron_core::message::{Cycle, DeliveryMoment, Message};
+    use mechtron_common::error::Error;
+    use mechtron_common::id::MechtronKey;
+    use mechtron_common::message::{Cycle, DeliveryMoment, Message};
 
     use crate::nucleus::Nucleus;
 
@@ -1237,12 +1232,12 @@ mod message
     mod tests {
         use std::sync::Arc;
 
-        use mechtron_core::buffers::Buffer;
-        use mechtron_core::configs::Configs;
-        use mechtron_core::core::*;
-        use mechtron_core::id::{Id, IdSeq, MechtronKey};
-        use mechtron_core::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
-        use mechtron_core::message::DeliveryMoment::Cyclic;
+        use mechtron_common::buffers::Buffer;
+        use mechtron_common::configs::Configs;
+        use mechtron_common::core::*;
+        use mechtron_common::id::{Id, IdSeq, MechtronKey};
+        use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
+        use mechtron_common::message::DeliveryMoment::Cyclic;
 
         use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, PhasicMessagingStructure};
         use crate::test::*;
@@ -1266,7 +1261,7 @@ mod message
 
             Message::single_payload(seq_borrow.clone(),
                                     MessageKind::Update,
-                                    mechtron_core::message::From {
+                                    mechtron_common::message::From {
                                         tron: MechtronKey::new(seq_borrow.next(), seq_borrow.next()),
                                         cycle: 0,
                                         timestamp: 0,
@@ -1318,8 +1313,8 @@ mod message
             builder
         }
 
-        fn mock_from() -> mechtron_core::message::From {
-            return mechtron_core::message::From {
+        fn mock_from() -> mechtron_common::message::From {
+            return mechtron_common::message::From {
                 tron: mock_tron_key(),
                 cycle: 0,
                 timestamp: 0,
@@ -1530,10 +1525,9 @@ mod state
     use std::rc::Rc;
     use std::sync::{Arc, Mutex, RwLock};
 
-    use mechtron_core::id::{Id, MechtronKey, Revision, StateKey};
-    use mechtron_core::state::{ReadOnlyState, State};
+    use mechtron_common::id::{Id, MechtronKey, Revision, StateKey};
+    use mechtron_common::state::{ReadOnlyState, State};
 
-    use crate::mechtron::TronInfo;
     use crate::nucleus::Error;
 
     pub struct StateHistory {
@@ -1697,11 +1691,11 @@ mod state
         use std::rc::Rc;
         use std::sync::{Arc, Mutex};
 
-        use mechtron_core::buffers::Buffer;
-        use mechtron_core::configs::Configs;
-        use mechtron_core::core::*;
-        use mechtron_core::id::{Id, MechtronKey, Revision, StateKey};
-        use mechtron_core::state::State;
+        use mechtron_common::buffers::Buffer;
+        use mechtron_common::configs::Configs;
+        use mechtron_common::core::*;
+        use mechtron_common::id::{Id, MechtronKey, Revision, StateKey};
+        use mechtron_common::state::State;
 
         use crate::nucleus::state::StateHistory;
         use crate::test::create_configs;
@@ -1861,12 +1855,12 @@ mod test
     use std::cell::RefCell;
     use std::sync::Arc;
 
-    use mechtron_core::artifact::Artifact;
-    use mechtron_core::configs::SimSpark;
-    use mechtron_core::core::*;
-    use mechtron_core::id::{Id, MechtronKey};
-    use mechtron_core::message::*;
-    use mechtron_core::util::PingPayloadBuilder;
+    use mechtron_common::artifact::Artifact;
+    use mechtron_common::configs::SimSpark;
+    use mechtron_common::core::*;
+    use mechtron_common::id::{Id, MechtronKey};
+    use mechtron_common::message::*;
+    use mechtron_common::util::PingPayloadBuilder;
 
     use crate::node::Node;
 
@@ -1951,4 +1945,10 @@ mod test
 
 
 
+pub struct TronInfo
+{
+    pub key: MechtronKey,
+    pub config: Arc<MechtronConfig>,
+    pub bind: Arc<BindConfig>
+}
 

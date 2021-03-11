@@ -10,14 +10,14 @@ use std::rc::Rc;
 use std::string::FromUtf8Error;
 use std::sync::{Arc, Mutex, RwLock, Weak, MutexGuard};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use mechtron_core::artifact::Artifact;
+use mechtron_common::artifact::Artifact;
 use wasmer::{Array, ExportError, Function, FunctionType, ImportObject, imports, Instance, InstantiationError, Memory, Module, NativeFunc, Resolver, RuntimeError, Val, ValType, Value, WasmerEnv, WasmPtr};
 
 use crate::error::Error;
 use crate::cache::Cache;
-use mechtron_core::state::{State, ReadOnlyState};
-use mechtron_core::configs::Configs;
-use mechtron_core::message::{Message, MessageBuilder};
+use mechtron_common::configs::Configs;
+use mechtron_common::message::{Message, MessageBuilder};
+use mechtron_common::state::{ReadOnlyState, State};
 
 pub struct WasmMembrane {
     module: Module,
@@ -484,8 +484,8 @@ mod test
     use crate::error::Error;
     use crate::membrane::WasmMembrane;
     use crate::node::Node;
-    use mechtron_core::core::*;
-    use mechtron_core::state::{State, StateMeta, ReadOnlyStateMeta};
+    use mechtron_common::core::*;
+    use mechtron_common::state::{State, StateMeta, ReadOnlyStateMeta};
 
     fn membrane() -> Result<Arc<WasmMembrane>, Error>
     {
