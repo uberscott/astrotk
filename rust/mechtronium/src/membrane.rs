@@ -15,9 +15,9 @@ use wasmer::{Array, ExportError, Function, FunctionType, ImportObject, imports, 
 
 use crate::error::Error;
 use crate::cache::Cache;
-use mechtron_common::configs::Configs;
+use mechtron_common::configs::{Configs, MechtronConfig};
 use mechtron_common::message::{Message, MessageBuilder};
-use mechtron_common::state::{ReadOnlyState, State};
+use mechtron_common::state::{ReadOnlyState, State, StateMeta};
 
 pub struct WasmMembrane {
     module: Arc<Module>,
@@ -26,7 +26,7 @@ pub struct WasmMembrane {
     configs: Arc<Configs>
 }
 
-impl WasmMembrane{
+impl WasmMembrane {
 
     pub fn init(&self)->Result<(),Error>
     {
@@ -191,8 +191,6 @@ impl WasmMembrane{
         Ok(rtn)
     }
 
-
-
     fn wasm_dealloc_buffer( &self, buffer_id: i32 )->Result<(),Error>
     {
         self.instance.exports.get_native_function::<i32,()>("wasm_dealloc_buffer").unwrap().call(buffer_id.clone())?;
@@ -332,7 +330,7 @@ impl Env
     }
 }
 
-impl  WasmMembrane {
+impl WasmMembrane {
     pub fn new(module: Arc<Module>, configs: Arc<Configs>) -> Result<Arc<Self>, Error> {
         let mut host = Arc::new(RwLock::new(WasmHost::new()));
 
@@ -384,7 +382,7 @@ impl  WasmMembrane {
 
         let instance = Instance::new(&module, &imports)?;
 
-        let mut membrane = Arc::new(WasmMembrane{
+        let mut membrane = Arc::new(WasmMembrane {
             module: module,
             instance: instance,
             host: host.clone(),
@@ -399,32 +397,73 @@ impl  WasmMembrane {
     }
 }
 
-struct StateLocker
+pub struct MechtronMembrane
 {
     membrane: Arc<WasmMembrane>,
-    state_id: i32
+    state: Arc<ReadOnlyState>,
+    state_buffer_id: Option<i32>,
+
 }
 
-impl StateLocker
+impl MechtronMembrane
 {
-    pub fn inject( membrane: Arc<WasmMembrane>, state: &ReadOnlyState ) -> Result<Self,Error>
+    pub fn new(membrane: Arc<WasmMembrane>, state: Arc<ReadOnlyState> ) -> Self
     {
-        let state_id = membrane.inject_state(state)?;
-        Ok(StateLocker
+        MechtronMembrane {
+            membrane: Mutex::mew(membrane),
+            state: state,
+            state_buffer_id: Option::None
+        }
+    }
+
+    pub fn set_taint( &mut self, taint: bool )->Result<(),Error>
+    {
+        self.inject();
+        let mut state = self.extract()?;
+        state.set_taint(taint);
+        self.inject_state(&state);
+        Ok(())
+    }
+
+    pub fn get_mechtron_config(&self)->Arc<MechtronConfig>
+    {
+        self.state.config.clone()
+    }
+
+    pub fn get_state(&self)->Arc<ReadOnlyState>
+    {
+        self.state.clone()
+    }
+
+    fn inject_state(&mut self, state: &State ) -> Result<(),Error>
+    {
+        if self.state_buffer_id.is_some()
         {
-            membrane: membrane.clone(),
-            state_id: state_id
-        })
+            return Err("tried to inject a new state while one was already bound".into());
+        }
+
+        self.state_buffer_id = Option::Some(self.membrane.inject_state(&state.read_only()?)?);
+        Ok(())
+    }
+
+    pub fn inject(&mut self) -> Result<(),Error>
+    {
+        self.state_buffer_id = Option::Some(self.membrane.inject_state(&self.state)?);
+        Ok(())
     }
 
     pub fn extract( &self )->Result<State,Error>
     {
-        Ok(self.membrane.extract_state(self.state_id)?)
+        if self.state_buffer_id.is_none()
+        {
+            return Err("state has already been extracted".into());
+        }
+        Ok(self.membrane.extract_state(self.state_buffer_id.unwrap() )?)
     }
 
 }
 
-impl  Drop for StateLocker
+impl  Drop for MechtronMembrane
 {
     fn drop(&mut self) {
         self.remove_all();

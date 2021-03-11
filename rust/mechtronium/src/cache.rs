@@ -96,7 +96,7 @@ impl Membranes
         {
             return Ok(());
         }
-        let membrane = WasmMembrane::new(module,self.configs.clone() )?;
+        let membrane = WasmMembrane::new(module, self.configs.clone() )?;
         store.insert( artifact.clone(), membrane);
 
         Ok(())

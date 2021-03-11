@@ -1,0 +1,14 @@
+struct({fields: {
+    tron: struct({fields: {
+      nucleus: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }}),
+      tron: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+    cycle: i64(),
+    phase: string(),
+  }})

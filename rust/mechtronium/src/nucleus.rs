@@ -25,9 +25,10 @@ use crate::error::Error;
 use crate::mechtron_shell::{MechtronShell, MechtronKernel};
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
-use crate::nucleus::state::{Lookup, PhasicStateStructure, StateHistory};
+use crate::nucleus::state::{Lookup, MechtronKernels, StateHistory};
 use crate::router::{HasNucleus, Router};
 use crate::mechtron::CreatePayloadsBuilder;
+use crate::membrane::{WasmMembrane, MechtronMembrane};
 
 pub trait NucleiContainer
 {
@@ -301,9 +302,9 @@ impl Nucleus {
             self.context.router.send(Arc::new(result.unwrap()));
             return;
         }
-        let (mut shell,state) = result.unwrap();
+        let mut shell = result.unwrap();
 
-        shell.extra(message.as_ref(),self, state);
+        shell.extra(message.as_ref(),self);
 
         if !shell.is_panic()
         {
@@ -327,7 +328,7 @@ println!("Sending message of type: {:?} ", &message.kind );
     fn shell(
         &self,
         key: &StateKey,
-    ) -> Result<(MechtronShell, Arc<ReadOnlyState>), Error> {
+    ) -> Result<MechtronShell, Error> {
         let mut state = self.state.get(key)?;
         let bind = self.context.cache.configs.binds.get(&state.config.bind.artifact)?;
 
@@ -337,8 +338,11 @@ println!("Sending message of type: {:?} ", &message.kind );
             bind: bind
        };
 
-        let shell = MechtronShell::new(self.context.mechtron_kernel_for(&state.config)?, info );
-        Ok((shell, state))
+        let wasm_membrane = self.context.cache.wasms.get_membrane(&info.config.wasm.artifact)?;
+        let kernel = Arc::new( MechtronMembrane::new( wasm_membrane, state ));
+
+        let shell = MechtronShell::new(kernel.clone(), info );
+        Ok(shell)
     }
 
     fn bootstrap(&self, meta: HashMap<String,String> ) -> Result<(), Error> {
@@ -532,7 +536,7 @@ struct NucleusData<'cycle>
 
 struct NucleusCycle {
     info: NucleusInfo,
-    state: PhasicStateStructure,
+    kernels: MechtronKernels,
     messaging: PhasicMessagingStructure,
     outbound: OutboundMessaging,
     revision: Revision,
@@ -555,7 +559,7 @@ impl NucleusCycle {
         Ok(NucleusCycle {
             context: context,
             info: info,
-            state: PhasicStateStructure::new(),
+            kernels: MechtronKernels::new(),
             messaging: PhasicMessagingStructure::new(),
             outbound: OutboundMessaging::new(),
             revision: revision,
@@ -569,11 +573,11 @@ impl NucleusCycle {
     fn shell(
         &self,
         key: &MechtronKey,
-    ) -> Result<(MechtronShell, Arc<Mutex<State>>), Error> {
-        let state = self.state.get(key)?;
+    ) -> Result<MechtronShell, Error> {
+        let kernel = self.kernels.get(key)?;
 
         let (config, bind) = {
-            let config = state.lock()?.get_mechtron_config();
+            let config = kernel.lock()?.get_mechtron_config();
             let bind = self.context.cache.configs.binds.get(&config.bind.artifact)?;
             (config, bind)
         };
@@ -584,8 +588,10 @@ impl NucleusCycle {
             bind: bind,
         };
 
-        let shell = MechtronShell::new(self.context.mechtron_kernel_for(&config)?, info);
-        Ok((shell, state))
+
+
+        let shell = MechtronShell::new(kernel, info);
+        Ok(shell)
     }
 
 
@@ -664,7 +670,7 @@ impl NucleusCycle {
         let neutron_state = Mutex::new(neutron_state);
 
         // insert the neutron_state into the PhasicStateStructure
-        self.state.add(neutron_info.key.clone(), Arc::new(neutron_state));
+        self.kernels.add(neutron_info.key.clone(), Arc::new(neutron_state));
 
 
         // now we CREATE each named mechtron in the neutron_config
@@ -705,7 +711,7 @@ impl NucleusCycle {
 
             // send all create messages to neutron
             {
-                let mut neutron_state = self.state.get( &neutron_key )?;
+                let mut neutron_state = self.kernels.get( &neutron_key )?;
                 let mut neutron_state = neutron_state.lock()?;
                 neutron.inbound(&messages, self, & mut neutron_state);
                 if neutron_state.is_tainted()?
@@ -739,7 +745,7 @@ impl NucleusCycle {
 
 
     fn commit(&mut self) -> Result<(Vec<(StateKey, Arc<Mutex<State>>)>, Vec<Arc<Message>>),Error> {
-        let states = self.state.drain(&self.revision.clone())?;
+        let states = self.kernels.drain(&self.revision.clone())?;
         let messages = self.messaging.drain_all()?;
         Ok((states,messages))
     }
@@ -750,7 +756,11 @@ impl NucleusCycle {
     }
 
     fn intake_state(&mut self, key: MechtronKey, state: Arc<ReadOnlyState>) {
-        match self.state.intake(key, state)
+
+        let wasm_membrane = self.context.cache.wasms.get_membrane(&state.config.wasm.artifact)?;
+        let mechtron_membrane = MechtronMembrane::new(wasm_membrane,state);
+
+        match self.kernels.intake(key, mechtron_membrane)
         {
             Ok(_) => {}
             Err(e) => self.panic(e)
@@ -806,7 +816,7 @@ impl NucleusCycle {
             },
         };
 
-        let mut neutron_state = self.state.get(&neutron_state_key.tron)?;
+        let mut neutron_state = self.kernels.get(&neutron_state_key.tron)?;
 
         let info = self.context.info_for(message.to.tron.clone(), &CORE_BIND_NEUTRON)?;
 
@@ -929,7 +939,7 @@ impl MechtronShellContext for NucleusCycle
                         shell.create(&create_message, self, &mut state);
                         println!("neutron_api_create() -> after ");
 
-                        match self.state.insert(key, state)
+                        match self.kernels.insert(key, state)
                         {
                             Err(e) => {
                                 self.panic(e);
@@ -1533,6 +1543,7 @@ mod state
     use mechtron_common::state::{ReadOnlyState, State};
 
     use crate::nucleus::Error;
+    use crate::membrane::MechtronMembrane;
 
     pub struct StateHistory {
         history: RwLock<HashMap<Revision, HashMap<MechtronKey, Arc<ReadOnlyState>>>>,
@@ -1633,37 +1644,24 @@ mod state
     }
 
 
-    pub struct PhasicStateStructure {
-        store: RwLock<HashMap<MechtronKey, Arc<Mutex<State>>>>,
+    pub struct MechtronKernels {
+        store: RwLock<HashMap<MechtronKey, Arc<Mutex<MechtronMembrane>>>>,
     }
 
-    impl PhasicStateStructure {
+    impl MechtronKernels {
         pub fn new() -> Self {
-            PhasicStateStructure {
+            MechtronKernels {
                 store: RwLock::new(HashMap::new()),
             }
         }
 
-        pub fn intake(&mut self, key: MechtronKey, state: Arc<ReadOnlyState>) -> Result<(), Error> {
+        pub fn intake(&mut self, key: MechtronKey, mechtron: MechtronMembrane) -> Result<(), Error> {
             let mut store = self.store.write()?;
-            store.insert(key, Arc::new(Mutex::new(state.copy())));
+            store.insert(key, Arc::new(Mutex::new(mechtron)));
             Ok(())
         }
 
-        pub fn insert(&self, key: MechtronKey, state: State) -> Result<(), Error> {
-            let mut store = self.store.write()?;
-            store.insert(key, Arc::new(Mutex::new(state)));
-            Ok(())
-        }
-
-
-        pub fn add(&mut self, key: MechtronKey, state: Arc<Mutex<State>>) -> Result<(), Error> {
-            let mut store = self.store.write()?;
-            store.insert(key, state);
-            Ok(())
-        }
-
-        pub fn get(&self, key: &MechtronKey) -> Result<Arc<Mutex<State>>, Error> {
+        pub fn get(&self, key: &MechtronKey) -> Result<Arc<Mutex<MechtronMembrane>>, Error> {
             let store = self.store.read()?;
             let rtn = store.get(key);
 
@@ -1675,7 +1673,7 @@ mod state
             }
         }
 
-        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, Arc<Mutex<State>>)>, Error> {
+        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, Arc<Mutex<MechtronMembrane>>)>, Error> {
             let mut store = self.store.write()?;
             let mut rtn = vec![];
             for (key, state) in store.drain() {

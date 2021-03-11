@@ -26,6 +26,7 @@ lazy_static! {
     pub static ref CORE_SCHEMA_TEXT : Artifact = CORE.path_and_kind(&"schema/util/text.schema", "schema");
     pub static ref CORE_SCHEMA_ARTIFACT: Artifact = CORE.path_and_kind(&"schema/util/artifact.schema", "schema");
     pub static ref CORE_SCHEMA_OK : Artifact = CORE.path_and_kind(&"schema/util/ok.schema", "schema");
+    pub static ref CORE_SCHEMA_MECHTRON_CONTEXT : Artifact = CORE.path_and_kind(&"schema/mechtron/context.schema", "schema");
 
     pub static ref CORE_NUCLEUS_SIMULATION: Artifact = CORE.path_and_kind(&"nucleus/sim.yaml", "nucleus");
 

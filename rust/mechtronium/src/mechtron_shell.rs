@@ -6,7 +6,7 @@ use core::option::Option::{None, Some};
 use core::result::Result;
 use core::result::Result::{Err, Ok};
 use std::collections::HashMap;
-use std::sync::{Arc, MutexGuard};
+use std::sync::{Arc, MutexGuard, Mutex};
 
 use mechtron_common::buffers::ReadOnlyBuffer;
 use mechtron_common::id::Id;
@@ -19,20 +19,21 @@ use crate::nucleus::{MechtronShellContext, TronInfo};
 use mechtron_common::api::CreateApiCallCreateNucleus;
 use mechtron_common::artifact::Artifact;
 use mechtron_common::configs::PanicEscalation;
+use crate::membrane::MechtronMembrane;
 
 pub struct MechtronShell {
-    pub tron: Box<MechtronKernel>,
     pub info: TronInfo,
     pub outbound: RefCell<Vec<Message>>,
     pub panic: RefCell<Option<String>>,
+    pub kernel: Arc<Mutex<MechtronMembrane>>
 }
 
 
 impl MechtronShell {
-    pub fn new(tron: Box<MechtronKernel>, info: TronInfo) -> Self {
+    pub fn new(kernel: Arc<Mutex<MechtronMembrane>>, info: TronInfo) -> Self {
         MechtronShell {
-            tron: tron,
             info: info,
+            kernel: kernel,
             outbound: RefCell::new(vec!()),
             panic: RefCell::new(Option::None),
         }
@@ -109,15 +110,14 @@ impl MechtronShell {
     pub fn create(
         &mut self,
         create: &Message,
-        context: &dyn MechtronShellContext,
-        state: &mut State,
+        context: &dyn MechtronShellContext
     ) {
-        match self.create_result(create, context, state)
+        match self.create_result(create, context)
         {
             Ok(_) => {}
             Err(error) => {
                 self.panic(error);
-                state.set_taint(true);
+                self.kernel.set_taint(true);
                 self.check(context);
             }
         }
@@ -127,13 +127,12 @@ impl MechtronShell {
         &mut self,
         create: &Message,
         context: &dyn MechtronShellContext,
-        state: &mut State,
     ) -> Result<(), Error> {
-        if state.is_tainted()?
+        if self.kernel.is_tainted()?
         {
             return Err("mechtron state is tainted".into());
         }
-        let mut builders = self.tron.create(self.info.clone(), context, state, create)?;
+        let mut builders = self.kernel.create(context,create)?;
         self.handle(builders, context)?;
 
         Ok(())
@@ -142,11 +141,10 @@ impl MechtronShell {
     pub fn extra(
         &mut self,
         message: &Message,
-        context: &dyn MechtronShellContext,
-        state: Arc<ReadOnlyState>,
+        context: &dyn MechtronShellContext
     )
     {
-        match self.extra_result(message, context, state)
+        match self.extra_result(message, context)
         {
             Ok(_) => {}
             Err(err) => {
@@ -158,11 +156,10 @@ impl MechtronShell {
     fn extra_result(
         &mut self,
         message: &Message,
-        context: &dyn MechtronShellContext,
-        state: Arc<ReadOnlyState>,
+        context: &dyn MechtronShellContext
     ) -> Result<(), Error>
     {
-        if state.is_tainted()?
+        if self.kernel.get_state().is_tainted()?
         {
             return Err("mechtron state is tainted".into());
         }
@@ -393,7 +390,4 @@ impl MechtronShell {
     }
 }
 
-pub struct MechtronKernel
-{
 
-}
