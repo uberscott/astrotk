@@ -22,7 +22,7 @@ use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta}
 
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::mechtron_shell::MechtronShell;
+use crate::mechtron_shell::{MechtronShell, MechtronKernel};
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{Lookup, PhasicStateStructure, StateHistory};
@@ -34,15 +34,15 @@ pub trait NucleiContainer
     fn has_nucleus(&self, id: &Id) -> bool;
 }
 
-pub struct Nuclei<'nuclei> {
-    nuclei: RwLock<HashMap<Id, Arc<Nucleus<'nuclei>>>>,
-    context: NucleusContext<'nuclei>
+pub struct Nuclei {
+    nuclei: RwLock<HashMap<Id, Arc<Nucleus>>>,
+    context: NucleusContext
 }
 
-impl<'nuclei> Nuclei<'nuclei> {
-    pub fn new(cache: Arc<Cache<'nuclei>>,
+impl Nuclei {
+    pub fn new(cache: Arc<Cache>,
                seq: Arc<IdSeq>,
-               router: Arc<dyn Router + 'static>) -> Arc<Self> {
+               router: Arc<dyn Router>) -> Arc<Self> {
         let rtn = Arc::new(Nuclei {
             nuclei: RwLock::new(HashMap::new()),
             context: NucleusContext {
@@ -56,7 +56,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         rtn
     }
 
-    pub fn set_arc_ref_to_self(&self, myself: Arc<Nuclei<'nuclei>>)
+    pub fn set_arc_ref_to_self(&self, myself: Arc<Nuclei>)
     {
         self.context.nuclei.replace(Option::Some(Arc::downgrade(&myself)));
     }
@@ -72,7 +72,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         nuclei.contains_key(id)
     }
 
-    pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus<'nuclei>>, Error> {
+    pub fn get<'get>(&'get self, nucleus_id: &Id) -> Result<Arc<Nucleus>, Error> {
         let sources = self.nuclei.read()?;
         if !sources.contains_key(nucleus_id) {
             return Err(format!(
@@ -114,7 +114,7 @@ impl<'nuclei> Nuclei<'nuclei> {
         Ok(id)
     }
 
-    pub fn add( &self, nucleus: Nucleus<'nuclei> )->Result<(),Error>
+    pub fn add( &self, nucleus: Nucleus )->Result<(),Error>
     {
         let mut sources = self.nuclei.write()?;
         sources.insert(nucleus.info.id.clone(),Arc::new(nucleus) );
@@ -147,17 +147,21 @@ pub struct NucleusInfo
 
 
 #[derive(Clone)]
-pub struct NucleusContext<'context>
+pub struct NucleusContext
 {
-    pub cache: Arc<Cache<'context>>,
+    pub cache: Arc<Cache>,
     pub seq: Arc<IdSeq>,
-    pub router: Arc<dyn Router+'static>,
-    pub nuclei: RefCell<Option<Weak<Nuclei<'context>>>>
+    pub router: Arc<dyn Router>,
+    pub nuclei: RefCell<Option<Weak<Nuclei>>>
 }
 
-impl <'context> NucleusContext<'context>
+impl  NucleusContext
 {
-    /*
+    pub fn mechtron_kernel_for(&self, config: &MechtronConfig)->Result<Box<MechtronKernel>,Error>
+    {
+        unimplemented!()
+    }
+
     pub fn info_for(
         &self,
         key: MechtronKey,
@@ -173,10 +177,9 @@ impl <'context> NucleusContext<'context>
         })
     }
 
-     */
 
 
-    pub fn get_nuclei(&self) -> Option<Arc<Nuclei<'context>>>
+    pub fn get_nuclei(&self) -> Option<Arc<Nuclei>>
     {
         // we unwrap it because if it hasn't been set then that's a panic error,
         // whereas if the reference is gone, that just means the system is probably in the
@@ -187,23 +190,23 @@ impl <'context> NucleusContext<'context>
     }
 }
 
-pub struct Nucleus<'nucleus> {
+pub struct Nucleus {
     info: NucleusInfo,
     state: Arc<StateHistory>,
     messaging: CyclicMessagingStructure,
     head: Revision,
-    context: NucleusContext<'nucleus>,
+    context: NucleusContext,
     config: Arc<NucleusConfig>,
     panic: RefCell<Option<String>>,
 }
 
 
-impl<'nucleus> Nucleus<'nucleus> {}
+impl Nucleus {}
 
-impl<'nucleus> Nucleus<'nucleus> {
+impl Nucleus {
     fn create_sim(
         sim_config: Arc<SimConfig>,
-        context: NucleusContext<'nucleus>,
+        context: NucleusContext,
     ) -> Result<Self, Error> {
         let sim_id = context.seq.next();
         let id = sim_id.clone();
@@ -223,7 +226,7 @@ impl<'nucleus> Nucleus<'nucleus> {
     fn new(
         id: Id,
         sim_id: Id,
-        context: NucleusContext<'nucleus>,
+        context: NucleusContext,
         config: Arc<NucleusConfig>
     ) -> Result<Self, Error> {
         let mut nucleus = Nucleus {
@@ -241,6 +244,11 @@ impl<'nucleus> Nucleus<'nucleus> {
 
         Ok(nucleus)
     }
+
+    pub fn valid_neutron_id(id: Id) -> bool {
+        return id.id == 0;
+    }
+
 
     fn neutron_key(&self) -> MechtronKey
     {
@@ -374,7 +382,7 @@ println!("Sending message of type: {:?} ", &message.kind );
     }
 
 
-    pub fn revise(&'nucleus mut self, from: Revision, to: Revision) -> Result<(), Error> {
+    pub fn revise(&mut self, from: Revision, to: Revision) -> Result<(), Error> {
         if from.cycle != to.cycle - 1 {
             return Err("cycles must be sequential. 'from' revision cycle must be exactly 1 less than 'to' revision cycle".into());
         }
@@ -430,9 +438,9 @@ println!("Sending message of type: {:?} ", &message.kind );
 
 
 
-impl<'nucleus> MechtronContext<'nucleus> for Nucleus<'nucleus>
+impl MechtronContext for Nucleus
 {
-    fn configs<'get>(&'get self) -> &'get Configs<'nucleus> {
+    fn configs<'get>(&'get self) -> &'get Configs {
         &self.context.cache.configs
     }
 
@@ -442,9 +450,9 @@ impl<'nucleus> MechtronContext<'nucleus> for Nucleus<'nucleus>
 }
 
 
-impl<'nucleus> MechtronShellContext<'nucleus> for Nucleus<'nucleus>
+impl MechtronShellContext for Nucleus
 {
-    fn configs<'get>(&'get self) -> &'get Configs<'nucleus> {
+    fn configs<'get>(&'get self) -> &'get Configs {
         &self.context.cache.configs
     }
 
@@ -522,23 +530,23 @@ struct NucleusData<'cycle>
     messaging: &'cycle CyclicMessagingStructure,
 }
 
-struct NucleusCycle<'cycle> {
+struct NucleusCycle {
     info: NucleusInfo,
     state: PhasicStateStructure,
     messaging: PhasicMessagingStructure,
     outbound: OutboundMessaging,
     revision: Revision,
-    context: NucleusContext<'cycle>,
+    context: NucleusContext,
     config: Arc<NucleusConfig>,
     history: Arc<StateHistory>,
     phase: String,
     panic: RefCell<Option<String>>,
 }
 
-impl<'cycle> NucleusCycle<'cycle> {
+impl NucleusCycle {
     fn init(
         info: NucleusInfo,
-        context: NucleusContext<'cycle>,
+        context: NucleusContext,
         revision: Revision,
         history: Arc<StateHistory>,
         config: Arc<NucleusConfig>,
@@ -780,10 +788,6 @@ impl<'cycle> NucleusCycle<'cycle> {
             _ => Err("not implemented yet".into()),
         }
     }
-    pub fn valid_neutron_id(id: Id) -> bool {
-        return id.id == 0;
-    }
-
 
     fn process_create(&mut self, message: &Message) -> Result<(), Error> {
         // ensure this is addressed to a neutron
@@ -821,9 +825,9 @@ impl<'cycle> NucleusCycle<'cycle> {
     }
 }
 
-pub trait MechtronShellContext<'cycle>
+pub trait MechtronShellContext
 {
-    fn configs<'get>(&'get self) -> &'get Configs<'cycle>;
+    fn configs<'get>(&'get self) -> &'get Configs;
     fn revision(&self) -> &Revision;
     fn get_state(&self, key: &StateKey) -> Result<Arc<ReadOnlyState>, Error>;
     fn lookup_nucleus(&self, name: &str) -> Result<Id, Error>;
@@ -841,10 +845,10 @@ pub trait MechtronShellContext<'cycle>
 
 
 
-impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
+impl MechtronShellContext for NucleusCycle
 {
 
-    fn configs<'get>(&'get self) -> &'get Configs<'cycle> {
+    fn configs<'get>(&'get self) -> &'get Configs {
         self.context.cache.configs.borrow()
     }
 
@@ -964,7 +968,7 @@ impl<'cycle> MechtronShellContext<'cycle> for NucleusCycle<'cycle>
 
 
 
-impl<'cycle> Router for NucleusCycle<'cycle> {
+impl Router for NucleusCycle {
     fn send(&self, message: Arc<Message>) {
         unimplemented!()
         /*
@@ -1864,7 +1868,7 @@ mod test
 
     use crate::node::Node;
 
-    fn create_node() ->Node<'static>
+    fn create_node() ->Node
     {
         let node = Node::new(Option::None);
         node
@@ -1945,6 +1949,7 @@ mod test
 
 
 
+#[derive(Clone)]
 pub struct TronInfo
 {
     pub key: MechtronKey,

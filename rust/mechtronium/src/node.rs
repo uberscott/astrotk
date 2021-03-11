@@ -20,21 +20,21 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 
-pub struct Node<'configs> {
-    pub local: Option<Arc<Local<'configs>>>,
-    pub net: Arc<Network<'configs>>,
-    pub cache: Arc<Cache<'configs>>,
-    pub router: Arc<dyn Router+'configs>
+pub struct Node {
+    pub local: Option<Arc<Local>>,
+    pub net: Arc<Network>,
+    pub cache: Arc<Cache>,
+    pub router: Arc<dyn Router>
 }
 
 
-impl <'configs> Node<'configs> {
+impl Node {
 
-    pub fn default_cache()->Arc<Cache<'static>>
+    pub fn default_cache()->Arc<Cache>
     {
         let repo = Arc::new(MechtroniumArtifactRepository::new("../../repo/"));
         let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
-        let configs = Configs::new(repo.clone());
+        let configs = Arc::new(Configs::new(repo.clone()));
         let wasms = Keeper::new(
             repo.clone(),
             Box::new(WasmModuleParser {
@@ -43,14 +43,11 @@ impl <'configs> Node<'configs> {
             ),
             Option::None);
 
-        Arc::new(Cache {
-            wasm_store: wasm_store,
-            configs: configs,
-            wasms: wasms,
-        })
+
+        Arc::new(Cache::new(configs,wasm_store,wasms ) )
     }
 
-    pub fn new(cache: Option<Arc<Cache<'static>>>) -> Node<'static> {
+    pub fn new(cache: Option<Arc<Cache>>) -> Node {
 
         let cache = match cache{
             None => {
@@ -104,30 +101,30 @@ impl <'configs> Node<'configs> {
 
 }
 
-impl<'configs> Drop for Node<'configs>
+impl Drop for Node
 {
     fn drop(&mut self) {
         self.local = Option::None;
     }
 }
 
-pub struct Local<'configs> {
-    sources: Arc<Nuclei<'configs>>,
-    router: Arc<dyn Router+'static>,
+pub struct Local {
+    sources: Arc<Nuclei>,
+    router: Arc<dyn Router>,
     seq: Arc<IdSeq>,
-    cache: Arc<Cache<'configs>>
+    cache: Arc<Cache>
 }
 
 
-impl <'configs> NucleiContainer for Local<'configs>
+impl NucleiContainer for Local
 {
     fn has_nucleus(&self, id: &Id) -> bool {
         self.sources.has_nucleus(id)
     }
 }
 
-impl <'configs> Local <'configs>{
-    fn new(cache: Arc<Cache<'configs>>, seq: Arc<IdSeq>, router: Arc<dyn Router+'static>) -> Self {
+impl  Local{
+    fn new(cache: Arc<Cache>, seq: Arc<IdSeq>, router: Arc<dyn Router>) -> Self {
         let rtn = Local {
             sources: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
             router: router,
@@ -148,7 +145,7 @@ impl <'configs> Local <'configs>{
         self.seq.clone()
     }
 
-    pub fn cache(&self)->Arc<Cache<'configs>>
+    pub fn cache(&self)->Arc<Cache>
     {
         self.cache.clone()
     }
@@ -159,7 +156,7 @@ impl <'configs> Local <'configs>{
     }
 }
 
-impl<'configs> Router for Local<'configs>
+impl Router for Local
 {
     fn send(&self, message: Arc<Message>) {
         self.router.send(message)
@@ -189,15 +186,15 @@ impl<'configs> Router for Local<'configs>
 }
 
 #[derive(Clone)]
-pub struct NucleusContext<'context> {
-    sys: Arc<Node<'context>>,
+pub struct NucleusContext {
+    sys: Arc<Node>,
 }
 
-impl<'context> NucleusContext<'context> {
-    pub fn new(sys: Arc<Node<'context>>) -> Self {
+impl NucleusContext {
+    pub fn new(sys: Arc<Node>) -> Self {
         NucleusContext { sys: sys }
     }
-    pub fn sys<'get>(&'get self) -> Arc<Node<'context>> {
+    pub fn sys<'get>(&'get self) -> Arc<Node> {
         self.sys.clone()
     }
 }
@@ -209,13 +206,13 @@ pub struct WasmStuff
     pub wasms: Keeper<Module>,
 }
 
-pub struct Network<'net> {
+pub struct Network {
     seq: Arc<IdSeq>,
-    router: Arc<NetworkRouter<'net>>,
+    router: Arc<NetworkRouter>,
 }
 
-impl <'net> Network<'net> {
-    fn new(router: Arc<NetworkRouter<'net>>) -> Self {
+impl Network {
+    fn new(router: Arc<NetworkRouter>) -> Self {
         Network {
             seq: Arc::new(IdSeq::new(0)),
             router: router
@@ -227,7 +224,7 @@ impl <'net> Network<'net> {
         self.seq.clone()
     }
 
-    pub fn router(&self)->Arc<dyn Router+'net>
+    pub fn router(&self)->Arc<dyn Router>
     {
         self.router.clone()
     }

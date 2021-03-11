@@ -35,7 +35,7 @@ impl <'message> NeutronApiCallCreateMechtron<'message> {
       })
    }
 
-   pub fn payloads<'config>(call: NeutronApiCallCreateMechtron, configs: &Configs<'config>) -> Result<Vec<Payload>, Error>
+   pub fn payloads(call: NeutronApiCallCreateMechtron, configs: &Configs) -> Result<Vec<Payload>, Error>
    {
 
       Ok(vec![Payload{

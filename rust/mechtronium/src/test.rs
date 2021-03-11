@@ -6,7 +6,7 @@
     use crate::mechtron_common::core::*;
     use std::sync::Arc;
 
-    pub fn create_configs<'a>()->Configs<'a>
+    pub fn create_configs()->Configs
     {
         let repo = MechtroniumArtifactRepository::new("../../repo");
         let mut configs = Configs::new(Arc::new(repo) );

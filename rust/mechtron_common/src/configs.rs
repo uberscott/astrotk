@@ -12,16 +12,16 @@ use crate::core::*;
 use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository, ArtifactYaml };
 use crate::error::Error;
 
-pub struct Configs<'config> {
+pub struct Configs {
     pub artifacts: Arc<dyn ArtifactCache + Sync + Send>,
-    pub schemas: Keeper<NP_Factory<'config>>,
+    pub schemas: Keeper<NP_Factory<'static>>,
     pub sims: Keeper<SimConfig>,
     pub binds: Keeper<BindConfig>,
     pub nucleus: Keeper<NucleusConfig>,
     pub mechtrons: Keeper<MechtronConfig>
 }
 
-impl<'config> Configs<'config> {
+impl Configs {
     pub fn new(artifact_cache: Arc<dyn ArtifactCache + Sync + Send>) -> Self {
         let mut configs = Configs {
             artifacts: artifact_cache.clone(),

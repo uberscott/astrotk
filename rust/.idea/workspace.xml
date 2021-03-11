@@ -19,20 +19,15 @@
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/api.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/api.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/configs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/mechtron.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/cache.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/cache.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/error.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/router.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/router.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/scheduler.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/simulation.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/test.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -104,7 +99,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test nucleus::test::test_create_sim">
+  <component name="RunManager" selected="Cargo.Test membrane::test::test_inject_and_extract_state">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -161,9 +156,39 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test membrane::test::test_grow_state (1)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib membrane::test::test_grow_state -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test membrane::test::test_grow_state" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package mechtronium --lib membrane::test::test_grow_state -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test membrane::test::test_inject_and_extract_state" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib membrane::test::test_inject_and_extract_state -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -191,39 +216,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test message::tests::test_message_builder" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_core --lib message::tests::test_message_builder -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="Test nucleus::test::test_create_sim" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package mechtronium --lib nucleus::test::test_create_sim -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test state::tests::test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_core --lib state::tests::test -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -256,19 +251,19 @@
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_state" />
-      <item itemvalue="Cargo.Test message::tests::test_message_builder" />
-      <item itemvalue="Cargo.Test state::tests::test" />
       <item itemvalue="Cargo.Test membrane::test::test_grow_state" />
       <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
       <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
+      <item itemvalue="Cargo.Test membrane::test::test_grow_state (1)" />
+      <item itemvalue="Cargo.Test membrane::test::test_inject_and_extract_state" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test membrane::test::test_inject_and_extract_state" />
+        <item itemvalue="Cargo.Test membrane::test::test_grow_state (1)" />
         <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
         <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
         <item itemvalue="Cargo.Test membrane::test::test_grow_state" />
-        <item itemvalue="Cargo.Test state::tests::test" />
-        <item itemvalue="Cargo.Test message::tests::test_message_builder" />
       </list>
     </recent_temporary>
   </component>
@@ -309,7 +304,7 @@
       <workItem from="1615414338348" duration="43000" />
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
-      <workItem from="1615415460309" duration="10326000" />
+      <workItem from="1615415460309" duration="16920000" />
     </task>
     <servers />
   </component>

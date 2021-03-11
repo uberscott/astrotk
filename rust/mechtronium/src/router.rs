@@ -23,20 +23,20 @@ pub enum HasNucleus
     NotSure
 }
 
-pub struct NetworkRouter<'local> {
-    shared: Arc<SharedRouter<'local,LocalRouter<'local>,NetworkRouter<'local>>>
+pub struct NetworkRouter {
+    shared: Arc<SharedRouter<LocalRouter,NetworkRouter>>
 }
 
-impl <'local> NetworkRouter<'local>
+impl  NetworkRouter
 {
-    pub fn new( shared: Arc<SharedRouter<'local,LocalRouter<'local>,NetworkRouter<'local>>>) -> Self {
+    pub fn new( shared: Arc<SharedRouter<LocalRouter,NetworkRouter>>) -> Self {
         NetworkRouter{
             shared: shared
         }
     }
 }
 
-impl <'local> Router for NetworkRouter<'local>{
+impl Router for NetworkRouter{
 
     fn send(&self, message: Arc<Message>) {
 
@@ -54,21 +54,21 @@ impl <'local> Router for NetworkRouter<'local>{
 }
 
 
-pub struct LocalRouter<'local>
+pub struct LocalRouter
  {
-     local: Arc<SharedRouter<'local,Local<'local>,LocalRouter<'local>>>
+     local: Arc<SharedRouter<Local,LocalRouter>>
  }
 
-impl  <'local> LocalRouter<'local>
+impl  LocalRouter
 {
-    pub fn new( shared: Arc<SharedRouter<'local,Local<'local>,LocalRouter<'local>>>) -> Self {
+    pub fn new( shared: Arc<SharedRouter<Local,LocalRouter>>) -> Self {
         LocalRouter{
             local: shared
         }
     }
 }
 
-impl <'local> LocalRouter<'local> {
+impl LocalRouter {
 
     fn panic( &self, message: &str )
     {
@@ -76,7 +76,7 @@ impl <'local> LocalRouter<'local> {
     }
 }
 
-impl <'local> Router for LocalRouter<'local> {
+impl Router for LocalRouter {
 
     fn send(&self, message: Arc<Message>) {
         match self.has_nucleus_local(&message.to.tron.nucleus)
@@ -105,7 +105,7 @@ impl <'local> Router for LocalRouter<'local> {
 
 }
 
-impl <'local> Drop for LocalRouter<'local>
+impl Drop for LocalRouter
 {
     fn drop(&mut self) {
         println!("DROPING NODE!");
@@ -113,20 +113,18 @@ impl <'local> Drop for LocalRouter<'local>
     }
 }
 
-pub struct SharedRouter<'local,L: Router+'local,R: Router+'local>
+pub struct SharedRouter<L: Router,R: Router>
 {
     pub local : RefCell<Option<Weak<L>>>,
     pub remote: RefCell<Option<Weak<R>>>,
-    pub phantom: PhantomData<&'local R>
 }
 
-impl <'local,L: Router+'local,R: Router+'local> SharedRouter<'local,L,R>
+impl <L: Router,R: Router> SharedRouter<L,R>
 {
     pub fn new( ) -> Self {
         SharedRouter{
             local: RefCell::new(Option::None),
             remote: RefCell::new(Option::None),
-            phantom: PhantomData::default()
         }
     }
 
@@ -146,7 +144,7 @@ impl <'local,L: Router+'local,R: Router+'local> SharedRouter<'local,L,R>
     }
 }
 
-impl <'local,L: Router+'local,R: Router+'local>Router for  SharedRouter<'local,L,R>
+impl <L: Router,R: Router>Router for  SharedRouter<L,R>
 {
     fn send(&self, message: Arc<Message>) {
 

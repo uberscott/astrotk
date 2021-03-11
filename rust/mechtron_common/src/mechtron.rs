@@ -1,9 +1,9 @@
 use crate::configs::Configs;
 use crate::id::Revision;
 
-pub trait MechtronContext<'cycle>
+pub trait MechtronContext
 {
-    fn configs<'get>(&'get self) -> &'get Configs<'cycle>;
+    fn configs<'get>(&'get self) -> &'get Configs;
     fn revision(&self) -> &Revision;
 }
 

@@ -20,10 +20,10 @@ use mechtron_common::message::{Message, MessageBuilder};
 use mechtron_common::state::{ReadOnlyState, State};
 
 pub struct WasmMembrane {
-    module: Module,
+    module: Arc<Module>,
     instance: Instance,
     host: Arc<RwLock<WasmHost>>,
-    cache: Arc<Cache<'static>>
+    configs: Arc<Configs>
 }
 
 impl WasmMembrane{
@@ -125,12 +125,13 @@ impl WasmMembrane{
 
     }
 
+
     pub fn log( &self, log_type:&str, message: &str )
     {
         println!("{} : {}",log_type,message);
     }
 
-    pub fn write_string(&self, string: &str )->Result<i32,Error>
+    fn write_string(&self, string: &str )->Result<i32,Error>
     {
         let string = string.as_bytes();
         let mut memory = self.instance.exports.get_memory("memory")?;
@@ -144,7 +145,7 @@ impl WasmMembrane{
         Ok(buffer_id)
     }
 
-    pub fn write_buffer(&self, bytes: &Vec<u8> )->Result<i32,Error>
+    fn write_buffer(&self, bytes: &Vec<u8> )->Result<i32,Error>
     {
         let mut memory = self.instance.exports.get_memory("memory")?;
         let buffer_id = self.alloc_buffer(bytes.len() as _ )?;
@@ -157,7 +158,7 @@ impl WasmMembrane{
         Ok(buffer_id)
     }
 
-   pub fn alloc_buffer(&self, len: i32 ) ->Result<i32,Error>
+   fn alloc_buffer(&self, len: i32 ) ->Result<i32,Error>
     {
         let buffer_id= self.instance.exports.get_native_function::<i32,i32>("wasm_alloc_buffer").unwrap().call(len.clone())?;
         Ok(buffer_id)
@@ -168,7 +169,7 @@ impl WasmMembrane{
         Ok(self.instance.exports.get_native_function::<i32, WasmPtr<u8, Array>>("wasm_get_buffer_ptr").unwrap().call(buffer_id)?)
     }
 
-    pub fn read_buffer(&self, buffer_id: i32 ) ->Result<Vec<u8>,Error>
+    fn read_buffer(&self, buffer_id: i32 ) ->Result<Vec<u8>,Error>
     {
         let ptr = self.instance.exports.get_native_function::<i32,WasmPtr<u8,Array>>("wasm_get_buffer_ptr").unwrap().call(buffer_id )?;
         let len = self.instance.exports.get_native_function::<i32,i32>("wasm_get_buffer_len").unwrap().call(buffer_id )?;
@@ -182,7 +183,7 @@ impl WasmMembrane{
         Ok(rtn)
     }
 
-    pub fn read_string(&self, buffer_id: i32 ) ->Result<String,Error>
+    fn read_string(&self, buffer_id: i32 ) ->Result<String,Error>
     {
         let raw = self.read_buffer(buffer_id)?;
         let rtn = String::from_utf8(raw)?;
@@ -192,52 +193,53 @@ impl WasmMembrane{
 
 
 
-    pub fn wasm_dealloc_buffer( &self, buffer_id: i32 )->Result<(),Error>
+    fn wasm_dealloc_buffer( &self, buffer_id: i32 )->Result<(),Error>
     {
         self.instance.exports.get_native_function::<i32,()>("wasm_dealloc_buffer").unwrap().call(buffer_id.clone())?;
         Ok(())
     }
 
-    pub fn wasm_dealloc(&self, buffer: WasmBuffer ) ->Result<(),Error>
+    fn wasm_dealloc(&self, buffer: WasmBuffer ) ->Result<(),Error>
     {
         self.instance.exports.get_native_function::<(WasmPtr<u8,Array>,i32),()>("wasm_dealloc").unwrap().call(buffer.ptr,buffer.len as _)?;
         Ok(())
     }
 
-    pub fn inject_state(&self, state: &ReadOnlyState, configs: &Configs ) ->Result<i32,Error>
+    fn inject_state(&self, state: &ReadOnlyState) ->Result<i32,Error>
     {
-        let state_buffer_id = self.write_buffer( &state.to_bytes(configs)?)?;
+        let state_buffer_id = self.write_buffer( &state.to_bytes(&self.configs)?)?;
         self.instance.exports.get_native_function::<i32,()>("wasm_inject_state").unwrap().call(state_buffer_id.clone() )?;
         Ok(state_buffer_id)
     }
 
-    pub fn extract_state(&self, state: i32, configs: &Configs ) ->Result<State,Error>
+    fn extract_state(&self, state: i32) ->Result<State,Error>
     {
         self.instance.exports.get_native_function::<i32,()>("wasm_move_state_to_buffers").unwrap().call(state.clone() )?;
         let bytes = self.read_buffer(state)?;
-        let state = State::from_bytes(bytes,configs)?;
+        self.wasm_dealloc_buffer(state.clone());
+        let state = State::from_bytes(bytes,&self.configs)?;
         Ok(state)
     }
 
-    pub fn test_modify_state(&self, state: i32 )->Result<(),Error>
+    fn test_modify_state(&self, state: i32 )->Result<(),Error>
     {
         self.instance.exports.get_native_function::<i32,()>("wasm_test_modify_state").unwrap().call(state.clone() )?;
         Ok(())
     }
 
-    pub fn test_cache(&self)->Result<(),Error>
+    fn test_cache(&self)->Result<(),Error>
     {
         self.instance.exports.get_native_function::<(),()>("mechtron_test_cache").unwrap().call()?;
         Ok(())
     }
 
-    pub fn test_panic(&self)->Result<(),Error>
+    fn test_panic(&self)->Result<(),Error>
     {
         self.instance.exports.get_native_function::<(),()>("wasm_test_panic").unwrap().call()?;
         Ok(())
     }
 
-    pub fn test_ok(&self)->Result<(),Error>
+    fn test_ok(&self)->Result<(),Error>
     {
         self.instance.exports.get_native_function::<(),()>("wasm_test_ok").unwrap().call()?;
         Ok(())
@@ -331,7 +333,7 @@ impl Env
 }
 
 impl  WasmMembrane {
-    pub fn new(module: Module, cache: Arc<Cache<'static>>) -> Result<Arc<Self>, Error> {
+    pub fn new(module: Arc<Module>, configs: Arc<Configs>) -> Result<Arc<Self>, Error> {
         let mut host = Arc::new(RwLock::new(WasmHost::new()));
 
         let imports = imports! { "env"=>{
@@ -386,7 +388,7 @@ impl  WasmMembrane {
             module: module,
             instance: instance,
             host: host.clone(),
-            cache: cache
+            configs:configs
         });
 
         {
@@ -397,70 +399,32 @@ impl  WasmMembrane {
     }
 }
 
-struct WasmBufferLocker
+struct StateLocker
 {
     membrane: Arc<WasmMembrane>,
-    buffers: RwLock<HashMap<String,i32>>
+    state_id: i32
 }
 
-impl WasmBufferLocker
+impl StateLocker
 {
-    pub fn new( membrane: Arc<WasmMembrane> ) -> Self
+    pub fn inject( membrane: Arc<WasmMembrane>, state: &ReadOnlyState ) -> Result<Self,Error>
     {
-        WasmBufferLocker
+        let state_id = membrane.inject_state(state)?;
+        Ok(StateLocker
         {
             membrane: membrane.clone(),
-            buffers: RwLock::new( HashMap::new() )
-        }
+            state_id: state_id
+        })
     }
 
-    pub fn store_buffer( &self, key: &str, buffer: &Vec<u8>)->Result<(),Error>
+    pub fn extract( &self )->Result<State,Error>
     {
-        let buffer_id = self.membrane.write_buffer(buffer)?;
-        let mut buffers = self.buffers.write()?;
-        if buffers.contains_key(&key.to_string() )
-        {
-            return Err(format!("buffer locker already contains buffer named {} ", key).into());
-        }
-
-        buffers.insert( key.to_string(), buffer_id );
-
-        Ok(())
+        Ok(self.membrane.extract_state(self.state_id)?)
     }
 
-    pub fn remove_buffer( &self, key: &str ) -> Result<(),Error>
-    {
-        let mut buffers = self.buffers.write()?;
-        let buffer_id = buffers.remove(&key.to_string() );
-
-        if buffer_id.is_none()
-        {
-            return Ok(());
-        }
-
-        let buffer_id = buffer_id.unwrap();
-
-        self.membrane.wasm_dealloc_buffer(buffer_id)?;
-
-        Ok(())
-    }
-
-    pub fn remove_all(&self)->Result<(),Error>
-    {
-        let mut buffers = self.buffers.write()?;
-
-        for buffer_id in buffers.values()
-        {
-            self.membrane.wasm_dealloc_buffer(buffer_id.clone())?;
-        }
-
-        buffers.clear();
-
-        Ok(())
-    }
 }
 
-impl  Drop for WasmBufferLocker
+impl  Drop for StateLocker
 {
     fn drop(&mut self) {
         self.remove_all();
@@ -497,7 +461,7 @@ mod test
 
         let store = Store::new(&JIT::new(Cranelift::default()).engine());
         let module = Module::new(&store, data)?;
-        let mut membrane = WasmMembrane::new(module, Node::default_cache()).unwrap();
+        let mut membrane = WasmMembrane::new(Arc::new(module), Node::default_cache().configs.clone()).unwrap();
         membrane.init()?;
 
         Ok(membrane)
@@ -575,8 +539,8 @@ mod test
         let mut state = State::new(&cache.configs,config.clone())?;
         state.set_taint(true);
 
-        let state_buffer_id= membrane.inject_state(&state.read_only()?, &cache.configs )?;
-        let extracted_state = membrane.extract_state(state_buffer_id, &cache.configs )?;
+        let state_buffer_id= membrane.inject_state(&state.read_only()? )?;
+        let extracted_state = membrane.extract_state(state_buffer_id)?;
 
         assert_eq!(state.is_tainted()?, extracted_state.is_tainted()?);
 
@@ -593,11 +557,11 @@ mod test
         let mut state = State::new(&cache.configs,config.clone())?;
         state.set_taint(false);
 
-        let state_buffer_id= membrane.inject_state(&state.read_only()?, &cache.configs )?;
+        let state_buffer_id= membrane.inject_state(&state.read_only()?)?;
 
         membrane.test_modify_state(state_buffer_id);
 
-        let updated_state = membrane.extract_state(state_buffer_id, &cache.configs )?;
+        let updated_state = membrane.extract_state(state_buffer_id)?;
 
         assert!(!state.is_tainted()?);
         assert!(updated_state.is_tainted()?);

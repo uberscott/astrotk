@@ -680,10 +680,10 @@ impl Payload {
         Ok(())
     }
 
-    pub fn from<'config>(
+    pub fn from(
         path: &Path,
         buffer: &ReadOnlyBuffer,
-        configs: &Configs<'config>,
+        configs: &Configs,
     ) -> Result<Payload, Error> {
         let artifact = Artifact::from(buffer.get(&path.with(path!["artifact"]))?)?;
         let bytes = buffer.get::<Vec<u8>>(&path.with(path!["bytes"]))?;
@@ -761,18 +761,18 @@ impl Message {
     }
 
 
-    pub fn copy_to_bytes<'configs>(&self, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
+    pub fn copy_to_bytes(&self, configs: &Configs) -> Result<Vec<u8>, Error> {
         Message::to_bytes(self, configs)
     }
 
-    pub fn to_payload<'configs>(message:&Message, configs: &Configs<'configs>) -> Result<Payload, Error> {
+    pub fn to_payload(message:&Message, configs: &Configs) -> Result<Payload, Error> {
         Ok(Payload{
             schema: CORE_SCHEMA_MESSAGE.clone(),
             buffer: Message::to_buffer(message,configs)?
         })
     }
 
-    pub fn to_buffer<'configs>(&self, configs: &Configs<'configs>) -> Result<ReadOnlyBuffer, Error> {
+    pub fn to_buffer(&self, configs: &Configs) -> Result<ReadOnlyBuffer, Error> {
         let bytes = self.to_bytes(configs)?;
         let factory = configs.schemas.get( &CORE_SCHEMA_MESSAGE )?;
         let buffer = factory.open_buffer(bytes);
@@ -780,7 +780,7 @@ impl Message {
         Ok(buffer)
     }
 
-    pub fn to_bytes<'configs>(&self, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
+    pub fn to_bytes(&self, configs: &Configs) -> Result<Vec<u8>, Error> {
         let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE)?;
         let mut buffer =
             Buffer::new(factory.new_buffer(Option::Some(self.calc_bytes())));
