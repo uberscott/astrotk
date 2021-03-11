@@ -642,7 +642,7 @@ impl<'cycle> NucleusCycle<'cycle> {
             },
             Option::None,
             CreatePayloadsBuilder::payloads(self.configs(), neutron_create_payload_builder),
-             Option::Some(meta.clone()),
+            Option::Some(meta.clone()),
             Option::None
         );
 

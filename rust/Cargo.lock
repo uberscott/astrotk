@@ -445,14 +445,14 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "lazy_static",
- "mechtron_core",
+ "mechtron_common",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "wee_alloc",
 ]
 
 [[package]]
-name = "mechtron_core"
+name = "mechtron_common"
 version = "0.1.0"
 dependencies = [
  "bytes",
@@ -464,13 +464,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mechtron_core"
+version = "0.1.0"
+dependencies = [
+ "mechtron",
+ "mechtron_common",
+]
+
+[[package]]
 name = "mechtronium"
 version = "0.1.0"
 dependencies = [
  "atomic",
  "bytes",
  "lazy_static",
- "mechtron_core",
+ "mechtron_common",
  "no_proto",
  "semver",
  "serde",

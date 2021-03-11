@@ -14,17 +14,41 @@
     <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm_membrane/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm_membrane_guest/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtron_core/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/mechtron/src/mechtron.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_common/src/lib.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtron_core/src/simtron.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/membrane.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_core/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/state.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/api.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/api.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/configs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/core.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/error.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/id.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/id.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/mechtron.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/state.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/util.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/util.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/error.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/simulation.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,14 +113,14 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/mechtron_common/src" />
       <recent name="$PROJECT_DIR$/mechtron_wasm/src" />
       <recent name="$PROJECT_DIR$/mechtron_core/src" />
-      <recent name="$PROJECT_DIR$/mechtron_common/src" />
       <recent name="$PROJECT_DIR$/mechtron/src" />
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test membrane::test::test_grow_state">
+  <component name="RunManager" selected="Cargo.Expand mechtronium::mechtron [mechtron_core]">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -106,6 +130,21 @@
       <option name="TEST_OBJECT" value="class" />
       <method v="2">
         <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Expand mechtronium::mechtron [mechtron_core]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="expand --lib --color=always --theme=GitHub --tests mechtron" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtronium" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
     <configuration name="Expand mechtronium::nucleus [rust]" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
@@ -155,21 +194,6 @@
     </configuration>
     <configuration name="Test membrane::test::test_inject_state" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --package mechtronium --lib membrane::test::test_inject_state -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test message::tests::check_message_builder_schema" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtron_core --lib message::tests::check_message_builder_schema -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -248,19 +272,19 @@
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_state" />
-      <item itemvalue="Cargo.Test message::tests::check_message_builder_schema" />
       <item itemvalue="Cargo.Test message::tests::test_message_builder" />
       <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
       <item itemvalue="Cargo.Test state::tests::test" />
       <item itemvalue="Cargo.Test membrane::test::test_grow_state" />
+      <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
         <item itemvalue="Cargo.Test membrane::test::test_grow_state" />
         <item itemvalue="Cargo.Test state::tests::test" />
         <item itemvalue="Cargo.Test message::tests::test_message_builder" />
         <item itemvalue="Cargo.Test message::tests::test_serialize_message" />
-        <item itemvalue="Cargo.Test message::tests::check_message_builder_schema" />
       </list>
     </recent_temporary>
   </component>
@@ -299,7 +323,9 @@
       <workItem from="1615287379290" duration="36592000" />
       <workItem from="1615338792690" duration="40914000" />
       <workItem from="1615414338348" duration="43000" />
-      <workItem from="1615414397381" duration="262000" />
+      <workItem from="1615414397381" duration="969000" />
+      <workItem from="1615415394786" duration="49000" />
+      <workItem from="1615415460309" duration="8839000" />
     </task>
     <servers />
   </component>

@@ -30,15 +30,15 @@ impl Simulation {
             let neutron_key = MechtronKey::new(sim_nucleus_id.clone(), Id::new(sim_nucleus_id.seq_id, 0));
 
             let message = Message::multi_payload(
-                                   local.seq().clone(),
-                                   MessageKind::Create,
-                                  mechtron_core::message::From{
+                local.seq().clone(),
+                MessageKind::Create,
+                mechtron_core::message::From{
                                         tron: neutron_key.clone(),
                                         cycle: 0,
                                         timestamp: 0,
                                         layer: MechtronLayer::Shell
                                     },
-                                    To{
+                To{
                                         tron: neutron_key.clone(),
                                         port: "create_simtron".to_string(),
                                         cycle: Cycle::Present,
@@ -46,7 +46,7 @@ impl Simulation {
                                         delivery: DeliveryMoment::ExtraCyclic,
                                         layer: MechtronLayer::Kernel
                                     },
-                                        CreatePayloadsBuilder::payloads(&local.cache().configs,builder));
+                CreatePayloadsBuilder::payloads(&local.cache().configs,builder));
            local.send( Arc::new(message));
         }
         Ok(())

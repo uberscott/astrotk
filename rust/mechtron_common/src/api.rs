@@ -7,15 +7,15 @@ use crate::message::{Message, Payload};
 use crate::state::{State, StateMeta};
 use std::sync::Arc;
 
-pub struct NeutronApiCallCreateMechtron
+pub struct NeutronApiCallCreateMechtron<'message>
 {
    pub meta: Buffer,
    pub state: State,
-   pub create_message: Message
+   pub create_message: &'message Message
 }
 
-impl NeutronApiCallCreateMechtron {
-   pub fn new<'configs>(configs: &'configs Configs, config: Arc<MechtronConfig>, create_message: Arc<Message> ) -> Result<Self, Error> {
+impl <'message> NeutronApiCallCreateMechtron<'message> {
+   pub fn new(configs: &Configs, config: Arc<MechtronConfig>, create_message: &'message Message ) -> Result<Self, Error> {
       let mut meta = Buffer::new(
          configs
              .schemas
@@ -31,7 +31,7 @@ impl NeutronApiCallCreateMechtron {
       Ok(NeutronApiCallCreateMechtron {
          meta: meta,
          state: state,
-         create_message: (*create_message).clone()
+         create_message: create_message
       })
    }
 

@@ -1,14 +1,27 @@
-#[macro_use]
-extern crate lazy_static;
+use mechtron::mechtron::{Context, Mechtron, BlankMechtron};
+use crate::neutron::Neutron;
+use crate::simtron::Simtron;
+use mechtron::membrane::log;
 
-pub mod artifact;
-pub mod buffers;
-pub mod configs;
-pub mod core;
-pub mod error;
-pub mod id;
-pub mod message;
-pub mod state;
-pub mod util;
-pub mod mechtron;
-pub mod api;
+#[macro_use]
+extern crate mechtron_common;
+
+pub mod neutron;
+pub mod simtron;
+
+#[no_mangle]
+pub extern "C" fn mechtron_init()
+{
+    log("core", "core initialized.");
+}
+
+#[no_mangle]
+
+pub extern "C" fn mechtron(kind: &str, context: Context )->Box<dyn Mechtron>
+{
+    match kind{
+        "Neutron"=>Box::new(Neutron::new(context.clone())),
+        "Simtron"=>Box::new(Simtron::new(context.clone())),
+        _ => Box::new(BlankMechtron::new(context.clone() ))
+    }
+}

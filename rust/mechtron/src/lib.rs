@@ -1,4 +1,5 @@
 pub mod membrane;
+pub mod mechtron;
 
 #[macro_use]
 extern crate wasm_bindgen;
@@ -6,17 +7,20 @@ extern crate wasm_bindgen;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate mechtron_common;
+
 use wasm_bindgen::prelude::*;
-use std::sync::atomic::Ordering;
-use core::mem;
-use mechtron_core::state::State;
-use mechtron_core::artifact::{ArtifactRepository, ArtifactBundle, ArtifactCache, Artifact};
-use std::sync::{Arc, RwLock};
-use std::collections::{HashMap, HashSet};
-use crate::membrane::{mechtronium_consume_string, mechtronium_consume_buffer, mechtronium_cache, wasm_write_string, mechtronium_load, log,BUFFERS};
-use mechtron_core::error::Error;
-use mechtron_core::core::*;
-use mechtron_core::configs::*;
+use crate::mechtron::{Context, Mechtron};
+use crate::membrane::{log, mechtronium_cache, wasm_write_string, mechtronium_load, mechtronium_consume_buffer};
+use mechtron_common::error::Error;
+use std::sync::{RwLock, Arc,MutexGuard,Mutex};
+use std::collections::HashSet;
+use mechtron_common::artifact::{Artifact, ArtifactCache};
+use mechtron_common::configs::Configs;
+use mechtron_common::core::*;
+
+
 
 lazy_static! {
   pub static ref CONFIGS: Configs<'static> = Configs::new(Arc::new(WasmArtifactRepository::new()));
@@ -24,7 +28,8 @@ lazy_static! {
 
 extern "C"
 {
-    fn mechtron(kind: &str, state: State )->Box<dyn Mechtron>;
+    fn mechtron_init();
+    fn mechtron(kind: &str, context: Context )->Box<dyn Mechtron>;
 }
 
 #[wasm_bindgen]
@@ -158,7 +163,3 @@ impl ArtifactCache for WasmArtifactRepository
 
 }
 
-trait Mechtron
-{
-
-}

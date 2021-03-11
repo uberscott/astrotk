@@ -1,5 +1,5 @@
 [package]
-name = "mechtronium"
+name = "mechtron_common"
 version = "0.1.0"
 authors = ["Scott Williams <scott@mightydevco.com>"]
 edition = "2018"
@@ -13,8 +13,3 @@ semver = "0.11.0"
 no_proto = "0.9.51"
 bytes = "1.0.1"
 lazy_static = "1.4.0"
-atomic = "0.5"
-wasmer="1.0.2"
-
-mechtron_common = { path = "../mechtron_common"}
-

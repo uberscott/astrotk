@@ -531,7 +531,7 @@ impl MessageBuilder {
             let mut payload_index = 0;
             for payload in payloads
             {
-                Payload::dump(payload, &path.push(path![payload_index.to_string()]), buffer)?;
+                payload.append(&path.push(path![payload_index.to_string()]), buffer)?;
                 payload_index = payload_index + 1;
             }
         }
@@ -670,11 +670,11 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn dump(payload: Payload, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
-        buffer.set(&path.with(path!["artifact"]), payload.schema.to())?;
+    pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
+        buffer.set(&path.with(path!["artifact"]), self.schema.to())?;
         buffer.set::<Vec<u8>>(
             &path.with(path!["bytes"]),
-            ReadOnlyBuffer::bytes(payload.buffer),
+            ReadOnlyBuffer::bytes(self.buffer.clone()),
         )?;
 
         Ok(())
@@ -762,55 +762,55 @@ impl Message {
 
 
     pub fn copy_to_bytes<'configs>(&self, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
-        Message::to_bytes(self.clone(), configs)
+        Message::to_bytes(self, configs)
     }
 
-    pub fn to_payload<'configs>(message:Message, configs: &Configs<'configs>) -> Result<Payload, Error> {
+    pub fn to_payload<'configs>(message:&Message, configs: &Configs<'configs>) -> Result<Payload, Error> {
         Ok(Payload{
             schema: CORE_SCHEMA_MESSAGE.clone(),
             buffer: Message::to_buffer(message,configs)?
         })
     }
 
-    pub fn to_buffer<'configs>(message:Message, configs: &Configs<'configs>) -> Result<ReadOnlyBuffer, Error> {
-        let bytes = Message::to_bytes(message,configs)?;
+    pub fn to_buffer<'configs>(&self, configs: &Configs<'configs>) -> Result<ReadOnlyBuffer, Error> {
+        let bytes = self.to_bytes(configs)?;
         let factory = configs.schemas.get( &CORE_SCHEMA_MESSAGE )?;
         let buffer = factory.open_buffer(bytes);
         let buffer = ReadOnlyBuffer::new(buffer );
         Ok(buffer)
     }
 
-    pub fn to_bytes<'configs>(message: Message, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
+    pub fn to_bytes<'configs>(&self, configs: &Configs<'configs>) -> Result<Vec<u8>, Error> {
         let factory = configs.schemas.get(&CORE_SCHEMA_MESSAGE)?;
         let mut buffer =
-            Buffer::new(factory.new_buffer(Option::Some(message.calc_bytes())));
+            Buffer::new(factory.new_buffer(Option::Some(self.calc_bytes())));
         let path = Path::new(path!());
-        message.id.append(&path.push(path!["id"]), &mut buffer)?;
+        self.id.append(&path.push(path!["id"]), &mut buffer)?;
 
         buffer.set(
             &path!("kind"),
-            NP_Enum::Some(message_kind_to_string(&message.kind).to_string()),
+            NP_Enum::Some(message_kind_to_string(&self.kind).to_string()),
         )?;
 
-        message
+       self
             .from
             .append(&path.push(path!["from"]), &mut buffer)?;
 
-        message.to.append(&path.push(path!["to"]), &mut buffer)?;
-        if message.callback.is_some()
+        self.to.append(&path.push(path!["to"]), &mut buffer)?;
+        if self.callback.is_some()
         {
-            message.to.append(&path.push(path!["callback"]), &mut buffer)?;
+            self.to.append(&path.push(path!["callback"]), &mut buffer)?;
         }
 
         let mut payload_index = 0;
-        for payload in message.payloads {
+        for payload in &self.payloads {
             let path = path.push(path!("payloads", payload_index.to_string()));
-            Payload::dump(payload, &path, &mut buffer)?;
+            payload.append(&path, &mut buffer);
             payload_index = payload_index + 1;
         }
 
-        if message.meta.is_some() {
-            let meta = message.meta.unwrap();
+        if self.meta.is_some() {
+            let meta = self.meta.as_ref().unwrap();
             for k in meta.keys() {
                 buffer.set(
                     &path!(&"meta", &k.as_str()),
@@ -819,8 +819,8 @@ impl Message {
             }
         }
 
-        if message.transaction.is_some() {
-            let transaction = &message.transaction.clone().unwrap();
+        if self.transaction.is_some() {
+            let transaction = &self.transaction.clone().unwrap();
             transaction.append(&Path::new(path!("transaction")), &mut buffer);
         }
 
@@ -1220,7 +1220,7 @@ pub mod tests {
             payload.clone(),
         );
 
-        let bytes = Message::to_bytes(message.clone(), &CONFIGS).unwrap();
+        let bytes = message.to_bytes(&CONFIGS).unwrap();
 
         let new_message = Message::from_bytes(bytes, &CONFIGS).unwrap();
 

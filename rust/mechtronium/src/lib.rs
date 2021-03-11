@@ -2,7 +2,7 @@
 extern crate lazy_static;
 
 #[macro_use]
-extern crate mechtron_core;
+extern crate mechtron_common;
 
 pub mod artifact;
 pub mod node;

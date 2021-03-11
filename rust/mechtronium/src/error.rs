@@ -15,7 +15,7 @@ pub struct Error{
 
 impl Error
 {
-    pub fn downgrade<R>( result: Result<R,Error>)->Result<R,mechtron_core::error::Error>
+    pub fn downgrade<R>( result: Result<R,Error>)->Result<R, mechtron_core::error::Error>
     {
         match result{
             Ok(ok) => Ok(ok),
@@ -36,7 +36,7 @@ impl fmt::Display for Error{
 
 impl From<mechtron_core::error::Error> for Error {
 
-    fn from(e:mechtron_core::error::Error) -> Self {
+    fn from(e: mechtron_core::error::Error) -> Self {
         Error {
             error: format!("{:?}", e)
         }

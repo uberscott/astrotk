@@ -2,7 +2,7 @@ name: Simtron
 kind: Simtron
 wasm:
   artifact:
-    path: wasm/simtron.wasm
+    path: wasm/core.wasm
 bind:
   artifact:
     path: bind/simtron.yaml

@@ -2,7 +2,7 @@ name: Neutron
 kind: Neutron
 wasm:
   artifact:
-    path: wasm/neutron.wasm
+    path: wasm/core.wasm
 bind:
   artifact:
     path: bind/neutron.yaml
