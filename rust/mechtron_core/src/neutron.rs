@@ -1,6 +1,6 @@
 use std::sync::{Arc, MutexGuard};
 
-use mechtron::mechtron::{ExtraCyclicMessageHandler, Mechtron, MessageHandler, Response, Context};
+use mechtron::mechtron::{Mechtron, MessageHandler, Response};
 use mechtron::CONFIGS;
 use mechtron_common::core::*;
 use mechtron_common::api::{CreateApiCallCreateNucleus, NeutronApiCallCreateMechtron};
@@ -10,18 +10,22 @@ use mechtron_common::error::Error;
 use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::message::{Cycle, MechtronLayer, Message, MessageBuilder, MessageKind, Payload};
 use mechtron_common::state::{NeutronStateInterface, ReadOnlyState, State};
+use mechtron_common::mechtron::Context;
+use mechtron::membrane::StateLocker;
 
 pub struct Neutron {
-    context: Context
+    context: Context,
+    state_locker: StateLocker
 }
 
 
 impl Neutron {
 
-    pub fn new(context:Context)->Self
+    pub fn new(context:Context,state_locker:StateLocker)->Self
     {
         Neutron{
-            context: context
+            context: context,
+            state_locker: state_locker
         }
     }
 
@@ -30,26 +34,12 @@ impl Neutron {
         return id.id == 0;
     }
 
-    fn inbound__create_mechtrons(
-        context: &Context,
-        state: &mut MutexGuard<State>,
-        messages: Vec<Message> ) -> Result<Response, Error>
-    {
-        let mut builders = vec!();
-        for message in messages
-        {
-           let builder = Neutron::inbound__create_mechtron(context, state, &message)?;
-           builders.push(builder);
-        }
-
-        Ok(Response::Messages(builders))
-    }
 
     fn inbound__create_mechtron(
         context: &Context,
-        neutron_state: &mut MutexGuard<State>,
-        create_message: &Message,
-    ) -> Result<MessageBuilder, Error> {
+        neutron_state: &mut State,
+        create_message: Message,
+    ) -> Result<Response, Error> {
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 
@@ -81,7 +71,7 @@ impl Neutron {
         }
 
         // prepare an api call to the MechtronShell to create this new mechtron
-        let mut call = NeutronApiCallCreateMechtron::new(&CONFIGS, new_mechtron_config.clone(), create_message )?;
+        let mut call = NeutronApiCallCreateMechtron::new(&CONFIGS, new_mechtron_config.clone(), &create_message )?;
 
         // set some additional meta information about the new mechtron
         {
@@ -100,13 +90,14 @@ impl Neutron {
         builder.to_cycle_kind=Option::Some(Cycle::Present);
         builder.payloads.replace(Option::Some(NeutronApiCallCreateMechtron::payloads(call,&CONFIGS)?));
 
-        Ok(builder)
+        Ok(Response::Messages(vec!(builder)))
     }
 }
 
 impl Mechtron for Neutron {
-    fn on_create(&self, state: &mut MutexGuard<State>, create_message: &Message) -> Result<Response, Error>
-    {
+    fn create(&self, create_message: &Message) -> Result<Response, Error> {
+        let state = self.state_locker.state();
+
         let interface = NeutronStateInterface {};
 
         let config = state.config.clone();
@@ -144,22 +135,26 @@ impl Mechtron for Neutron {
             Ok(Response::None)
         }
     }
-    fn on_update(&self, state: & mut MutexGuard<State>) -> Result<Response, Error>
-    {
+
+    fn message(&self, port: &str) -> Result<MessageHandler, Error> {
+        Ok(match port{
+            "create" => MessageHandler::Handler(Neutron::inbound__create_mechtron),
+            _ => MessageHandler::None
+        })
+    }
+
+
+    fn update(&self) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn on_messages(&self, port: &str) -> Result<MessageHandler, Error>
-    {
-        match port{
-            "create" => Ok(MessageHandler::Handler(Neutron::inbound__create_mechtrons)),
-            _ => Err(format!("port not available: {}", port).into())
-        }
+
+    fn extra(&self, port: &str) -> Result<MessageHandler, Error> {
+        Ok(MessageHandler::None)
     }
 
-    fn on_extras(&self, port: &str) -> Result<ExtraCyclicMessageHandler, Error>
-    {
-        Ok(ExtraCyclicMessageHandler::None)
+    fn state(&self) -> &StateLocker {
+        &self.state_locker
     }
 }
 

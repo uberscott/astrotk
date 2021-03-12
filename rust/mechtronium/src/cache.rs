@@ -49,15 +49,21 @@ impl Wasms
     }
     pub fn cache(&self, artifact : &Artifact)->Result<(),Error>
     {
+println!("CACHing MEMBRANE");
         if self.membranes.has(artifact)?
         {
+println!("ALREADY CACHED");
             return Ok(());
         }
 
-        self.modules.cache(artifact);
+println!("CAHCING MODULE....");
+        self.modules.cache(artifact).unwrap();
+println!("MODULE CACHED...");
 
-        let module = self.modules.get(artifact)?;
+        let module = self.modules.get(artifact).unwrap();
+println!("CREATING... ");
         self.membranes.create( module,artifact )?;
+println!("cache DONE");
         Ok(())
     }
 

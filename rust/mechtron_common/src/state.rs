@@ -182,7 +182,7 @@ impl State {
         })
     }
 
-    fn is_tainted(&self) -> Result<bool, Error> {
+    pub fn is_tainted(&self) -> Result<bool, Error> {
         Ok(self.meta.get(&path!["taint"])?)
     }
 

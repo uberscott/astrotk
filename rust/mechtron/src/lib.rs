@@ -11,8 +11,7 @@ extern crate lazy_static;
 extern crate mechtron_common;
 
 use wasm_bindgen::prelude::*;
-use crate::mechtron::{Context, Mechtron, StateLocker};
-use crate::membrane::{log, mechtronium_cache, wasm_write_string, mechtronium_load, mechtronium_consume_buffer};
+use crate::membrane::{log, mechtronium_cache, wasm_write_string, mechtronium_load, mechtronium_consume_buffer, StateLocker};
 use mechtron_common::error::Error;
 use std::sync::{RwLock, Arc,MutexGuard,Mutex};
 use std::collections::HashSet;
@@ -21,11 +20,12 @@ use mechtron_common::configs::Configs;
 use mechtron_common::core::*;
 use mechtron_common::mechtron::Context;
 use std::rc::Rc;
+use crate::mechtron::Mechtron;
 
 
 
 lazy_static! {
-  pub static ref CONFIGS: Configs<'static> = Configs::new(Arc::new(WasmArtifactRepository::new()));
+  pub static ref CONFIGS: Configs = Configs::new(Arc::new(WasmArtifactRepository::new()));
 }
 
 extern "C"

@@ -1,7 +1,8 @@
-use mechtron::mechtron::{Context, Mechtron, BlankMechtron};
+use mechtron::mechtron::{Mechtron, BlankMechtron};
 use crate::neutron::Neutron;
 use crate::simtron::Simtron;
-use mechtron::membrane::log;
+use mechtron::membrane::{log, StateLocker};
+use mechtron_common::mechtron::Context;
 
 #[macro_use]
 extern crate mechtron_common;
@@ -17,11 +18,11 @@ pub extern "C" fn mechtron_init()
 
 #[no_mangle]
 
-pub extern "C" fn mechtron(kind: &str, context: Context )->Box<dyn Mechtron>
+pub extern "C" fn mechtron(kind: &str, context: Context, state: StateLocker )->Box<dyn Mechtron>
 {
     match kind{
-        "Neutron"=>Box::new(Neutron::new(context.clone())),
-        "Simtron"=>Box::new(Simtron::new(context.clone())),
-        _ => Box::new(BlankMechtron::new(context.clone() ))
+        "Neutron"=>Box::new(Neutron::new(context, state)),
+        "Simtron"=>Box::new(Simtron::new(context, state)),
+        _ => Box::new(BlankMechtron::new(context, state))
     }
 }

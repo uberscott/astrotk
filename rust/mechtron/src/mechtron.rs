@@ -6,7 +6,7 @@ use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::mechtron::Context;
 use mechtron_common::message::DeliveryMoment::ExtraCyclic;
 use std::cell::{Cell, RefCell};
-use crate::membrane::{mechtronium_return_state, StateLocker};
+use crate::membrane::StateLocker;
 
 #[derive(Clone)]
 pub enum Response
@@ -18,7 +18,7 @@ pub enum Response
 pub enum MessageHandler
 {
     None,
-    Handler( fn( context: &Context, state: &State, message: Message)->Result<Response,Error> )
+    Handler( fn( context: &Context, state: &mut State, message: Message)->Result<Response,Error> )
 }
 
 pub trait Mechtron
@@ -39,15 +39,15 @@ pub trait Mechtron
 pub struct BlankMechtron
 {
     context: Context,
-    state: Cell<Option<State>>
+    state_locker: StateLocker
 }
 
 impl BlankMechtron{
-    pub fn new(context:Context, state:State)->Self
+    pub fn new(context:Context, state_locker:StateLocker)->Self
     {
         BlankMechtron{
             context:context,
-            state: Cell::new(Option::Some(state))
+            state_locker: state_locker
         }
     }
 }
@@ -66,8 +66,8 @@ impl Mechtron for BlankMechtron
         Ok(MessageHandler::None)
     }
 
-    fn extra(&self, port: &str) -> Result<ExtraCyclicMessageHandler, Error> {
-        Ok(ExtraCyclicMessageHandler::None)
+    fn extra(&self, port: &str) -> Result<MessageHandler, Error> {
+        Ok(MessageHandler::None)
     }
 
     fn state(&self) -> &StateLocker {

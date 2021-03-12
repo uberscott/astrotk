@@ -629,6 +629,9 @@ impl NucleusCycle {
         let neutron_config = self.configs().binds.get(&CORE_BIND_NEUTRON)?;
 
         let neutron_state = neutron_state.read_only()?;
+println!("CACHING WASM...");
+        self.context.cache.wasms.cache(&config.wasm.artifact)?;
+println!("RETURNED FROM CACHE...");
         let wasm_membrane = self.context.cache.wasms.get_membrane(&config.wasm.artifact)?;
         let kernel = MechtronMembrane::new( wasm_membrane, Arc::new(neutron_state) );
         // insert the neutron_state into the MechtronKernels
@@ -1844,7 +1847,8 @@ mod test
     fn test_create_sim()
     {
         let cache = Node::default_cache();
-        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
+        cache.wasms.cache(&Artifact::from("mechtron.io:core:1.0.0:wasm/core.wasm:wasm").unwrap()).unwrap();
+/*        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
         cache.configs.sims.cache(&SIM_CONFIG ).unwrap();
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
         let node = Node::new(Option::Some(cache));
@@ -1854,6 +1858,8 @@ mod test
         // verify sim exists
 
         node.shutdown();
+
+ */
     }
 
     /*

@@ -17,9 +17,9 @@ use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::message::{Message, MessageBuilder};
 use mechtron_common::mechtron::Context;
 use mechtron_common::buffers::Buffer;
-use crate::mechtron::{MessageHandler, StateLocker, Response};
+use crate::mechtron::{MessageHandler, Response};
 use std::rc::Rc;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 lazy_static! {
   pub static ref BUFFERS: RwLock<HashMap<i32,BufferInfo>> = RwLock::new(HashMap::new());
@@ -167,7 +167,7 @@ pub fn wasm_dealloc_buffer(id: i32)
     let buffer_info = buffer_info.unwrap();
     match buffer_info.get(&id)
     {
-        Ok(buffer_info)=> {
+        Some(buffer_info)=> {
             let ptr = buffer_info.ptr.load(Ordering::Relaxed);
             wasm_dealloc(ptr, buffer_info.len as _);
         },
@@ -226,7 +226,7 @@ pub fn wasm_inject_state(state_buffer_id: i32 )
     let state = mechtronium_consume_buffer(state_buffer_id).unwrap();
     let state = State::from_bytes(state, &CONFIGS ).unwrap();
 
-    let states = STATE.lock().unwrap();
+    let mut states = STATE.lock().unwrap();
     states.insert(state_buffer_id, state );
 }
 
@@ -250,27 +250,25 @@ pub fn wasm_move_state_to_buffers(state_buffer_id: i32 )
 #[wasm_bindgen]
 pub fn wasm_test_modify_state( state:i32 )
 {
-    let state = checkout_state(state);
-    let mut state = state.lock().unwrap();
+    let mut state = checkout_state(state);
     let interface = NeutronStateInterface{};
     let key = MechtronKey::new(Id::new(1,2), Id::new(3,4));
-    let inner = state.deref_mut();
-    inner.set_taint(true);
-    interface.add_mechtron(inner,&key,"BlankMechtron".to_string());
+    state.set_taint(true);
+    interface.add_mechtron(& mut state ,&key,"BlankMechtron".to_string());
 }
 
 fn checkout_state(state_id: i32 ) ->State
 {
     let states = STATE.lock();
-    let states = states.unwrap();
-    let state = states.remove(state_id).unwrap();
+    let mut states = states.unwrap();
+    let state = states.remove(&state_id).unwrap();
     state
 }
 
 fn return_state(state: State, state_id: i32 )
 {
     let states = STATE.lock();
-    let states = states.unwrap();
+    let mut states = states.unwrap();
     states.insert(state_id,state);
 }
 
@@ -279,8 +277,8 @@ pub fn mechtron_is_tainted( state: i32) -> i32
 {
     let states = STATE.lock();
     let states = states.unwrap();
-    let state = states.get(state).unwrap();
-    if state.is_tainted()
+    let state = states.get(&state).unwrap();
+    if state.is_tainted().unwrap()
     {
         1
     }
@@ -291,25 +289,25 @@ pub fn mechtron_is_tainted( state: i32) -> i32
 }
 
 #[wasm_bindgen]
-pub fn mechtron_create(context: i32, state: i32, message: i32 ) -> i32
+pub fn mechtron_create(context: i32, state_id: i32, message: i32 ) -> i32
 {
-    let state = checkout_state(state);
+    let state = checkout_state(state_id);
     let state = Rc::new(StateLocker::new(state,state_id));
     let context = mechtronium_consume_context(context ).unwrap();
-    let message = mechtronium_consume_message(message).unwrap();
+    let message = mechtronium_consume_messsage(message).unwrap();
 
     let mechtron = unsafe{
         mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
-    let response = mechtron.create(message).unwrap();
+    let response = mechtron.create(&message).unwrap();
     return handle_response(response,state);
 }
 
 #[wasm_bindgen]
-pub fn mechtron_update(context: i32, state: i32 ) -> i32
+pub fn mechtron_update(context: i32, state_id: i32 ) -> i32
 {
-    let state = checkout_state(state);
+    let state = checkout_state(state_id);
     let state = Rc::new(StateLocker::new(state,state_id));
     let context = mechtronium_consume_context(context ).unwrap();
 
@@ -322,9 +320,9 @@ pub fn mechtron_update(context: i32, state: i32 ) -> i32
 }
 
 #[wasm_bindgen]
-pub fn mechtron_message(context: i32, state: i32, message: i32) -> i32
+pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 {
-    let state = checkout_state(state);
+    let state = checkout_state(state_id);
     let state = Rc::new(StateLocker::new(state,state_id));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
@@ -345,9 +343,9 @@ pub fn mechtron_message(context: i32, state: i32, message: i32) -> i32
 }
 
 #[wasm_bindgen]
-pub fn mechtron_extra(context: i32, state: i32, message: i32) -> i32
+pub fn mechtron_extra(context: i32, state_id: i32, message: i32) -> i32
 {
-    let state = checkout_state(state);
+    let state = checkout_state(state_id);
     let state = Rc::new(StateLocker::new(state,state_id));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
@@ -386,7 +384,7 @@ fn handle_response( response: Response, state: Rc<StateLocker> )->i32
 
 pub struct StateLocker
 {
-    state: Cell<Option<State>>,
+    state: RefCell<Option<State>>,
     state_id: i32
 }
 
@@ -395,13 +393,13 @@ impl StateLocker
     pub fn new( state: State, state_id: i32 )->Self
     {
         StateLocker{
-            state: Cell::new(Option::Some(state)),
+            state: RefCell::new(Option::Some(state)),
             state_id: state_id
         }
     }
-    pub fn state(&self)->&State
+    pub fn state(&self)->&mut State
     {
-        self.state.into_inner().as_ref().unwrap()
+        self.state().borrow_mut()
     }
 
     pub fn release(&self)

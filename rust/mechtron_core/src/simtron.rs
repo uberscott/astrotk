@@ -8,19 +8,23 @@ use mechtron_common::artifact::Artifact;
 use mechtron_common::error::Error;
 use mechtron_common::message::{Cycle, MechtronLayer, Message, MessageBuilder, MessageKind};
 use mechtron_common::state::{ReadOnlyState, State};
-use mechtron::mechtron::{Mechtron, Response, ExtraCyclicMessageHandler, MessageHandler, Context};
+use mechtron::mechtron::{Mechtron, Response,  MessageHandler};
 use std::sync::MutexGuard;
+use mechtron_common::mechtron::Context;
+use mechtron::membrane::StateLocker;
 
 pub struct Simtron{
-    context: Context
+    context: Context,
+    state_locker: StateLocker
 }
 
 impl Simtron{
 
-    pub fn new(context:Context)->Self
+    pub fn new(context:Context,state_locker: StateLocker)->Self
     {
         Simtron{
-            context: context
+            context: context,
+            state_locker: state_locker
         }
     }
 }
@@ -29,7 +33,8 @@ impl Mechtron for Simtron{
 
 
 
-    fn on_create(&self, state: &mut MutexGuard<State>, create_message: &Message) -> Result<Response, Error> {
+     fn create(&self, create_message: &Message) -> Result<Response, Error>
+     {
         let sim_config = match &create_message.meta
         {
             None => {
@@ -47,7 +52,7 @@ impl Mechtron for Simtron{
             }
         };
 
-        state.buffers.get_mut("data").unwrap().set(&path!["config"], sim_config.source.to() )?;
+        self.state_locker.state().buffers.get_mut("data").unwrap().set(&path!["config"], sim_config.source.to() )?;
 
 
         // now create each of the Nucleus in turn
@@ -68,15 +73,21 @@ impl Mechtron for Simtron{
         Ok(Response::Messages(builders))
     }
 
-    fn on_update(&self, state: &mut MutexGuard<State>) -> Result<Response, Error> {
+
+
+    fn update(&self) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn on_messages(&self, port: &str) -> Result<MessageHandler, Error> {
+    fn message(&self, port: &str) -> Result<MessageHandler, Error> {
         Ok(MessageHandler::None)
     }
 
-    fn on_extras(&self, port: &str) -> Result<ExtraCyclicMessageHandler, Error> {
-        Ok(ExtraCyclicMessageHandler::None)
+    fn extra(&self, port: &str) -> Result<MessageHandler, Error> {
+        Ok(MessageHandler::None)
+    }
+
+    fn state(&self) -> &StateLocker {
+        &self.state_locker
     }
 }
