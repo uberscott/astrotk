@@ -632,14 +632,16 @@ impl NucleusCycle {
 println!("CACHING WASM...");
         self.context.cache.wasms.cache(&config.wasm.artifact)?;
 println!("RETURNED FROM CACHE...");
+
         let wasm_membrane = self.context.cache.wasms.get_membrane(&config.wasm.artifact)?;
         let kernel = MechtronMembrane::new( wasm_membrane, Arc::new(neutron_state) );
         // insert the neutron_state into the MechtronKernels
         self.kernels.intake(neutron_info.key.clone(), kernel);
 
-        let kernel = self.kernels.get( &neutron_info.key )?;
-        let mut neutron = MechtronShell::new(kernel.lock()?, neutron_info.key.clone(), &self.context.cache.configs )?;
-        neutron.create(&create, self);
+
+        let neutron_kernel = self.kernels.get( &neutron_info.key )?;
+        let mut neutron_shell = MechtronShell::new(neutron_kernel.lock()?, neutron_info.key.clone(), &self.context.cache.configs )?;
+        neutron_shell.create(&create, self);
 
         // now we CREATE each named mechtron in the neutron_config
         {
@@ -677,13 +679,12 @@ println!("RETURNED FROM CACHE...");
                 messages.push(Arc::new(message));
             }
 
+
             // send all create messages to neutron
             {
-                let mut neutron_state = self.kernels.get( &neutron_key )?;
-                let mut neutron_state = neutron_state.lock()?;
-                neutron.messages(messages, self);
+                neutron_shell.messages(messages, self);
                 {
-                    if kernel.lock()?.is_tainted()?
+                    if neutron_shell.is_tainted()?
                     {
                         return Err("bootstrap failed.  neutron is tainted".into());
                     }
@@ -1836,6 +1837,8 @@ mod test
     use mechtron_common::util::PingPayloadBuilder;
 
     use crate::node::Node;
+    use std::io;
+    use std::io::Write;
 
     fn create_node() ->Node
     {
@@ -1852,6 +1855,9 @@ mod test
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
 
         let node = Node::new(Option::Some(cache));
+        println!("Got here");
+        io::stdout().flush().unwrap();
+        io::stderr().flush().unwrap();
         let sim_id = node.create_sim_from_scratch(SIM_CONFIG.clone()).unwrap();
 
         // verify sim exists

@@ -84,6 +84,11 @@ impl <'a> MechtronShell<'a> {
         self.panic.borrow().is_some()
     }
 
+    pub fn is_tainted(&self)->Result<bool,Error>
+    {
+        self.kernel.is_tainted()
+    }
+
     fn reject(&mut self, message: &Message, reason: &str, context: &dyn MechtronShellContext, layer: MechtronLayer)
     {
         println!("{}", reason);
