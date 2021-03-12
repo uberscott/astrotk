@@ -42,11 +42,13 @@ impl Neutron {
         neutron_state: &mut State,
         create_message: Message,
     ) -> Result<Response, Error> {
+log("debug","NOT EVEN?");
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 
         // grab the new mechtron create meta
         let new_mechtron_create_meta = &create_message.payloads[0].buffer;
+log("debug","Was");
 
         // and derive the new mechtron config
         let new_mechtron_config = new_mechtron_create_meta.get::<String>(&path![&"config"])?;
@@ -58,6 +60,8 @@ impl Neutron {
         mechtron_index = mechtron_index +1;
         neutron_state_interface.set_mechtron_index(neutron_state, mechtron_index);
 
+
+log("debug","Impaler");
         // create the new mechtron id and key
         let new_mechtron_id= Id::new(context.key.nucleus.id,mechtron_index);
         let new_mechtron_key = MechtronKey::new(context.key.nucleus.clone(), new_mechtron_id );
@@ -72,6 +76,7 @@ impl Neutron {
             neutron_state_interface.set_mechtron_name(& mut *neutron_state, name.as_str(), &new_mechtron_key);
         }
 
+log("debug","The");
         // prepare an api call to the MechtronShell to create this new mechtron
         let mut call = NeutronApiCallCreateMechtron::new(&CONFIGS, new_mechtron_config.clone(), &create_message )?;
 
@@ -84,6 +89,7 @@ impl Neutron {
             call.state.meta.set(&path![&"taint"], false)?;
         }
 
+log("debug","Vlad");
         let mut builder = MessageBuilder::new();
         builder.kind = Option::Some(MessageKind::Api);
         builder.to_layer = Option::Some(MechtronLayer::Shell);
@@ -93,7 +99,7 @@ impl Neutron {
         builder.to_port = Option::Some("api".to_string());
         builder.payloads.replace(Option::Some(NeutronApiCallCreateMechtron::payloads(call,&CONFIGS)?));
 
-log("debug", "returnign create_mechtron messages");
+        log("debug","OK NEUTRON CREATE FINISHED");
         Ok(Response::Messages(vec!(builder)))
     }
 }

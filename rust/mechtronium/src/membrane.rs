@@ -624,7 +624,9 @@ impl MechtronMembrane
         let port = message.to.port.clone();
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
+println!("Fascinating.");
         let result = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state()?, message_lock.id());
+println!("Doctor.");
         match result{
             Ok(builders) => {
                match builders{
@@ -637,7 +639,7 @@ impl MechtronMembrane
                }
             }
             Err(error) => {
-                Err(format!("{}.{} received error from wasm: {:?}",self.original_state.config.kind.clone(),port,error).into())
+                Err(format!("{}.inbound.{} received error from wasm: {:?}",self.original_state.config.kind.clone(),port,error).into())
             }
         }
     }

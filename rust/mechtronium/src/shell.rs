@@ -22,6 +22,7 @@ use mechtron_common::configs::{PanicEscalation, Configs};
 use crate::membrane::MechtronMembrane;
 use mechtron_common::mechtron::Context;
 use std::cmp::Ordering;
+use mechtron_common::logger::log;
 
 pub struct MechtronShell<'a> {
     pub info: TronInfo,
@@ -195,7 +196,10 @@ impl <'a> MechtronShell<'a> {
         {
             for message in messages.get(port).unwrap()
             {
-                self.kernel.message(&kernel_context, &message)?;
+log("BLAHBIE");
+                let builders = self.kernel.message(&kernel_context, &message)?;
+println!("builders: {}", builders.len());
+                self.handle(Option::Some(builders), context )?;
             }
         }
 
@@ -281,16 +285,16 @@ impl <'a> MechtronShell<'a> {
         builders: Option<Vec<MessageBuilder>>,
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error> {
-println!("HANDLE IT SHELLL! {} ", builders.is_some());
+log("SHELL: handle");
         match builders {
             None => Ok(()),
             Some(builders) => {
-println!("builders len ! {} ", builders.len());
+log("handling builders!");
                 for mut builder in builders
                 {
 
-println!("builder port: {}",&builder.to_port.as_ref().unwrap());
                     builder.from = Option::Some(self.from(context, MechtronLayer::Kernel));
+log("first one is blah builders!");
 
                     if builder.to_nucleus_lookup_name.is_some()
                     {
@@ -298,6 +302,7 @@ println!("builder port: {}",&builder.to_port.as_ref().unwrap());
                         builder.to_nucleus_id = Option::Some(nucleus_id);
                         builder.to_nucleus_lookup_name = Option::None;
                     }
+log("okay!");
 
                     if builder.to_tron_lookup_name.is_some()
                     {
@@ -336,7 +341,7 @@ println!("builder port: {}",&builder.to_port.as_ref().unwrap());
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error>
     {
-println!("HANDLE API CALL");
+log("Handle API call");
         builder.to_cycle_kind = Option::Some(Cycle::Present);
         builder.to_nucleus_id = Option::Some(self.info.key.nucleus.clone());
         builder.to_tron_id = Option::Some(self.info.key.mechtron.clone());
@@ -350,6 +355,7 @@ println!("HANDLE API CALL");
 
         let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
 
+log("imp here API call");
         match api.as_str() {
             "neutron_api" => {
                 // need some test to make sure this is actually a neutron
@@ -360,7 +366,6 @@ println!("HANDLE API CALL");
                     let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
                     match call.as_str() {
                         "create_mechtron" => {
-println!("CREATE_MECHTRON");
                             // now get the state of the mechtronmessage.payloads
                             let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
                             let new_mechtron_state = new_mechtron_state.read_only()?;

@@ -92,6 +92,7 @@ pub fn mechtronium_read_buffer(buffer_id: i32) -> Result<Vec<u8>, Error>
     let buffer_info = buffer.unwrap();
 
     unsafe {
+
         Ok(Vec::from_raw_parts(buffer_info.ptr.load(Ordering::Relaxed), buffer_info.len.clone() as _, buffer_info.len.clone() as _))
     }
 }
@@ -102,18 +103,24 @@ pub fn mechtronium_consume_buffer(buffer_id: i32) -> Result<Vec<u8>, Error>
     let buffer = buffers.remove(&buffer_id);
     if buffer.is_none()
     {
+        log("ERROR", format!("could not consume buffer {}",buffer_id).as_str());
         return Err("could not find string buffer".into());
     }
+log("debug", "unwrapping buffer");
     let buffer_info = buffer.unwrap();
+log("debug", format!("ptr: {:?}",buffer_info.ptr).as_str());
+log("debug", format!("len : {}",buffer_info.len.clone()).as_str());
 
     unsafe {
+log("debug", "doing the unsafe...");
         Ok(Vec::from_raw_parts(buffer_info.ptr.load(Ordering::Relaxed), buffer_info.len.clone() as _, buffer_info.len.clone() as _))
     }
 }
 
 fn mechtronium_consume_messsage(buffer_id: i32) -> Result<Message, Error>
 {
-    let bytes = mechtronium_consume_buffer(buffer_id)?;
+    //let bytes = mechtronium_consume_buffer(buffer_id)?;
+    let bytes = mechtronium_read_buffer(buffer_id)?;
     Ok(Message::from_bytes(bytes,&CONFIGS)?)
 }
 
@@ -124,13 +131,19 @@ fn mechtronium_consume_context(buffer_id: i32) -> Result<Context, Error>
 }
 
 fn wasm_alloc(len: i32) -> *mut u8 {
-    let rtn = unsafe {
+    /*let rtn = unsafe {
         let align = mem::align_of::<u8>();
         let size = mem::size_of::<u8>();
         let layout = Layout::from_size_align(size * (len as usize), align).unwrap();
         alloc(layout)
     };
-    rtn
+     */
+    let mut vec = Vec::with_capacity(len as _ );
+    let mut vec = mem::ManuallyDrop::new(vec);
+    unsafe {
+        vec.set_len(len as _);
+    }
+    vec.as_mut_ptr()
 }
 
 fn wasm_dealloc(ptr: *mut u8, len: i32) {
@@ -181,7 +194,7 @@ pub fn wasm_dealloc_buffer(id: i32)
 #[wasm_bindgen]
 pub fn wasm_alloc_buffer(len: i32) ->i32
 {
-
+log("debug", format!("allocating buffer of size: {}",len).as_str());
     let buffer_id = BUFFER_INDEX.fetch_add(1, Ordering::Relaxed );
     let buffer_ptr = wasm_alloc(len);
     {
@@ -301,30 +314,24 @@ pub fn mechtron_is_tainted( state: i32) -> i32
 #[wasm_bindgen]
 pub fn mechtron_create(context: i32, state_id: i32, message: i32 ) -> i32
 {
-log("debug", "CREATE....");
     let state = checkout_state(state_id);
     let config = state.config.clone();
     let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
 
-log("debug", "PRE MECHTRON ....");
     let mut mechtron = unsafe{
         mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
-log("debug", "GOT HERE....");
     let response = mechtron.create(&message).unwrap();
 
     let state = state.replace(Option::None);
     let state = state.unwrap();
-log("debug", "THEN HERE....");
 
     let (state,builder) = handle_response(response,*state);
-    log("debug", "returning state....");
     return_state(state,state_id);
 
-    log("debug", "returning builder.......");
     builder
 }
 
@@ -352,35 +359,42 @@ pub fn mechtron_update(context: i32, state_id: i32) -> i32
 #[wasm_bindgen]
 pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 {
-    log("debug", "MESSAGE");
+
+log("debug","mechtron_message() entry");
 
     let state = checkout_state(state_id);
+log("debug","checkout state");
     let config = state.config.clone();
+log("debug","clone config ");
     let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
+log("debug","new refcel");
     let context = mechtronium_consume_context(context ).unwrap();
+log("debug","contet consumed");
     let message = mechtronium_consume_messsage(message).unwrap();
+log("debug","mechtron_message() message consumed");
 
     let mut mechtron = unsafe{
         mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
+log("debug","created mechtron");
+
     let handler = mechtron.message( &message.to.port ).unwrap();
+
+log("debug","message requested");
 
     let mut state = *state.replace(Option::None).unwrap();
 
-    log("debug", "processing a response...");
+log("debug","Ogres are people too");
     let response = match handler
     {
         MessageHandler::None => Response::None,
         MessageHandler::Handler(func) => func(&context,& mut state,message).unwrap()
     };
 
-    log("debug", "handling response...");
     let (state,builder) = handle_response(response,state);
-    log("debug", "state returned...");
     return_state(state,state_id);
 
-    log("debug", "done.");
     builder
 }
 
@@ -419,13 +433,11 @@ pub fn mechtron_extra(context: i32, state_id: i32, message: i32) -> i32
 
 fn handle_response( response: Response, state: State )->(State,i32)
 {
-log("debug", "hello?");
     let builders= match response {
         Response::None => {
             -1
         }
         Response::Messages(builders) => {
-log("debug", "gettign to the meat of it....valid?");
 for builder in &builders
 {
     match builder.validate()
@@ -441,12 +453,9 @@ for builder in &builders
     }
     builder.validate_build().unwrap();
 }
-log("debug", "is valid!");
             let buffer = MessageBuilder::to_buffer(builders,&CONFIGS).unwrap();
-log("debug", "LINE AFTER");
 
 
-log("debug", "now we here... it....");
             let bytes = Buffer::bytes(buffer);
             let buffer_id = wasm_write_buffer(bytes);
             buffer_id

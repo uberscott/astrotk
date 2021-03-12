@@ -28,6 +28,7 @@ use crate::nucleus::state::{Lookup, MechtronKernels, StateHistory};
 use crate::router::{HasNucleus, Router};
 use crate::mechtron::CreatePayloadsBuilder;
 use crate::membrane::{WasmMembrane, MechtronMembrane};
+use mechtron_common::logger::log;
 
 pub trait NucleiContainer
 {
@@ -289,7 +290,6 @@ impl Nucleus {
     }
 
     pub fn handle_extracyclic(&self, message: Arc<Message>) {
-        println!("handling extra cyclic message");
         let state_key = StateKey {
             tron: message.to.tron,
             revision: Revision {
@@ -380,7 +380,6 @@ println!("Sending message of type: {:?} ", &message.kind );
         }
 
 //        self.head.cycle = self.head.cycle+1;
-        println!("NUCLEUS CREATED");
         Ok(())
     }
 
@@ -577,7 +576,6 @@ impl NucleusCycle {
     }
 
     fn bootstrap(&mut self, meta: HashMap<String, String>) -> Result<(), Error> {
-        println!("BOOTSTRAP NUCLEUS");
         let mut seq = self.context.seq.clone();
 
         let timestamp = timestamp();
@@ -629,10 +627,7 @@ impl NucleusCycle {
         let neutron_config = self.configs().binds.get(&CORE_BIND_NEUTRON)?;
 
         let neutron_state = neutron_state.read_only()?;
-println!("CACHING WASM...");
         self.context.cache.wasms.cache(&config.wasm.artifact)?;
-println!("RETURNED FROM CACHE...");
-
 
         let wasm_membrane = self.context.cache.wasms.get_membrane(&config.wasm.artifact)?;
         let kernel = MechtronMembrane::new( wasm_membrane, Arc::new(neutron_state) );
@@ -649,7 +644,6 @@ println!("RETURNED FROM CACHE...");
             let mut messages = vec!();
             for mechtron_config_ref in self.config.mectrons.as_slice()
             {
-println!("creating mechtron: {}", mechtron_config_ref.name.as_ref().unwrap().clone());
                 let mechtron_config = self.context.cache.configs.mechtrons.get(&mechtron_config_ref.artifact)?;
 
                 let mut create_payloads_builder = CreatePayloadsBuilder::new(self.configs(), mechtron_config.clone())?;
@@ -679,7 +673,6 @@ println!("creating mechtron: {}", mechtron_config_ref.name.as_ref().unwrap().clo
 
                 messages.push(Arc::new(message));
             }
-println!("MESSAGES?!");
 
 
             // send all create messages to neutron
@@ -694,8 +687,6 @@ println!("MESSAGES?!");
             }
 
         }
-
-println!("BOOTSTRAPED!");
 
         Ok(())
     }
@@ -885,6 +876,7 @@ impl MechtronShellContext for NucleusCycle
 
     fn neutron_api_create(&self, mut state: ReadOnlyState, create_message: Message)
     {
+log("neutron_api_create");
         let config = state.config.clone();
         let mechtron_id = state.get_mechtron_id();
         match mechtron_id {
@@ -1866,15 +1858,11 @@ mod test
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
 
         let node = Node::new(Option::Some(cache));
-        println!("Got here");
-        io::stdout().flush().unwrap();
-        io::stderr().flush().unwrap();
         let sim_id = node.create_sim_from_scratch(SIM_CONFIG.clone()).unwrap();
 
         // verify sim exists
 
         node.shutdown();
-
     }
 
     /*

@@ -13,6 +13,7 @@ use std::sync::MutexGuard;
 use mechtron_common::mechtron::Context;
 use std::rc::Rc;
 use std::cell::{Cell, RefCell};
+use mechtron_common::logger::log;
 
 pub struct Simtron{
     context: Context,
@@ -36,6 +37,7 @@ impl Mechtron for Simtron{
 
      fn create(&mut self, create_message: &Message) -> Result<Response, Error>
      {
+log("CREATING SIMTRON");
         let sim_config = match &create_message.meta
         {
             None => {
