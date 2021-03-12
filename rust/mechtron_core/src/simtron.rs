@@ -11,20 +11,21 @@ use mechtron_common::state::{ReadOnlyState, State};
 use mechtron::mechtron::{Mechtron, Response,  MessageHandler};
 use std::sync::MutexGuard;
 use mechtron_common::mechtron::Context;
-use mechtron::membrane::StateLocker;
+use std::rc::Rc;
+use std::cell::{Cell, RefCell};
 
 pub struct Simtron{
     context: Context,
-    state_locker: StateLocker
+    state: Rc<RefCell<Option<Box<State>>>>
 }
 
 impl Simtron{
 
-    pub fn new(context:Context,state_locker: StateLocker)->Self
+    pub fn new(context:Context, state: Rc<RefCell<Option<Box<State>>>>)->Self
     {
         Simtron{
             context: context,
-            state_locker: state_locker
+            state: state
         }
     }
 }
@@ -33,7 +34,7 @@ impl Mechtron for Simtron{
 
 
 
-     fn create(&self, create_message: &Message) -> Result<Response, Error>
+     fn create(&mut self, create_message: &Message) -> Result<Response, Error>
      {
         let sim_config = match &create_message.meta
         {
@@ -52,7 +53,10 @@ impl Mechtron for Simtron{
             }
         };
 
-        self.state_locker.state().buffers.get_mut("data").unwrap().set(&path!["config"], sim_config.source.to() )?;
+        let mut state = self.state.borrow_mut();
+        let state = state.as_mut().unwrap();
+        let data_buffer = state.buffers.get_mut("data").unwrap();
+        data_buffer.set(&path!["config"], sim_config.source.to() )?;
 
 
         // now create each of the Nucleus in turn
@@ -75,11 +79,11 @@ impl Mechtron for Simtron{
 
 
 
-    fn update(&self) -> Result<Response, Error> {
+    fn update(&mut self) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn message(&self, port: &str) -> Result<MessageHandler, Error> {
+    fn message(&mut self, port: &str) -> Result<MessageHandler, Error> {
         Ok(MessageHandler::None)
     }
 
@@ -87,7 +91,4 @@ impl Mechtron for Simtron{
         Ok(MessageHandler::None)
     }
 
-    fn state(&self) -> &StateLocker {
-        &self.state_locker
-    }
 }

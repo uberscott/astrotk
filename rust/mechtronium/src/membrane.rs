@@ -252,6 +252,12 @@ impl WasmMembrane {
         self.instance.exports.get_native_function::<(),()>("wasm_test_ok").unwrap().call()?;
         Ok(())
     }
+
+    fn test_log(&self)->Result<(),Error>
+    {
+        self.instance.exports.get_native_function::<(),()>("wasm_test_log").unwrap().call()?;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -563,7 +569,10 @@ impl MechtronMembrane
 
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-        let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_create").unwrap().call(context_lock.id(), self.state()?, message_lock.id())?;
+
+        let call = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_create")?;
+        let builders = call.call(context_lock.id(), self.state()?, message_lock.id())?;
+
         if builders == -1
         {
             Ok(vec![])

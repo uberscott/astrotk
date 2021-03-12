@@ -6,7 +6,7 @@ use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::mechtron::Context;
 use mechtron_common::message::DeliveryMoment::ExtraCyclic;
 use std::cell::{Cell, RefCell};
-use crate::membrane::StateLocker;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub enum Response
@@ -23,15 +23,13 @@ pub enum MessageHandler
 
 pub trait Mechtron
 {
-    fn create( &self, create_message: &Message ) -> Result<Response, Error>;
+    fn create( &mut self, create_message: &Message ) -> Result<Response, Error>;
 
-    fn update( &self ) -> Result<Response,Error>;
+    fn update( &mut self ) -> Result<Response,Error>;
 
-    fn message( &self, port: &str ) -> Result<MessageHandler,Error>;
+    fn message( &mut self, port: &str ) -> Result<MessageHandler,Error>;
 
     fn extra(&self, port: &str) -> Result<MessageHandler, Error>;
-
-    fn state(&self) ->&StateLocker;
 }
 
 
@@ -39,39 +37,35 @@ pub trait Mechtron
 pub struct BlankMechtron
 {
     context: Context,
-    state_locker: StateLocker
+    state: Rc<RefCell<Option<Box<State>>>>
 }
 
 impl BlankMechtron{
-    pub fn new(context:Context, state_locker:StateLocker)->Self
+    pub fn new(context:Context, state:Rc<RefCell<Option<Box<State>>>>)->Self
     {
         BlankMechtron{
             context:context,
-            state_locker: state_locker
+            state : state
         }
     }
 }
 
 impl Mechtron for BlankMechtron
 {
-    fn create(&self, create_message: &Message) -> Result<Response, Error> {
+    fn create(&mut self, create_message: &Message) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn update(&self) -> Result<Response, Error> {
+    fn update(&mut self) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn message(&self, port: &str) -> Result<MessageHandler, Error> {
+    fn message(&mut self, port: &str) -> Result<MessageHandler, Error> {
         Ok(MessageHandler::None)
     }
 
     fn extra(&self, port: &str) -> Result<MessageHandler, Error> {
         Ok(MessageHandler::None)
-    }
-
-    fn state(&self) -> &StateLocker {
-        &self.state_locker
     }
 }
 

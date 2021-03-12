@@ -633,6 +633,7 @@ println!("CACHING WASM...");
         self.context.cache.wasms.cache(&config.wasm.artifact)?;
 println!("RETURNED FROM CACHE...");
 
+
         let wasm_membrane = self.context.cache.wasms.get_membrane(&config.wasm.artifact)?;
         let kernel = MechtronMembrane::new( wasm_membrane, Arc::new(neutron_state) );
         // insert the neutron_state into the MechtronKernels
@@ -693,6 +694,7 @@ println!("RETURNED FROM CACHE...");
 
         }
 
+        unimplemented!();
 
         Ok(())
     }

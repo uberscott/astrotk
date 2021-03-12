@@ -156,6 +156,7 @@ impl <'a> MechtronShell<'a> {
         }
         let kernel_context = Context::new( self.info.key.clone(), context.revision().cycle, context.phase() );
         let builders = self.kernel.create(&kernel_context,create)?;
+unimplemented!();
         self.handle(Option::Some(builders), context)?;
 
         Ok(())
@@ -280,6 +281,7 @@ impl <'a> MechtronShell<'a> {
         builders: Option<Vec<MessageBuilder>>,
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error> {
+unimplemented!();
         match builders {
             None => Ok(()),
             Some(builders) => {
@@ -344,6 +346,7 @@ impl <'a> MechtronShell<'a> {
 
         let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
 
+unimplemented!();
         match api.as_str() {
             "neutron_api" => {
                 // need some test to make sure this is actually a neutron

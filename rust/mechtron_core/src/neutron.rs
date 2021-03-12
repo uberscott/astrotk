@@ -11,21 +11,23 @@ use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::message::{Cycle, MechtronLayer, Message, MessageBuilder, MessageKind, Payload};
 use mechtron_common::state::{NeutronStateInterface, ReadOnlyState, State};
 use mechtron_common::mechtron::Context;
-use mechtron::membrane::StateLocker;
+use std::rc::Rc;
+use std::cell::{Cell, RefCell};
+use mechtron::membrane::log;
 
 pub struct Neutron {
     context: Context,
-    state_locker: StateLocker
+    state: Rc<RefCell<Option<Box<State>>>>
 }
 
 
 impl Neutron {
 
-    pub fn new(context:Context,state_locker:StateLocker)->Self
+    pub fn new(context:Context,state:Rc<RefCell<Option<Box<State>>>>)->Self
     {
         Neutron{
             context: context,
-            state_locker: state_locker
+            state:state
         }
     }
 
@@ -40,6 +42,8 @@ impl Neutron {
         neutron_state: &mut State,
         create_message: Message,
     ) -> Result<Response, Error> {
+log("debug", "got here.");
+unimplemented!();
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 
@@ -95,12 +99,15 @@ impl Neutron {
 }
 
 impl Mechtron for Neutron {
-    fn create(&self, create_message: &Message) -> Result<Response, Error> {
-        let state = self.state_locker.state();
+    fn create(&mut self, create_message: &Message) -> Result<Response, Error> {
 
         let interface = NeutronStateInterface {};
 
+
+        let mut state = self.state.borrow_mut();
+        let state = state.as_mut().unwrap();
         let config = state.config.clone();
+
 
         //neutron adds itself to the tron manifest
         interface.add_mechtron(state, &self.context.key, config.source.to())?;
@@ -136,7 +143,7 @@ impl Mechtron for Neutron {
         }
     }
 
-    fn message(&self, port: &str) -> Result<MessageHandler, Error> {
+    fn message(&mut self, port: &str) -> Result<MessageHandler, Error> {
         Ok(match port{
             "create" => MessageHandler::Handler(Neutron::inbound__create_mechtron),
             _ => MessageHandler::None
@@ -144,7 +151,7 @@ impl Mechtron for Neutron {
     }
 
 
-    fn update(&self) -> Result<Response, Error> {
+    fn update(&mut self) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
@@ -153,9 +160,6 @@ impl Mechtron for Neutron {
         Ok(MessageHandler::None)
     }
 
-    fn state(&self) -> &StateLocker {
-        &self.state_locker
-    }
 }
 
 

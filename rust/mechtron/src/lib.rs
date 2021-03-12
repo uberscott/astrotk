@@ -11,7 +11,7 @@ extern crate lazy_static;
 extern crate mechtron_common;
 
 use wasm_bindgen::prelude::*;
-use crate::membrane::{log, mechtronium_cache, wasm_write_string, mechtronium_load, mechtronium_consume_buffer, StateLocker};
+use crate::membrane::{log, mechtronium_cache, wasm_write_string, mechtronium_load, mechtronium_consume_buffer};
 use mechtron_common::error::Error;
 use std::sync::{RwLock, Arc,MutexGuard,Mutex};
 use std::collections::HashSet;
@@ -21,6 +21,8 @@ use mechtron_common::core::*;
 use mechtron_common::mechtron::Context;
 use std::rc::Rc;
 use crate::mechtron::Mechtron;
+use mechtron_common::state::State;
+use std::cell::{Cell, RefCell};
 
 
 
@@ -31,7 +33,7 @@ lazy_static! {
 extern "C"
 {
     fn mechtron_init();
-    pub fn mechtron(kind: &str, context: Context, state: Rc<StateLocker> )->Option<Box<dyn Mechtron>>;
+    pub fn mechtron(kind: &str, context: Context, state: Rc<RefCell<Option<Box<State>>>> )->Option<Box<dyn Mechtron>>;
 }
 
 #[wasm_bindgen]

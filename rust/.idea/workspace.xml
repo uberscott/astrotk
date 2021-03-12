@@ -18,7 +18,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/wasm/core.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/wasm/core.wasm" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/mechtron.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/membrane.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/simtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/simtron.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
@@ -93,7 +100,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test nucleus">
+  <component name="RunManager" selected="Cargo.Test nucleus::test::test_create_sim">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -314,7 +321,7 @@
       <workItem from="1615414338348" duration="43000" />
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
-      <workItem from="1615415460309" duration="61385000" />
+      <workItem from="1615415460309" duration="67742000" />
     </task>
     <servers />
   </component>

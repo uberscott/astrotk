@@ -257,6 +257,13 @@ pub fn wasm_test_modify_state( state:i32 )
     interface.add_mechtron(& mut state ,&key,"BlankMechtron".to_string());
 }
 
+#[wasm_bindgen]
+pub fn wasm_test_log( )
+{
+    log("test", "this is a log file");
+}
+
+
 fn checkout_state(state_id: i32 ) ->State
 {
     let states = STATE.lock();
@@ -292,129 +299,123 @@ pub fn mechtron_is_tainted( state: i32) -> i32
 pub fn mechtron_create(context: i32, state_id: i32, message: i32 ) -> i32
 {
     let state = checkout_state(state_id);
-    let state = Rc::new(StateLocker::new(state,state_id));
+    let config = state.config.clone();
+    let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
 
-    let mechtron = unsafe{
-        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    let mut mechtron = unsafe{
+        mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
     let response = mechtron.create(&message).unwrap();
-    return handle_response(response,state);
+
+    let state = state.replace(Option::None);
+    let state = state.unwrap();
+
+    let (state,builder) = handle_response(response,*state);
+    return_state(state,state_id);
+
+    builder
 }
 
 #[wasm_bindgen]
-pub fn mechtron_update(context: i32, state_id: i32 ) -> i32
+pub fn mechtron_update(context: i32, state_id: i32) -> i32
 {
     let state = checkout_state(state_id);
-    let state = Rc::new(StateLocker::new(state,state_id));
+    let config = state.config.clone();
+    let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
     let context = mechtronium_consume_context(context ).unwrap();
 
-    let mechtron = unsafe{
-        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    let mut mechtron = unsafe{
+        mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
     let response = mechtron.update().unwrap();
-    return handle_response(response,state);
+
+    let state = *state.replace(Option::None).unwrap();
+    let (state,builder) = handle_response(response,state);
+    return_state(state,state_id);
+
+    builder
 }
 
 #[wasm_bindgen]
 pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 {
     let state = checkout_state(state_id);
-    let state = Rc::new(StateLocker::new(state,state_id));
+    let config = state.config.clone();
+    let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
 
-    let mechtron = unsafe{
-        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    let mut mechtron = unsafe{
+        mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
-    let handler = mechtron.message(&message.to.port).unwrap();
-    match handler{
-        MessageHandler::None => {
-            return handle_response(Response::None, state);
-        }
-        MessageHandler::Handler(func) => {
-            return handle_response( func( &context, state.state(), message ).unwrap(), state );
-        }
-    }
+    let handler = mechtron.message( &message.to.port ).unwrap();
+
+    let mut state = *state.replace(Option::None).unwrap();
+
+    let response = match handler
+    {
+        MessageHandler::None => Response::None,
+        MessageHandler::Handler(func) => func(&context,& mut state,message).unwrap()
+    };
+
+    let (state,builder) = handle_response(response,state);
+    return_state(state,state_id);
+
+    builder
 }
 
 #[wasm_bindgen]
 pub fn mechtron_extra(context: i32, state_id: i32, message: i32) -> i32
 {
     let state = checkout_state(state_id);
-    let state = Rc::new(StateLocker::new(state,state_id));
+    let config = state.config.clone();
+    let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
 
-    let mechtron = unsafe{
-        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    let mut mechtron = unsafe{
+        mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
-    let handler = mechtron.extra(&message.to.port).unwrap();
-    match handler{
-        MessageHandler::None => {
-            return handle_response(Response::None, state);
-        }
-        MessageHandler::Handler(func) => {
-            return handle_response( func( &context, state.state(), message ).unwrap(), state );
-        }
-    }
+    let handler = mechtron.extra( &message.to.port ).unwrap();
+
+    let mut state = *state.replace(Option::None).unwrap();
+
+    let response = match handler
+    {
+        MessageHandler::None => Response::None,
+        MessageHandler::Handler(func) => func(&context,& mut state,message).unwrap()
+    };
+
+    let (state,builder) = handle_response(response,state);
+    return_state(state,state_id);
+
+    builder
 }
 
 
 
-fn handle_response( response: Response, state: Rc<StateLocker> )->i32
+
+
+fn handle_response( response: Response, state: State )->(State,i32)
 {
-    match response {
+    let builders= match response {
         Response::None => {
-            return -1;
+            -1
         }
         Response::Messages(builders) => {
             let buffer = MessageBuilder::to_buffer(builders,&CONFIGS).unwrap();
             let bytes = Buffer::bytes(buffer);
             let buffer_id = wasm_write_buffer(bytes);
-            return buffer_id;
+            buffer_id
         }
-    }
+    };
+
+    (state,builders)
 }
 
-pub struct StateLocker
-{
-    state: RefCell<Option<State>>,
-    state_id: i32
-}
-
-impl StateLocker
-{
-    pub fn new( state: State, state_id: i32 )->Self
-    {
-        StateLocker{
-            state: RefCell::new(Option::Some(state)),
-            state_id: state_id
-        }
-    }
-    pub fn state(&self)->&mut State
-    {
-        self.state().borrow_mut()
-    }
-
-    pub fn release(&self)
-    {
-        let state = self.state.replace(Option::None);
-        if( state.is_some() )
-        {
-            let state = state.unwrap();
-            return_state(state, self.state_id);
-        }
-    }
-}
-
-impl Drop for StateLocker{
-    fn drop(&mut self) {
-        self.release();
-    }
-}
