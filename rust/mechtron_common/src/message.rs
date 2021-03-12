@@ -19,6 +19,7 @@ use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, MechtronKey};
 use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 use crate::core::*;
 use std::cell::{Cell, RefCell};
+use crate::logger::log;
 
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -326,7 +327,6 @@ pub struct MessageBuilder {
     pub to_tron_id: Option<Id>,
     pub to_cycle_kind: Option<Cycle>,
     pub to_phase: Option<String>,
-    pub to_phase_name: Option<String>,
     pub to_port: Option<String>,
     pub to_delivery: Option<DeliveryMoment>,
     pub to_layer: Option<MechtronLayer>,
@@ -347,10 +347,9 @@ impl MessageBuilder {
             to_tron_id: None,
             to_cycle_kind: None,
             to_port: None,
-            to_phase: None,
-            to_phase_name: None,
-            to_delivery: None,
-            to_layer: None,
+            to_phase: Option::Some("default".to_string()),
+            to_delivery: Option::Some(DeliveryMoment::Cyclic),
+            to_layer: Option::Some(MechtronLayer::Kernel),
             payloads: RefCell::new(None),
             meta: None,
             transaction: None,
@@ -361,10 +360,6 @@ impl MessageBuilder {
     pub fn validate(&self) -> Result<(), Error> {
         if self.kind.is_none() {
             return Err("message builder kind must be set".into());
-        }
-
-        if self.to_phase_name.is_some() && self.to_phase.is_some() {
-            return Err("to_phase_name and to_phase cannot both be set".into());
         }
 
         if self.to_nucleus_lookup_name.is_some() == self.to_nucleus_id.is_some() {
@@ -496,7 +491,10 @@ impl MessageBuilder {
                 self.to_nucleus_id.unwrap().append(&path.push(path!["nucleus_id"]), buffer)?
             }
             buffer.set(&path.with(path!["port"]), self.to_port.as_ref().unwrap().clone())?;
-            buffer.set(&path.with(path!["phase"]), self.to_phase.as_ref().unwrap().clone())?;
+            if self.to_phase.is_some()
+            {
+                buffer.set(&path.with(path!["phase"]), self.to_phase.as_ref().unwrap().clone())?;
+            }
             buffer.set(&path.with(path!["cycle_kind"]), NP_Enum::Some(match self.to_cycle_kind.as_ref().unwrap().clone() {
                 Cycle::Exact(_) => "Exact".to_string(),
                 Cycle::Present => "Present".to_string(),
@@ -512,17 +510,23 @@ impl MessageBuilder {
                 Cycle::Next => {}
             }
 
-            buffer.set(&path.with(path!["delivery"]), NP_Enum::Some(match self.to_delivery.as_ref().unwrap().clone() {
-                DeliveryMoment::Cyclic => "Cyclic".to_string(),
-                DeliveryMoment::Phasic => "Phasic".to_string(),
-                DeliveryMoment::ExtraCyclic => "ExtraCyclic".to_string()
-            }));
 
+            if( self.to_delivery.is_some())
+            {
+                buffer.set(&path.with(path!["delivery"]), NP_Enum::Some(match self.to_delivery.as_ref().unwrap().clone() {
+                    DeliveryMoment::Cyclic => "Cyclic".to_string(),
+                    DeliveryMoment::Phasic => "Phasic".to_string(),
+                    DeliveryMoment::ExtraCyclic => "ExtraCyclic".to_string()
+                }));
+            }
 
-            buffer.set(&path.with(path!["layer"]), NP_Enum::Some(match self.to_layer.as_ref().unwrap().clone() {
-                MechtronLayer::Kernel => "Kernel".to_string(),
-                MechtronLayer::Shell => "Shell".to_string()
-            }));
+            if( self.to_delivery.is_some())
+            {
+                buffer.set(&path.with(path!["layer"]), NP_Enum::Some(match self.to_layer.as_ref().unwrap().clone() {
+                    MechtronLayer::Kernel => "Kernel".to_string(),
+                    MechtronLayer::Shell => "Shell".to_string()
+                }));
+            }
         }
 
         {
@@ -535,6 +539,7 @@ impl MessageBuilder {
                 payload_index = payload_index + 1;
             }
         }
+
 
         if self.meta.is_some()
         {
