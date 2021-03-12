@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, MutexGuard, Mutex};
 
 use mechtron_common::buffers::ReadOnlyBuffer;
-use mechtron_common::id::Id;
+use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload};
 use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
 use mechtron_common::util::PongPayloadBuilder;
@@ -18,26 +18,43 @@ use crate::error::Error;
 use crate::nucleus::{MechtronShellContext, TronInfo};
 use mechtron_common::api::CreateApiCallCreateNucleus;
 use mechtron_common::artifact::Artifact;
-use mechtron_common::configs::PanicEscalation;
+use mechtron_common::configs::{PanicEscalation, Configs};
 use crate::membrane::MechtronMembrane;
+use mechtron_common::mechtron::Context;
+use std::cmp::Ordering;
 
-pub struct MechtronShell {
+pub struct MechtronShell<'a> {
     pub info: TronInfo,
     pub outbound: RefCell<Vec<Message>>,
     pub panic: RefCell<Option<String>>,
-    pub kernel: Arc<Mutex<MechtronMembrane>>
+    pub kernel: MutexGuard<'a,MechtronMembrane>
 }
 
 
-impl MechtronShell {
-    pub fn new(kernel: Arc<Mutex<MechtronMembrane>>, info: TronInfo) -> Self {
-        MechtronShell {
+impl <'a> MechtronShell<'a> {
+    pub fn new(kernel: MutexGuard<'a,MechtronMembrane>, key: MechtronKey, configs: &Configs ) -> Result<Self,Error> {
+
+        let (config, bind) = {
+            let config = kernel.get_mechtron_config();
+            let bind = configs.binds.get(&config.bind.artifact)?;
+            (config, bind)
+        };
+
+        let info = TronInfo {
+            key: key.clone(),
+            config: config.clone(),
+            bind: bind,
+        };
+
+        Ok(MechtronShell {
             info: info,
             kernel: kernel,
             outbound: RefCell::new(vec!()),
             panic: RefCell::new(Option::None),
-        }
+        })
     }
+
+
 
     fn warn<E: Debug>(&self, error: E)
     {
@@ -132,8 +149,49 @@ impl MechtronShell {
         {
             return Err("mechtron state is tainted".into());
         }
-        let mut builders = self.kernel.create(context,create)?;
-        self.handle(builders, context)?;
+        let kernel_context = Context::new( self.info.key.clone(), context.revision().cycle, context.phase() );
+        let builders = self.kernel.create(&kernel_context,create)?;
+        self.handle(Option::Some(builders), context)?;
+
+        Ok(())
+    }
+
+    pub fn messages(
+        &mut self,
+        messages: Vec<Arc<Message>>,
+        context: &dyn MechtronShellContext
+    ) {
+        match self.messages_result(messages, context)
+        {
+            Ok(_) => {}
+            Err(error) => {
+                self.panic(error);
+                self.kernel.set_taint(true);
+            }
+        }
+    }
+
+    pub fn messages_result(
+        &mut self,
+        messages: Vec<Arc<Message>>,
+        context: &dyn MechtronShellContext
+    ) -> Result<(), Error> {
+        if self.kernel.is_tainted()?
+        {
+            return Err("mechtron state is tainted".into());
+        }
+
+        let (_,messages) = Self::split( messages );
+        let messages = Self::sort( messages );
+        let kernel_context = Context::new( self.info.key.clone(), context.revision().cycle, context.phase() );
+
+        for port in messages.keys()
+        {
+            for message in messages.get(port).unwrap()
+            {
+                self.kernel.message(&kernel_context, &message);
+            }
+        }
 
         Ok(())
     }
@@ -159,6 +217,7 @@ impl MechtronShell {
         context: &dyn MechtronShellContext
     ) -> Result<(), Error>
     {
+        /*
         if self.kernel.get_state().is_tainted()?
         {
             return Err("mechtron state is tainted".into());
@@ -204,80 +263,12 @@ impl MechtronShell {
             }
         }
         Ok(())
-    }
 
-    pub fn inbound(
-        &mut self,
-        messages: &Vec<Arc<Message>>,
-        context: &dyn MechtronShellContext,
-        state: &mut MutexGuard<State>,
-    ) {
-        match self.inbound_result(messages, context, state)
-        {
-            Ok(_) => {}
-            Err(error) => {
-                self.panic(error);
-                state.set_taint(true);
-            }
-        }
-    }
-
-    pub fn inbound_result(
-        &mut self,
-        messages: &Vec<Arc<Message>>,
-        context: &dyn MechtronShellContext,
-        state: &mut MutexGuard<State>,
-    ) -> Result<(), Error> {
-        if state.is_tainted()?
-        {
-            return Err("mechtron state is tainted".into());
-        }
-
-        let bind = context.configs().binds.get(&self.info.config.bind.artifact).unwrap();
-        let mut hash = HashMap::new();
-        for message in messages
-        {
-            if !hash.contains_key(&message.to.port)
-            {
-                hash.insert(message.to.port.clone(), vec!());
-            }
-            let messages = hash.get_mut(&message.to.port).unwrap();
-            messages.push(message.clone());
-        }
-        let mut ports = vec!();
-        for port in hash.keys()
-        {
-            ports.push(port);
-        }
-
-        ports.sort();
-        for port in ports
-        {
-            let messages = hash.get(port).unwrap();
-            match bind.message.inbound.contains_key(port)
-            {
-                true => {
-                    let func = self.tron.port(port);
-                    match func
-                    {
-                        Ok(func) => {
-                            let builders = func(self.info.clone(), context, state, messages)?;
-                            self.handle(builders, context)?;
-                        }
-                        Err(e) => {
-                            self.panic(e);
-                        }
-                    }
-                }
-                false => {
-                    for message in messages {
-                        self.reject(message, format!("mechtron {} does not have an inbound port {}", self.info.config.source.to(), port).as_str(), context, MechtronLayer::Shell);
-                    }
-                }
-            }
-        }
+         */
         Ok(())
     }
+
+
 
     fn handle(
         &self,
@@ -360,6 +351,7 @@ impl MechtronShell {
                         "create_mechtron" => {
                             // now get the state of the mechtronmessage.payloads
                             let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
+                            let new_mechtron_state = new_mechtron_state.read_only()?;
 
                             // very wasteful to be cloning the bytes here...
                             let create_message = message.payloads[2].buffer.read_bytes().to_vec();
@@ -387,6 +379,65 @@ impl MechtronShell {
         }
 
         Ok(())
+    }
+
+    fn split(messages: Vec<Arc<Message>>) ->(Vec<Arc<Message>>, Vec<Arc<Message>>)
+    {
+        let mut shell = vec!();
+        let mut kernel = vec!();
+
+        for message in messages
+        {
+            match message.to.layer
+            {
+                MechtronLayer::Shell => {shell.push(message)}
+                MechtronLayer::Kernel => {kernel.push(message)}
+            }
+        }
+
+        (shell,kernel)
+    }
+
+    fn sort(messages: Vec<Arc<Message>>) ->HashMap<String,Vec<Arc<Message>>>
+    {
+        let mut rtn = HashMap::new();
+
+        for message in messages
+        {
+            let port = message.to.port.clone();
+            if !rtn.contains_key(&port)
+            {
+                rtn.insert( port.clone(), vec!() );
+            }
+            let messages = rtn.get_mut(&port).unwrap();
+            messages.push(message);
+        }
+
+        for (key,mut messages) in rtn.iter_mut()
+        {
+            messages.sort_by( |a,b| {
+                if a.id.seq_id == b.id.seq_id
+                {
+                    if a.id.id < b.id.id
+                    {
+                        Ordering::Less
+                    }
+                    else
+                    {
+                        Ordering::Greater
+                    }
+                }
+                else if a.id.seq_id < b.id.seq_id
+                {
+                    Ordering::Less
+                }
+                else{
+                    Ordering::Greater
+                }
+            });
+        }
+
+        rtn
     }
 }
 

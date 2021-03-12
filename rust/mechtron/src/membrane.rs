@@ -9,15 +9,22 @@ use wasm_bindgen::__rt::std::collections::HashMap;
 use wasm_bindgen::__rt::std::sync::atomic::{Ordering, AtomicPtr};
 use wasm_bindgen::__rt::std::sync::atomic::AtomicI32;
 use crate::CONFIGS;
+use crate::mechtron;
 use std::ops::{Deref, DerefMut};
 use mechtron_common::state::{State, NeutronStateInterface, StateMeta};
 use mechtron_common::error::Error;
 use mechtron_common::id::{Id, MechtronKey};
+use mechtron_common::message::{Message, MessageBuilder};
+use mechtron_common::mechtron::Context;
+use mechtron_common::buffers::Buffer;
+use crate::mechtron::{MessageHandler, StateLocker, Response};
+use std::rc::Rc;
+use std::cell::Cell;
 
 lazy_static! {
   pub static ref BUFFERS: RwLock<HashMap<i32,BufferInfo>> = RwLock::new(HashMap::new());
   pub static ref BUFFER_INDEX: AtomicI32 = AtomicI32::new(0);
-  pub static ref STATE: RwLock<HashMap<i32,Arc<Mutex<State>>>> = RwLock::new(HashMap::new());
+  pub static ref STATE: Mutex<HashMap<i32,State>> = Mutex::new(HashMap::new());
 }
 
 pub struct BufferInfo
@@ -101,6 +108,17 @@ pub fn mechtronium_consume_buffer(buffer_id: i32) -> Result<Vec<u8>, Error>
     }
 }
 
+fn mechtronium_consume_messsage(buffer_id: i32) -> Result<Message, Error>
+{
+    let bytes = mechtronium_consume_buffer(buffer_id)?;
+    Ok(Message::from_bytes(bytes,&CONFIGS)?)
+}
+
+fn mechtronium_consume_context(buffer_id: i32) -> Result<Context, Error>
+{
+    let bytes = mechtronium_consume_buffer(buffer_id)?;
+    Ok(Context::from_bytes(bytes, &CONFIGS )?)
+}
 
 fn wasm_alloc(len: i32) -> *mut u8 {
     let rtn = unsafe {
@@ -147,9 +165,14 @@ pub fn wasm_dealloc_buffer(id: i32)
 {
     let buffer_info = BUFFERS.read();
     let buffer_info = buffer_info.unwrap();
-    let buffer_info = buffer_info.get(&id).unwrap();
-    let ptr = buffer_info.ptr.load(Ordering::Relaxed);
-    wasm_dealloc(ptr, buffer_info.len as _);
+    match buffer_info.get(&id)
+    {
+        Ok(buffer_info)=> {
+            let ptr = buffer_info.ptr.load(Ordering::Relaxed);
+            wasm_dealloc(ptr, buffer_info.len as _);
+        },
+        None=>{}
+    }
 }
 
 #[wasm_bindgen]
@@ -177,6 +200,11 @@ pub fn wasm_write_string(mut string: String) -> i32{
     rtn
 }
 
+pub fn wasm_write_buffer(mut bytes: Vec<u8>) -> i32{
+    let rtn = wasm_assign_buffer(bytes.as_mut_ptr(), bytes.len() as _ );
+    mem::forget(bytes );
+    rtn
+}
 
 
 pub fn wasm_assign_buffer(ptr: *mut u8, len: i32) -> i32{
@@ -197,21 +225,15 @@ pub fn wasm_inject_state(state_buffer_id: i32 )
 {
     let state = mechtronium_consume_buffer(state_buffer_id).unwrap();
     let state = State::from_bytes(state, &CONFIGS ).unwrap();
-    STATE.write().unwrap().insert(state_buffer_id, Arc::new(Mutex::new(state)) );
+
+    let states = STATE.lock().unwrap();
+    states.insert(state_buffer_id, state );
 }
 
 #[wasm_bindgen]
 pub fn wasm_move_state_to_buffers(state_buffer_id: i32 )
 {
-    let state: Arc<Mutex<State>> = {
-        let mut locker = STATE.write();
-        let mut locker = locker.unwrap();
-        let mut locker = locker.remove(&state_buffer_id);
-        locker.unwrap().clone()
-    };
-
-    let state = state.lock().unwrap();
-
+    let state = checkout_state(state_buffer_id);
     let mut bytes = state.to_bytes(&CONFIGS).unwrap();
     let buffer_info = BufferInfo{
         ptr: AtomicPtr::new(bytes.as_mut_ptr() ),
@@ -223,26 +245,178 @@ pub fn wasm_move_state_to_buffers(state_buffer_id: i32 )
     mem::forget(bytes);
 }
 
+
+
 #[wasm_bindgen]
 pub fn wasm_test_modify_state( state:i32 )
 {
-    let state = mechtronium_checkout_state(state);
+    let state = checkout_state(state);
     let mut state = state.lock().unwrap();
     let interface = NeutronStateInterface{};
     let key = MechtronKey::new(Id::new(1,2), Id::new(3,4));
     let inner = state.deref_mut();
     inner.set_taint(true);
     interface.add_mechtron(inner,&key,"BlankMechtron".to_string());
-
 }
 
-pub fn mechtronium_checkout_state( state_id: i32 )->Arc<Mutex<State>>
+fn checkout_state(state_id: i32 ) ->State
 {
-    let locker = STATE.read();
-    let locker = locker.unwrap();
-    let locker = locker.get(&state_id);
-    let state = locker.unwrap().clone();
+    let states = STATE.lock();
+    let states = states.unwrap();
+    let state = states.remove(state_id).unwrap();
     state
 }
 
+fn return_state(state: State, state_id: i32 )
+{
+    let states = STATE.lock();
+    let states = states.unwrap();
+    states.insert(state_id,state);
+}
 
+#[wasm_bindgen]
+pub fn mechtron_is_tainted( state: i32) -> i32
+{
+    let states = STATE.lock();
+    let states = states.unwrap();
+    let state = states.get(state).unwrap();
+    if state.is_tainted()
+    {
+        1
+    }
+    else
+    {
+        0
+    }
+}
+
+#[wasm_bindgen]
+pub fn mechtron_create(context: i32, state: i32, message: i32 ) -> i32
+{
+    let state = checkout_state(state);
+    let state = Rc::new(StateLocker::new(state,state_id));
+    let context = mechtronium_consume_context(context ).unwrap();
+    let message = mechtronium_consume_message(message).unwrap();
+
+    let mechtron = unsafe{
+        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    }.unwrap();
+
+    let response = mechtron.create(message).unwrap();
+    return handle_response(response,state);
+}
+
+#[wasm_bindgen]
+pub fn mechtron_update(context: i32, state: i32 ) -> i32
+{
+    let state = checkout_state(state);
+    let state = Rc::new(StateLocker::new(state,state_id));
+    let context = mechtronium_consume_context(context ).unwrap();
+
+    let mechtron = unsafe{
+        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    }.unwrap();
+
+    let response = mechtron.update().unwrap();
+    return handle_response(response,state);
+}
+
+#[wasm_bindgen]
+pub fn mechtron_message(context: i32, state: i32, message: i32) -> i32
+{
+    let state = checkout_state(state);
+    let state = Rc::new(StateLocker::new(state,state_id));
+    let context = mechtronium_consume_context(context ).unwrap();
+    let message = mechtronium_consume_messsage(message).unwrap();
+
+    let mechtron = unsafe{
+        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    }.unwrap();
+
+    let handler = mechtron.message(&message.to.port).unwrap();
+    match handler{
+        MessageHandler::None => {
+            return handle_response(Response::None, state);
+        }
+        MessageHandler::Handler(func) => {
+            return handle_response( func( &context, state.state(), message ).unwrap(), state );
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn mechtron_extra(context: i32, state: i32, message: i32) -> i32
+{
+    let state = checkout_state(state);
+    let state = Rc::new(StateLocker::new(state,state_id));
+    let context = mechtronium_consume_context(context ).unwrap();
+    let message = mechtronium_consume_messsage(message).unwrap();
+
+    let mechtron = unsafe{
+        mechtron(state.state().config.kind.as_str(),context.clone(),state.clone())
+    }.unwrap();
+
+    let handler = mechtron.extra(&message.to.port).unwrap();
+    match handler{
+        MessageHandler::None => {
+            return handle_response(Response::None, state);
+        }
+        MessageHandler::Handler(func) => {
+            return handle_response( func( &context, state.state(), message ).unwrap(), state );
+        }
+    }
+}
+
+
+
+fn handle_response( response: Response, state: Rc<StateLocker> )->i32
+{
+    match response {
+        Response::None => {
+            return -1;
+        }
+        Response::Messages(builders) => {
+            let buffer = MessageBuilder::to_buffer(builders,&CONFIGS).unwrap();
+            let bytes = Buffer::bytes(buffer);
+            let buffer_id = wasm_write_buffer(bytes);
+            return buffer_id;
+        }
+    }
+}
+
+pub struct StateLocker
+{
+    state: Cell<Option<State>>,
+    state_id: i32
+}
+
+impl StateLocker
+{
+    pub fn new( state: State, state_id: i32 )->Self
+    {
+        StateLocker{
+            state: Cell::new(Option::Some(state)),
+            state_id: state_id
+        }
+    }
+    pub fn state(&self)->&State
+    {
+        self.state.into_inner().as_ref().unwrap()
+    }
+
+    pub fn release(&self)
+    {
+        let state = self.state.replace(Option::None);
+        if( state.is_some() )
+        {
+            let state = state.unwrap();
+            return_state(state, self.state_id);
+        }
+    }
+}
+
+impl Drop for StateLocker{
+    fn drop(&mut self) {
+        self.release();
+    }
+}

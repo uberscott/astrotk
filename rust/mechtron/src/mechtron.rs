@@ -3,6 +3,10 @@ use mechtron_common::message::{Message, MessageBuilder};
 use mechtron_common::error::Error;
 use std::sync::MutexGuard;
 use mechtron_common::id::{Id, MechtronKey};
+use mechtron_common::mechtron::Context;
+use mechtron_common::message::DeliveryMoment::ExtraCyclic;
+use std::cell::{Cell, RefCell};
+use crate::membrane::{mechtronium_return_state, StateLocker};
 
 #[derive(Clone)]
 pub enum Response
@@ -11,67 +15,63 @@ pub enum Response
     Messages(Vec<MessageBuilder>)
 }
 
-#[derive(Clone)]
-pub struct Context
-{
-    pub key: MechtronKey,
-    pub phase: String,
-    pub cycle: i64
-}
-
 pub enum MessageHandler
 {
     None,
-    Handler( fn( context: &Context, state: &mut MutexGuard<State>, message: Vec<Message>)->Result<Response,Error> )
-}
-
-pub enum ExtraCyclicMessageHandler
-{
-    None,
-    Handler( fn( context: &Context, state: &ReadOnlyState, message: Vec<Message>)->Result<Response,Error> )
+    Handler( fn( context: &Context, state: &State, message: Message)->Result<Response,Error> )
 }
 
 pub trait Mechtron
 {
-    fn on_create( &self, state: &mut MutexGuard<State>, create_message: &Message ) -> Result<Response, Error>;
+    fn create( &self, create_message: &Message ) -> Result<Response, Error>;
 
-    fn on_update( &self, state: &mut MutexGuard<State> ) -> Result<Response,Error>;
+    fn update( &self ) -> Result<Response,Error>;
 
-    fn on_messages( &self, port: &str ) -> Result<MessageHandler,Error>;
+    fn message( &self, port: &str ) -> Result<MessageHandler,Error>;
 
-    fn on_extras(&self, port: &str) -> Result<ExtraCyclicMessageHandler, Error>;
+    fn extra(&self, port: &str) -> Result<MessageHandler, Error>;
+
+    fn state(&self) ->&StateLocker;
 }
+
+
 
 pub struct BlankMechtron
 {
-    context: Context
+    context: Context,
+    state: Cell<Option<State>>
 }
 
 impl BlankMechtron{
-    pub fn new(context:Context)->Self
+    pub fn new(context:Context, state:State)->Self
     {
         BlankMechtron{
-            context:context
+            context:context,
+            state: Cell::new(Option::Some(state))
         }
     }
 }
 
 impl Mechtron for BlankMechtron
 {
-    fn on_create(&self, state: &mut MutexGuard<State>, create_message: &Message) -> Result<Response, Error> {
+    fn create(&self, create_message: &Message) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn on_update(&self, state: &mut MutexGuard<State>) -> Result<Response, Error> {
+    fn update(&self) -> Result<Response, Error> {
         Ok(Response::None)
     }
 
-    fn on_messages(&self, port: &str) -> Result<MessageHandler, Error> {
+    fn message(&self, port: &str) -> Result<MessageHandler, Error> {
         Ok(MessageHandler::None)
     }
 
-    fn on_extras(&self,  port: &str) -> Result<ExtraCyclicMessageHandler, Error> {
+    fn extra(&self, port: &str) -> Result<ExtraCyclicMessageHandler, Error> {
         Ok(ExtraCyclicMessageHandler::None)
+    }
+
+    fn state(&self) -> &StateLocker {
+        &self.state_locker
     }
 }
 

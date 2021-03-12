@@ -11,7 +11,7 @@
         let repo = MechtroniumArtifactRepository::new("../../repo");
         let mut configs = Configs::new(Arc::new(repo) );
 
-        configs.cache_common();
+//        configs.cache_common();
         configs
     }
 
