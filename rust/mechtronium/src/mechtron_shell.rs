@@ -138,8 +138,8 @@ impl <'a> MechtronShell<'a> {
         {
             Ok(_) => {}
             Err(error) => {
-                self.panic(error);
-                self.kernel.set_taint(true);
+                self.panic(error.clone());
+                self.kernel.set_taint(format!("CREATE {:?}",error).as_str());
                 self.check(context);
             }
         }
@@ -170,8 +170,8 @@ impl <'a> MechtronShell<'a> {
         {
             Ok(_) => {}
             Err(error) => {
-                self.panic(error);
-                self.kernel.set_taint(true);
+                self.panic(error.clone());
+                self.kernel.set_taint(format!("MESSAGES: {:?}", error).as_str());
             }
         }
     }

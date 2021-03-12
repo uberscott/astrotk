@@ -20,6 +20,7 @@
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron_shell.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -92,7 +93,7 @@
       <recent name="$PROJECT_DIR$/astrotk_config/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test nucleus::test::test_create_sim">
+  <component name="RunManager" selected="Cargo.Test nucleus">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -164,21 +165,6 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test membrane::test::test_grow_state" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib membrane::test::test_grow_state -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="Test membrane::test::test_inject_and_extract_state" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package mechtronium --lib membrane::test::test_inject_and_extract_state -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
@@ -197,6 +183,36 @@
     <configuration name="Test membrane::test::test_inject_state" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --package mechtronium --lib membrane::test::test_inject_state -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/main" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test nucleus" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib nucleus" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test nucleus::state::test::test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib nucleus::state::test::test -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -248,14 +264,16 @@
       <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
       <item itemvalue="Cargo.Test membrane::test::test_grow_state (1)" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_and_extract_state" />
-      <item itemvalue="Cargo.Test membrane::test::test_grow_state" />
+      <item itemvalue="Cargo.Test nucleus::state::test::test" />
+      <item itemvalue="Cargo.Test nucleus" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test nucleus" />
+        <item itemvalue="Cargo.Test nucleus::state::test::test" />
         <item itemvalue="Cargo.Test membrane::test::test_inject_and_extract_state" />
         <item itemvalue="Cargo.Test membrane::test::test_grow_state (1)" />
         <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
-        <item itemvalue="Cargo.Test membrane::test::test_grow_state" />
       </list>
     </recent_temporary>
   </component>
@@ -296,7 +314,7 @@
       <workItem from="1615414338348" duration="43000" />
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
-      <workItem from="1615415460309" duration="56047000" />
+      <workItem from="1615415460309" duration="61385000" />
     </task>
     <servers />
   </component>

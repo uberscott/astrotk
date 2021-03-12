@@ -16,7 +16,7 @@ use wasmer::{Array, ExportError, Function, FunctionType, ImportObject, imports, 
 use mechtron_common::artifact::Artifact;
 use mechtron_common::configs::{Configs, MechtronConfig};
 use mechtron_common::message::{Message, MessageBuilder};
-use mechtron_common::state::{ReadOnlyState, State, StateMeta};
+use mechtron_common::state::{ReadOnlyState, State, StateMeta, ReadOnlyStateMeta};
 
 use crate::cache::Cache;
 use crate::error::Error;
@@ -442,12 +442,25 @@ impl Drop for BufferLock
     }
 }
 
+pub enum MechtronMembraneStatus
+{
+    None,
+    Ejected(Arc<Mutex<State>>),
+    Injected(i32),
+    Extracted
+}
+
+pub enum StateExtraction
+{
+    Unchanged(Arc<ReadOnlyState>),
+    Changed(Arc<Mutex<State>>)
+}
+
 pub struct MechtronMembrane
 {
-    membrane: Arc<WasmMembrane>,
-    state: Arc<ReadOnlyState>,
-    state_buffer_id: Cell<Option<i32>>,
-
+    wasm_membrane: Arc<WasmMembrane>,
+    original_state: Arc<ReadOnlyState>,
+    status: MechtronMembraneStatus
 }
 
 impl MechtronMembrane
@@ -455,89 +468,102 @@ impl MechtronMembrane
     pub fn new(membrane: Arc<WasmMembrane>, state: Arc<ReadOnlyState> ) -> Self
     {
         MechtronMembrane {
-            membrane: membrane,
-            state: state,
-            state_buffer_id: Cell::new(Option::None)
+            wasm_membrane: membrane,
+            original_state: state,
+            status: MechtronMembraneStatus::None
         }
     }
 
-    pub fn state_id(&self) ->Result<i32,Error>
+    fn state(&mut self) ->Result<i32,Error>
     {
-        if self.state_buffer_id.get().is_none()
-        {
-            self.inject()?;
-        }
+        self.inject()
+    }
 
-        Ok(self.state_buffer_id.get().unwrap())
+    pub fn current_state(&mut self)->Result<StateExtraction,Error>
+    {
+        self.eject()
+    }
+
+    pub fn original_state(&self)->Arc<ReadOnlyState>
+    {
+        self.original_state.clone()
     }
 
     pub fn is_tainted(&self) -> Result<bool, Error>
     {
-        let state_buffer_id = self.state_buffer_id.get();
-        if( state_buffer_id.is_none() )
-        {
-            return Err("state has already been extracted".into());
+        match &self.status{
+            MechtronMembraneStatus::None => {
+                Ok(self.original_state.is_tainted()?)
+            }
+            MechtronMembraneStatus::Ejected(state) => {
+                let state = state.lock()?;
+                Ok(state.is_tainted()?)
+            }
+            MechtronMembraneStatus::Injected(state_buffer_id) => {
+                 Ok(0 != self.wasm_membrane.instance.exports.get_native_function::<i32,i32>("mechtron_is_tainted").unwrap().call(state_buffer_id.clone() )?)
+            }
+            MechtronMembraneStatus::Extracted => {
+                Err("this MechtronMembrane's state has already been extracted and can no longer be used.".into())
+            }
         }
-        let state_buffer_id = state_buffer_id.unwrap();
-        let result = 0 != self.membrane.instance.exports.get_native_function::<i32,i32>("mechtron_is_tainted").unwrap().call(state_buffer_id )?;
-        Ok(result)
     }
 
-    pub fn set_taint(&mut self, taint: bool) -> Result<(), Error>
+    pub fn set_taint(&mut self, reason: &str ) -> Result<(), Error>
     {
-        self.inject();
-        let mut state = self.extract()?;
-        state.set_taint(taint);
-        self.inject_state(&state);
+        println!("tainted reason: {}",reason);
+        let state = self.eject_changed()?;
+        let mut state = state.lock()?;
+        state.set_taint(true);
         Ok(())
     }
 
     fn write_buffer(&self, bytes: &Vec<u8>) ->Result<BufferLock,Error>
     {
-        let buffer_id = self.membrane.write_buffer(&bytes)?;
-        let lock = BufferLock::new(buffer_id,self.membrane.clone());
+        let buffer_id = self.wasm_membrane.write_buffer(&bytes)?;
+        let lock = BufferLock::new(buffer_id,self.wasm_membrane.clone());
         Ok(lock)
     }
 
     fn write_string(&self, string: &str ) ->Result<BufferLock,Error>
     {
-        let buffer_id = self.membrane.write_string(string)?;
-        let lock = BufferLock::new(buffer_id,self.membrane.clone());
+        let buffer_id = self.wasm_membrane.write_string(string)?;
+        let lock = BufferLock::new(buffer_id,self.wasm_membrane.clone());
         Ok(lock)
     }
 
     fn write_context(&self, context: &Context) ->Result<BufferLock,Error>
     {
-        let bytes = context.to_bytes(&self.membrane.configs)?;
+        let bytes = context.to_bytes(&self.wasm_membrane.configs)?;
         self.write_buffer(&bytes)
     }
 
     fn write_message(&self, message: &Message) ->Result<BufferLock,Error>
     {
-        let bytes = message.to_bytes(&self.membrane.configs)?;
+        let bytes = message.to_bytes(&self.wasm_membrane.configs)?;
         self.write_buffer(&bytes)
     }
 
     fn consume_buffer(&self, buffer_id: i32)->Result<Vec<u8>,Error>
     {
-        let bytes = self.membrane.read_buffer(buffer_id)?;
-        self.membrane.wasm_dealloc_buffer(buffer_id)?;
+        let bytes = self.wasm_membrane.read_buffer(buffer_id)?;
+        self.wasm_membrane.wasm_dealloc_buffer(buffer_id)?;
         Ok(bytes)
     }
 
     fn consume_builders(&self, buffer_id: i32)->Result<Vec<MessageBuilder>,Error>
     {
         let bytes = self.consume_buffer(buffer_id)?;
-        let builders = MessageBuilder::from_buffer(bytes,&self.membrane.configs)?;
+        let builders = MessageBuilder::from_buffer(bytes,&self.wasm_membrane.configs)?;
         Ok(builders)
     }
 
 
-    pub fn create(&self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
+    pub fn create(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
+
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-        let builders = self.membrane.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_create").unwrap().call(context_lock.id(), self.state_id()?, message_lock.id())?;
+        let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_create").unwrap().call(context_lock.id(), self.state()?, message_lock.id())?;
         if builders == -1
         {
             Ok(vec![])
@@ -548,10 +574,10 @@ impl MechtronMembrane
         }
     }
 
-    pub fn update(&self, context: &Context) ->Result<Vec<MessageBuilder>,Error>
+    pub fn update(&mut self, context: &Context) ->Result<Vec<MessageBuilder>,Error>
     {
         let context_lock = self.write_context(context)?;
-        let builders = self.membrane.instance.exports.get_native_function::<i32,i32>("mechtron_update").unwrap().call(context_lock.id())?;
+        let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32,i32),i32>("mechtron_update").unwrap().call(context_lock.id(), self.state()?)?;
         if builders == -1
         {
             Ok(vec![])
@@ -563,11 +589,11 @@ impl MechtronMembrane
     }
 
 
-    pub fn message(&self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
+    pub fn message(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-        let builders = self.membrane.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state_id()?, message_lock.id())?;
+        let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state()?, message_lock.id())?;
         if builders == -1
         {
             Ok(vec![])
@@ -578,11 +604,11 @@ impl MechtronMembrane
         }
     }
 
-    pub fn extra(&self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
+    pub fn extra(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-        let builders = self.membrane.instance.exports.get_native_function::<(i32,i32,i32),i32>("mechtron_extra").unwrap().call(context_lock.id(), self.state_id()?, message_lock.id())?;
+        let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_extra").unwrap().call(context_lock.id(), self.state()?, message_lock.id())?;
         if builders == -1
         {
             Ok(vec![])
@@ -596,39 +622,90 @@ impl MechtronMembrane
 
     pub fn get_mechtron_config(&self) -> Arc<MechtronConfig>
     {
-        self.state.config.clone()
+        self.original_state.config.clone()
     }
 
-    pub fn get_old_state(&self) -> Arc<ReadOnlyState>
+    fn inject(&mut self) -> Result<i32, Error>
     {
-        self.state.clone()
-    }
-
-    fn inject_state(&mut self, state: &State) -> Result<(), Error>
-    {
-        if self.state_buffer_id.get().is_some()
+        self.status = MechtronMembraneStatus::Injected(match &self.status
         {
-            return Err("tried to inject a new state while one was already bound".into());
+            MechtronMembraneStatus::None => {
+                let state_buffer_id = self.wasm_membrane.inject_state(&self.original_state)?;
+                state_buffer_id
+            }
+            MechtronMembraneStatus::Ejected(state) => {
+                let state = state.lock()?;
+                let state_buffer_id = self.wasm_membrane.inject_state(&state.read_only()? )?;
+                state_buffer_id
+            }
+            MechtronMembraneStatus::Injected(state_buffer_id) => {
+                state_buffer_id.clone()
+            }
+            MechtronMembraneStatus::Extracted => {
+                return Err("this MechtronMembrane's state has already been extracted and can no longer be used.".into());
+            }
+        });
+
+        return match self.status{
+            MechtronMembraneStatus::Injected(state_buffer_id) => Ok(state_buffer_id),
+            _ => Err("MechtronMembrane.inject(): Seems like the impossible has happened".into())
         }
 
-        self.state_buffer_id.replace(Option::Some(self.membrane.inject_state(&state.read_only()?)?));
-        Ok(())
     }
 
-    fn inject(&self) -> Result<(), Error>
+    fn eject_changed(&mut self) -> Result<Arc<Mutex<State>>, Error>
     {
-        self.state_buffer_id.replace(Option::Some(self.membrane.inject_state(&self.state)?));
-        Ok(())
+        Ok( match self.eject()? {
+            StateExtraction::Unchanged(state) => {
+                Arc::new(Mutex::new(state.copy()) )
+            }
+            StateExtraction::Changed(state) => state
+        })
     }
 
-    pub fn extract(&self) -> Result<State, Error>
+    fn eject(&mut self) -> Result<StateExtraction, Error>
     {
-        if self.state_buffer_id.get().is_none()
+        let rtn = match &self.status
         {
-            return Err("state has already been extracted".into());
-        }
-        let rtn = self.membrane.extract_state(self.state_buffer_id.get().unwrap())?;
-        self.state_buffer_id.replace(Option::None);
+            MechtronMembraneStatus::None => {
+                StateExtraction::Unchanged(self.original_state.clone())
+            }
+            MechtronMembraneStatus::Ejected(state) => {
+                StateExtraction::Changed(state.clone())
+            }
+            MechtronMembraneStatus::Injected(state_buffer_id) => {
+                let state = Arc::new(Mutex::new(self.wasm_membrane.extract_state(state_buffer_id.clone() )?));
+                self.status = MechtronMembraneStatus::Ejected(state.clone());
+                StateExtraction::Changed(state)
+            }
+            MechtronMembraneStatus::Extracted => {
+                return Err("this MechtronMembrane's state has already been extracted and can no longer be used.".into());
+            }
+        };
+        Ok(rtn)
+    }
+
+    pub fn extract(&mut self) -> Result<StateExtraction, Error>
+    {
+        let rtn = match &self.status
+        {
+            MechtronMembraneStatus::None => {
+               StateExtraction::Unchanged(self.original_state.clone())
+            }
+            MechtronMembraneStatus::Ejected(state) => {
+                StateExtraction::Changed(state.clone())
+            }
+            MechtronMembraneStatus::Injected(state_buffer_id) => {
+                let state = self.wasm_membrane.extract_state(state_buffer_id.clone() )?;
+                StateExtraction::Changed(Arc::new(Mutex::new(state)))
+            }
+            MechtronMembraneStatus::Extracted => {
+                return Err("this MechtronMembrane's state has already been extracted and can no longer be used.".into());
+            }
+        };
+
+        self.status = MechtronMembraneStatus::Extracted;
+
         Ok(rtn)
     }
 

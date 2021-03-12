@@ -371,7 +371,7 @@ println!("Sending message of type: {:?} ", &message.kind );
         }
 
         for (key, state) in states {
-                self.state.intake(Arc::new(Mutex::new(state)), key)?;
+                self.state.intake(state, key)?;
         }
 
         for message in messages {
@@ -426,7 +426,7 @@ println!("Sending message of type: {:?} ", &message.kind );
         self.head = to;
 
         for (key, state) in states {
-            self.state.intake(Arc::new(Mutex::new(state)), key)?;
+            self.state.intake(state, key)?;
         }
 
         for message in messages {
@@ -715,7 +715,7 @@ println!("RETURNED FROM CACHE...");
     }
 
 
-    fn commit(&mut self) -> Result<(Vec<(StateKey, State)>, Vec<Arc<Message>>),Error> {
+    fn commit(&mut self) -> Result<(Vec<(StateKey, Arc<ReadOnlyState>)>, Vec<Arc<Message>>),Error> {
         let states = self.kernels.drain(&self.revision.clone())?;
         let messages = self.messaging.drain_all()?;
         Ok((states,messages))
@@ -1514,7 +1514,7 @@ mod state
     use mechtron_common::state::{ReadOnlyState, State};
 
     use crate::nucleus::Error;
-    use crate::membrane::MechtronMembrane;
+    use crate::membrane::{MechtronMembrane, StateExtraction};
 
     pub struct StateHistory {
         history: RwLock<HashMap<Revision, HashMap<MechtronKey, Arc<ReadOnlyState>>>>,
@@ -1561,15 +1561,13 @@ mod state
             }
         }
 
-        pub fn intake(&self, state: Arc<Mutex<State>>, key: StateKey) -> Result<(), Error> {
-            let state = state.lock()?;
-            let state = state.read_only()?;
+        pub fn intake(&self, state: Arc<ReadOnlyState>, key: StateKey) -> Result<(), Error> {
             let mut history = self.history.write()?;
             let mut history =
                 history
                     .entry(key.revision.clone())
                     .or_insert(HashMap::new());
-            history.insert(key.tron.clone(), Arc::new(state));
+            history.insert(key.tron.clone(), state);
             Ok(())
         }
 
@@ -1644,7 +1642,7 @@ mod state
             }
         }
 
-        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, State)>, Error> {
+        pub fn drain(&mut self, revision: &Revision) -> Result<Vec<(StateKey, Arc<ReadOnlyState>)>, Error> {
             let mut store = self.store.write()?;
             let mut rtn = vec![];
             for (key, kernel) in store.drain() {
@@ -1653,6 +1651,16 @@ mod state
                     revision: revision.clone(),
                 };
                 let state = {kernel.lock()?.extract()?};
+
+                let state = match state {
+                    StateExtraction::Unchanged(state) => {
+                        state
+                    }
+                    StateExtraction::Changed(state) => {
+                        let state = state.lock()?;
+                        Arc::new(state.read_only()?)
+                    }
+                };
                 rtn.push((key, state));
             }
             return Ok(rtn);
@@ -1701,10 +1709,10 @@ mod state
             let mut configs = create_configs();
             let mut configs_ref = &mut configs;
             let mut history = StateHistory::new();
-            let state = mock_state(configs_ref);
+            let state = mock_state(configs_ref).read_only().unwrap();
 
             let key = mock_state_key();
-            history.intake(Arc::new(Mutex::new(state) ), key ).unwrap();
+            history.intake(Arc::new(state), key ).unwrap();
 
             let revision = Revision{
                 cycle: 0
