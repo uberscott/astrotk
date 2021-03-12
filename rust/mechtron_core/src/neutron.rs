@@ -9,7 +9,7 @@ use mechtron_common::buffers::{Buffer, Path};
 use mechtron_common::error::Error;
 use mechtron_common::id::{Id, MechtronKey};
 use mechtron_common::message::{Cycle, MechtronLayer, Message, MessageBuilder, MessageKind, Payload};
-use mechtron_common::state::{NeutronStateInterface, ReadOnlyState, State};
+use mechtron_common::state::{NeutronStateInterface, ReadOnlyState, State, StateMeta};
 use mechtron_common::mechtron::Context;
 use std::rc::Rc;
 use std::cell::{Cell, RefCell};
@@ -42,13 +42,11 @@ impl Neutron {
         neutron_state: &mut State,
         create_message: Message,
     ) -> Result<Response, Error> {
-log("debug","NOT EVEN?");
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 
         // grab the new mechtron create meta
         let new_mechtron_create_meta = &create_message.payloads[0].buffer;
-log("debug","Was");
 
         // and derive the new mechtron config
         let new_mechtron_config = new_mechtron_create_meta.get::<String>(&path![&"config"])?;
@@ -61,7 +59,6 @@ log("debug","Was");
         neutron_state_interface.set_mechtron_index(neutron_state, mechtron_index);
 
 
-log("debug","Impaler");
         // create the new mechtron id and key
         let new_mechtron_id= Id::new(context.key.nucleus.id,mechtron_index);
         let new_mechtron_key = MechtronKey::new(context.key.nucleus.clone(), new_mechtron_id );
@@ -76,14 +73,13 @@ log("debug","Impaler");
             neutron_state_interface.set_mechtron_name(& mut *neutron_state, name.as_str(), &new_mechtron_key);
         }
 
-log("debug","The");
         // prepare an api call to the MechtronShell to create this new mechtron
         let mut call = NeutronApiCallCreateMechtron::new(&CONFIGS, new_mechtron_config.clone(), &create_message )?;
 
         // set some additional meta information about the new mechtron
         {
             new_mechtron_id.append(&Path::new(path!("id")), &mut call.state.meta)?;
-            call.state.meta.set(&path![&"mechtron_config"], new_mechtron_config.source.to())?;
+            call.state.set_mechtron_config(new_mechtron_config);
             call.state.meta.set(&path![&"creation_cycle"], context.cycle)?;
 //            call.state.meta.set(&path![&"creation_timestamp"], context.timestamp() as i64)?;
             call.state.meta.set(&path![&"taint"], false)?;

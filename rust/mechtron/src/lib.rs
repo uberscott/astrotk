@@ -168,12 +168,9 @@ impl ArtifactCache for WasmArtifactRepository
         }
         log("mechtron", format!("caching: {}",artifact.to()).as_str());
 
-log("cache", "wwrite string...");
         let artifact_string_id = wasm_write_string(artifact.to() );
-log("cache", "mechtronium_cache...");
         unsafe{ mechtronium_cache( artifact_string_id ) };
 
-log("cache", "insert...");
         cache.insert( artifact.clone() );
         Ok(())
     }
@@ -187,13 +184,9 @@ log("cache", "insert...");
             }
         }
 
-log("load", format!("wwrite string...{}",artifact.to()).as_str());
         let artifact_string_id = wasm_write_string(artifact.to() );
-log("load", "load artifact...");
         let buffer_id = unsafe{ mechtronium_load( artifact_string_id ) };
-log("load", "consume buffer...");
         let buffer = mechtronium_consume_buffer(buffer_id)?;
-log("load", format!("buffer size...{}",buffer.len()).as_str());
         Ok(buffer)
     }
 

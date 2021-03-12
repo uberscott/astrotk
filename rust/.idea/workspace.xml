@@ -21,9 +21,10 @@
       <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/wasm/core.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/wasm/core.wasm" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtron/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron/src/membrane.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/configs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_common/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/state.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_core/src/neutron.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/shell.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -306,7 +307,7 @@
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
       <workItem from="1615415460309" duration="86815000" />
-      <workItem from="1615556882339" duration="166000" />
+      <workItem from="1615556882339" duration="1805000" />
     </task>
     <servers />
   </component>

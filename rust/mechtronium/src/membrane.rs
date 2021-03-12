@@ -587,19 +587,12 @@ impl MechtronMembrane
 
     pub fn create(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
-self.wasm_membrane.test_log();
-println!("MechtronKernel::create");
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-println!("MechtronKernel::create got here...");
 
-self.wasm_membrane.test_log();
         let call = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_create")?;
-self.wasm_membrane.test_log();
-println!("MechtronKernel::create precall ...");
-        let builders = call.call(context_lock.id(), self.state()?, message_lock.id()).unwrap();
+        let builders = call.call(context_lock.id(), self.state()?, message_lock.id())?;
 
-println!("MechtronKernel::create builders...");
         if builders == -1
         {
             Ok(vec![])

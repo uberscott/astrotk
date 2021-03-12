@@ -71,7 +71,7 @@ impl State {
         meta: Buffer
     ) -> Result<Self,Error> {
 
-        let config = configs.mechtrons.get(&Artifact::from(meta.get( &path!["config"] )? )? )?;
+        let config = configs.mechtrons.get(&Artifact::from(meta.get( &path!["mechtron_config"] )? )? )?;
         let mut buffers = State::new_buffers(configs,config.clone())?;
 
         Ok(State {
