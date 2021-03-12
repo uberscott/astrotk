@@ -30,7 +30,6 @@ pub struct MechtronShell<'a> {
     pub kernel: MutexGuard<'a,MechtronMembrane>
 }
 
-
 impl <'a> MechtronShell<'a> {
     pub fn new(kernel: MutexGuard<'a,MechtronMembrane>, key: MechtronKey, configs: &Configs ) -> Result<Self,Error> {
 
@@ -138,6 +137,7 @@ impl <'a> MechtronShell<'a> {
         {
             Ok(_) => {}
             Err(error) => {
+                println!("SHELL CREATE: {} failed", self.info.config.kind );
                 self.panic(error.clone());
                 self.kernel.set_taint(format!("CREATE {:?}",error).as_str());
                 self.check(context);
@@ -170,6 +170,7 @@ impl <'a> MechtronShell<'a> {
         {
             Ok(_) => {}
             Err(error) => {
+                println!("SHELL MESSAGES: {} failed", self.info.config.kind );
                 self.panic(error.clone());
                 self.kernel.set_taint(format!("MESSAGES: {:?}", error).as_str());
             }
@@ -280,11 +281,15 @@ impl <'a> MechtronShell<'a> {
         builders: Option<Vec<MessageBuilder>>,
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error> {
+println!("HANDLE IT SHELLL! {} ", builders.is_some());
         match builders {
             None => Ok(()),
             Some(builders) => {
+println!("builders len ! {} ", builders.len());
                 for mut builder in builders
                 {
+
+println!("builder port: {}",&builder.to_port.as_ref().unwrap());
                     builder.from = Option::Some(self.from(context, MechtronLayer::Kernel));
 
                     if builder.to_nucleus_lookup_name.is_some()
@@ -331,6 +336,7 @@ impl <'a> MechtronShell<'a> {
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error>
     {
+println!("HANDLE API CALL");
         builder.to_cycle_kind = Option::Some(Cycle::Present);
         builder.to_nucleus_id = Option::Some(self.info.key.nucleus.clone());
         builder.to_tron_id = Option::Some(self.info.key.mechtron.clone());
@@ -344,7 +350,6 @@ impl <'a> MechtronShell<'a> {
 
         let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
 
-unimplemented!();
         match api.as_str() {
             "neutron_api" => {
                 // need some test to make sure this is actually a neutron
@@ -355,6 +360,7 @@ unimplemented!();
                     let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
                     match call.as_str() {
                         "create_mechtron" => {
+println!("CREATE_MECHTRON");
                             // now get the state of the mechtronmessage.payloads
                             let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
                             let new_mechtron_state = new_mechtron_state.read_only()?;

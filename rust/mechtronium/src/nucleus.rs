@@ -21,7 +21,7 @@ use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta}
 
 use crate::cache::Cache;
 use crate::error::Error;
-use crate::mechtron_shell::{MechtronShell};
+use crate::shell::{MechtronShell};
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{Lookup, MechtronKernels, StateHistory};
@@ -649,7 +649,7 @@ println!("RETURNED FROM CACHE...");
             let mut messages = vec!();
             for mechtron_config_ref in self.config.mectrons.as_slice()
             {
-                println!("creating mechtron: {}", mechtron_config_ref.name.as_ref().unwrap().clone());
+println!("creating mechtron: {}", mechtron_config_ref.name.as_ref().unwrap().clone());
                 let mechtron_config = self.context.cache.configs.mechtrons.get(&mechtron_config_ref.artifact)?;
 
                 let mut create_payloads_builder = CreatePayloadsBuilder::new(self.configs(), mechtron_config.clone())?;
@@ -679,6 +679,7 @@ println!("RETURNED FROM CACHE...");
 
                 messages.push(Arc::new(message));
             }
+println!("MESSAGES?!");
 
 
             // send all create messages to neutron
@@ -694,7 +695,7 @@ println!("RETURNED FROM CACHE...");
 
         }
 
-        unimplemented!();
+println!("BOOTSTRAPED!");
 
         Ok(())
     }

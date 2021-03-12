@@ -349,7 +349,7 @@ pub fn mechtron_update(context: i32, state_id: i32) -> i32
 #[wasm_bindgen]
 pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 {
-    log("debug", "wasm message");
+    log("debug", "MESSAGE");
 
     let state = checkout_state(state_id);
     let config = state.config.clone();
@@ -365,15 +365,19 @@ pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 
     let mut state = *state.replace(Option::None).unwrap();
 
+    log("debug", "processing a response...");
     let response = match handler
     {
         MessageHandler::None => Response::None,
         MessageHandler::Handler(func) => func(&context,& mut state,message).unwrap()
     };
 
+    log("debug", "handling response...");
     let (state,builder) = handle_response(response,state);
+    log("debug", "state returned...");
     return_state(state,state_id);
 
+    log("debug", "done.");
     builder
 }
 
@@ -417,7 +421,14 @@ fn handle_response( response: Response, state: State )->(State,i32)
             -1
         }
         Response::Messages(builders) => {
+log("debug", "gettign to the meat of it....valid?");
+for builder in &builders
+{
+    builder.validate().unwrap();
+}
+log("debug", "is valid!");
             let buffer = MessageBuilder::to_buffer(builders,&CONFIGS).unwrap();
+log("debug", "now we here... it....");
             let bytes = Buffer::bytes(buffer);
             let buffer_id = wasm_write_buffer(bytes);
             buffer_id

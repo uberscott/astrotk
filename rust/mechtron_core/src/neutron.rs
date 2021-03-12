@@ -92,6 +92,7 @@ impl Neutron {
         builder.to_cycle_kind=Option::Some(Cycle::Present);
         builder.payloads.replace(Option::Some(NeutronApiCallCreateMechtron::payloads(call,&CONFIGS)?));
 
+log("debug", "returnign create_mechtron messages");
         Ok(Response::Messages(vec!(builder)))
     }
 }
