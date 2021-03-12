@@ -22,7 +22,7 @@ use std::rc::Rc;
 use std::cell::{Cell, RefCell};
 
 lazy_static! {
-  pub static ref BUFFERS: RwLock<HashMap<i32,BufferInfo>> = RwLock::new(HashMap::new());
+  pub static ref BUFFERS: RwLock<HashMap<i32,Vec<u8>>> = RwLock::new(HashMap::new());
   pub static ref BUFFER_INDEX: AtomicI32 = AtomicI32::new(0);
   pub static ref STATE: Mutex<HashMap<i32,State>> = Mutex::new(HashMap::new());
 }
@@ -30,11 +30,7 @@ lazy_static! {
 pub static EMPTY : i32 = -1;
 pub static ERROR : i32 = -2;
 
-pub struct BufferInfo
-{
-    len: usize,
-    ptr: AtomicPtr<u8>
-}
+
 extern "C"
 {
     pub fn wasm_init();
@@ -54,73 +50,27 @@ pub fn log( log_type: &str, string: &str ){
 pub fn mechtronium_read_string(buffer_id: i32) -> Result<String, Error>
 {
     let buffers = BUFFERS.read()?;
-    let buffer = buffers.get(&buffer_id);
-    if buffer.is_none()
-    {
-        return Err("could not find string buffer".into());
-    }
-    let buffer_info = buffer.unwrap();
-
-    unsafe {
-        Ok(String::from_raw_parts(buffer_info.ptr.load(Ordering::Relaxed), buffer_info.len.clone() as _, buffer_info.len.clone() as _))
-    }
+    let bytes = buffers.get(&buffer_id).unwrap().to_vec();
+    Ok(String::from_utf8(bytes )?)
 }
 
 pub fn mechtronium_consume_string(buffer_id: i32) -> Result<String, Error>
 {
     let mut buffers = BUFFERS.write()?;
-    let buffer = buffers.remove(&buffer_id);
-    if buffer.is_none()
-    {
-        return Err("could not find string buffer".into());
-    }
-    let buffer_info = buffer.unwrap();
-
-    unsafe {
-        Ok(String::from_raw_parts(buffer_info.ptr.load(Ordering::Relaxed), buffer_info.len.clone() as _, buffer_info.len.clone() as _))
-    }
-}
-
-pub fn mechtronium_read_buffer(buffer_id: i32) -> Result<Vec<u8>, Error>
-{
-    let buffers = BUFFERS.read()?;
-    let buffer = buffers.get(&buffer_id);
-    if buffer.is_none()
-    {
-        return Err("could not find string buffer".into());
-    }
-    let buffer_info = buffer.unwrap();
-
-    unsafe {
-
-        Ok(Vec::from_raw_parts(buffer_info.ptr.load(Ordering::Relaxed), buffer_info.len.clone() as _, buffer_info.len.clone() as _))
-    }
+    let bytes = buffers.remove(&buffer_id).unwrap().to_vec();
+    Ok(String::from_utf8(bytes)?)
 }
 
 pub fn mechtronium_consume_buffer(buffer_id: i32) -> Result<Vec<u8>, Error>
 {
     let mut buffers = BUFFERS.write()?;
-    let buffer = buffers.remove(&buffer_id);
-    if buffer.is_none()
-    {
-        log("ERROR", format!("could not consume buffer {}",buffer_id).as_str());
-        return Err("could not find string buffer".into());
-    }
-log("debug", "unwrapping buffer");
-    let buffer_info = buffer.unwrap();
-log("debug", format!("ptr: {:?}",buffer_info.ptr).as_str());
-log("debug", format!("len : {}",buffer_info.len.clone()).as_str());
-
-    unsafe {
-log("debug", "doing the unsafe...");
-        Ok(Vec::from_raw_parts(buffer_info.ptr.load(Ordering::Relaxed), buffer_info.len.clone() as _, buffer_info.len.clone() as _))
-    }
+    let bytes = buffers.remove(&buffer_id).unwrap();
+    Ok(bytes)
 }
 
 fn mechtronium_consume_messsage(buffer_id: i32) -> Result<Message, Error>
 {
-    //let bytes = mechtronium_consume_buffer(buffer_id)?;
-    let bytes = mechtronium_read_buffer(buffer_id)?;
+    let bytes = mechtronium_consume_buffer(buffer_id)?;
     Ok(Message::from_bytes(bytes,&CONFIGS)?)
 }
 
@@ -130,30 +80,7 @@ fn mechtronium_consume_context(buffer_id: i32) -> Result<Context, Error>
     Ok(Context::from_bytes(bytes, &CONFIGS )?)
 }
 
-fn wasm_alloc(len: i32) -> *mut u8 {
-    /*let rtn = unsafe {
-        let align = mem::align_of::<u8>();
-        let size = mem::size_of::<u8>();
-        let layout = Layout::from_size_align(size * (len as usize), align).unwrap();
-        alloc(layout)
-    };
-     */
-    let mut vec = Vec::with_capacity(len as _ );
-    let mut vec = mem::ManuallyDrop::new(vec);
-    unsafe {
-        vec.set_len(len as _);
-    }
-    vec.as_mut_ptr()
-}
 
-fn wasm_dealloc(ptr: *mut u8, len: i32) {
-    unsafe {
-        let align = mem::align_of::<u8>();
-        let size = mem::size_of::<u8>();
-        let layout = Layout::from_size_align(size * (len as usize), align).unwrap();
-        dealloc(ptr, layout)
-    };
-}
 
 
 
@@ -163,8 +90,8 @@ pub fn wasm_get_buffer_ptr(id: i32)->*const u8
 {
     let buffer_info = BUFFERS.read();
     let buffer_info = buffer_info.unwrap();
-    let buffer_info = buffer_info.get(&id).unwrap();
-    buffer_info.ptr.load(Ordering::Relaxed)
+    let buffer = buffer_info.get(&id).unwrap();
+    return buffer.as_ptr()
 }
 
 #[wasm_bindgen]
@@ -172,69 +99,47 @@ pub fn wasm_get_buffer_len(id: i32)->i32
 {
     let buffer_info = BUFFERS.read();
     let buffer_info = buffer_info.unwrap();
-    let buffer_info = buffer_info.get(&id).unwrap();
-    buffer_info.len.clone() as _
+    let buffer = buffer_info.get(&id).unwrap();
+    buffer.len() as _
+
 }
 
 #[wasm_bindgen]
 pub fn wasm_dealloc_buffer(id: i32)
 {
-    let buffer_info = BUFFERS.read();
-    let buffer_info = buffer_info.unwrap();
-    match buffer_info.get(&id)
-    {
-        Some(buffer_info)=> {
-            let ptr = buffer_info.ptr.load(Ordering::Relaxed);
-            wasm_dealloc(ptr, buffer_info.len as _);
-        },
-        None=>{}
-    }
+    let mut buffers= BUFFERS.write().unwrap();
+    buffers.remove( &id );
 }
 
 #[wasm_bindgen]
 pub fn wasm_alloc_buffer(len: i32) ->i32
 {
-log("debug", format!("allocating buffer of size: {}",len).as_str());
     let buffer_id = BUFFER_INDEX.fetch_add(1, Ordering::Relaxed );
-    let buffer_ptr = wasm_alloc(len);
-    {
-        let mut buffers = BUFFERS.write().unwrap();
-        let buffer_info = BufferInfo{
-            ptr: AtomicPtr::new(buffer_ptr),
-            len: len as _
-        };
-        buffers.insert( buffer_id, buffer_info  );
-    }
-
+    let mut buffers = BUFFERS.write().unwrap();
+    let mut bytes:Vec<u8> = Vec::with_capacity(len as _ );
+    unsafe{ bytes.set_len(len as _)}
+    buffers.insert( buffer_id , bytes );
     buffer_id
 }
 
-
 pub fn wasm_write_string(mut string: String) -> i32{
-    let rtn = wasm_assign_buffer(string.as_mut_ptr(), string.len() as _ );
-    mem::forget(string);
-    rtn
+    let mut buffers = BUFFERS.write().unwrap();
+    let buffer_id = BUFFER_INDEX.fetch_add(1, Ordering::Relaxed );
+    unsafe {
+        buffers.insert(buffer_id, string.as_mut_vec().to_vec());
+    }
+    buffer_id
 }
 
 pub fn wasm_write_buffer(mut bytes: Vec<u8>) -> i32{
-    let rtn = wasm_assign_buffer(bytes.as_mut_ptr(), bytes.len() as _ );
-    mem::forget(bytes );
-    rtn
-}
-
-
-pub fn wasm_assign_buffer(ptr: *mut u8, len: i32) -> i32{
+    let mut buffers = BUFFERS.write().unwrap();
     let buffer_id = BUFFER_INDEX.fetch_add(1, Ordering::Relaxed );
-    let buffer_info = BufferInfo{
-        ptr: AtomicPtr::new(ptr),
-        len: len as _
-    };
-    {
-        let mut buffers = BUFFERS.write().unwrap();
-        buffers.insert( buffer_id, buffer_info  );
-    }
+    buffers.insert(buffer_id, bytes );
     buffer_id
 }
+
+
+
 
 #[wasm_bindgen]
 pub fn wasm_inject_state(state_buffer_id: i32 )
@@ -250,15 +155,9 @@ pub fn wasm_inject_state(state_buffer_id: i32 )
 pub fn wasm_move_state_to_buffers(state_buffer_id: i32 )
 {
     let state = checkout_state(state_buffer_id);
-    let mut bytes = state.to_bytes(&CONFIGS).unwrap();
-    let buffer_info = BufferInfo{
-        ptr: AtomicPtr::new(bytes.as_mut_ptr() ),
-        len: bytes.len() as _
-    };
-    {
-        BUFFERS.write().unwrap().insert(state_buffer_id, buffer_info);
-    }
-    mem::forget(bytes);
+    let bytes = state.to_bytes(&CONFIGS).unwrap();
+    let mut buffers = BUFFERS.write().unwrap();
+    buffers.insert( state_buffer_id, bytes );
 }
 
 
@@ -276,7 +175,7 @@ pub fn wasm_test_modify_state( state:i32 )
 #[wasm_bindgen]
 pub fn wasm_test_log( )
 {
-    log("test", "this is a log file");
+    log("test", "this is a TEST log file from WASM");
 }
 
 

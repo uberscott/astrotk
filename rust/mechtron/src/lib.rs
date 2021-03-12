@@ -58,7 +58,7 @@ pub fn wasm_init()
 {
     replace_logger( Box::new(WasmLogger{}) );
     mechtron_common::logger::log( "wasm logs init." );
-
+    CONFIGS.cache_core();
 }
 
 #[wasm_bindgen]
@@ -168,9 +168,12 @@ impl ArtifactCache for WasmArtifactRepository
         }
         log("mechtron", format!("caching: {}",artifact.to()).as_str());
 
+log("cache", "wwrite string...");
         let artifact_string_id = wasm_write_string(artifact.to() );
+log("cache", "mechtronium_cache...");
         unsafe{ mechtronium_cache( artifact_string_id ) };
 
+log("cache", "insert...");
         cache.insert( artifact.clone() );
         Ok(())
     }
@@ -184,9 +187,13 @@ impl ArtifactCache for WasmArtifactRepository
             }
         }
 
+log("load", format!("wwrite string...{}",artifact.to()).as_str());
         let artifact_string_id = wasm_write_string(artifact.to() );
+log("load", "load artifact...");
         let buffer_id = unsafe{ mechtronium_load( artifact_string_id ) };
+log("load", "consume buffer...");
         let buffer = mechtronium_consume_buffer(buffer_id)?;
+log("load", format!("buffer size...{}",buffer.len()).as_str());
         Ok(buffer)
     }
 

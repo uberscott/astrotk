@@ -100,7 +100,7 @@ impl Configs {
 
 
 
-    pub fn cache_core(&mut self)->Result<(),Error>
+    pub fn cache_core(&self)->Result<(),Error>
     {
         self.cache(&CORE_BIND_NEUTRON)?;
         self.cache(&CORE_BIND_SIMTRON)?;
