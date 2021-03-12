@@ -24,7 +24,6 @@ pub extern "C" fn mechtron_init()
 pub extern "C" fn mechtron(kind: &str, context: Context, state: Rc<RefCell<Option<Box<State>>>> )->Box<dyn Mechtron>
 {
     log("typal", kind);
-   unimplemented!();
     match kind{
         "Neutron"=>Box::new(Neutron::new(context, state)),
         "Simtron"=>Box::new(Simtron::new(context, state)),

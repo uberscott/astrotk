@@ -42,8 +42,6 @@ impl Neutron {
         neutron_state: &mut State,
         create_message: Message,
     ) -> Result<Response, Error> {
-log("debug", "got here.");
-unimplemented!();
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 

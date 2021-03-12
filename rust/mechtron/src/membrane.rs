@@ -298,24 +298,30 @@ pub fn mechtron_is_tainted( state: i32) -> i32
 #[wasm_bindgen]
 pub fn mechtron_create(context: i32, state_id: i32, message: i32 ) -> i32
 {
+log("debug", "CREATE....");
     let state = checkout_state(state_id);
     let config = state.config.clone();
     let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
     let context = mechtronium_consume_context(context ).unwrap();
     let message = mechtronium_consume_messsage(message).unwrap();
 
+log("debug", "PRE MECHTRON ....");
     let mut mechtron = unsafe{
         mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
+log("debug", "GOT HERE....");
     let response = mechtron.create(&message).unwrap();
 
     let state = state.replace(Option::None);
     let state = state.unwrap();
+log("debug", "THEN HERE....");
 
     let (state,builder) = handle_response(response,*state);
+    log("debug", "returning state....");
     return_state(state,state_id);
 
+    log("debug", "returning builder.......");
     builder
 }
 
@@ -343,6 +349,8 @@ pub fn mechtron_update(context: i32, state_id: i32) -> i32
 #[wasm_bindgen]
 pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 {
+    log("debug", "wasm message");
+
     let state = checkout_state(state_id);
     let config = state.config.clone();
     let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
