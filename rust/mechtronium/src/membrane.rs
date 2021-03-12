@@ -633,6 +633,7 @@ println!("Doctor.");
                    -2 => Err(format!("{}.inbound.{} wasm return -2 ERROR code.",self.original_state.config.kind.clone(),port).into()),
                    builders=> {
                        let builders = self.consume_builders(builders)?;
+println!("Ok Builders.");
                        Ok(builders)
                    }
                }

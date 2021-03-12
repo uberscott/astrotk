@@ -42,23 +42,29 @@ impl Neutron {
         neutron_state: &mut State,
         create_message: Message,
     ) -> Result<Response, Error> {
+
+log("neutron","creating a new mechtron...");
         // a simple helper interface for working with neutron state
         let neutron_state_interface = NeutronStateInterface {};
 
         // grab the new mechtron create meta
         let new_mechtron_create_meta = &create_message.payloads[0].buffer;
 
+log("neutron","where is starhelix");
         // and derive the new mechtron config
         let new_mechtron_config = new_mechtron_create_meta.get::<String>(&path![&"config"])?;
+log("neutron","uno");
         let new_mechtron_config = Artifact::from(&new_mechtron_config)?;
+log("neutron",format!("duso for {}",new_mechtron_config.to()).as_str());
         let new_mechtron_config = CONFIGS.mechtrons.get(&new_mechtron_config)?;
+log("neutron","configs......");
 
         // increment the neutron's mechtron_index
         let mut mechtron_index = neutron_state.buffers.get("data").unwrap().get::<i64>(&path!["mechtron_index"] )?;
         mechtron_index = mechtron_index +1;
         neutron_state_interface.set_mechtron_index(neutron_state, mechtron_index);
 
-
+log("neutron","state interface......");
         // create the new mechtron id and key
         let new_mechtron_id= Id::new(context.key.nucleus.id,mechtron_index);
         let new_mechtron_key = MechtronKey::new(context.key.nucleus.clone(), new_mechtron_id );
@@ -72,10 +78,12 @@ impl Neutron {
             let name = new_mechtron_create_meta.get::<String>(&path![&"lookup_name"])?;
             neutron_state_interface.set_mechtron_name(& mut *neutron_state, name.as_str(), &new_mechtron_key);
         }
+log("neutron","moving right along....");
 
         // prepare an api call to the MechtronShell to create this new mechtron
         let mut call = NeutronApiCallCreateMechtron::new(&CONFIGS, new_mechtron_config.clone(), &create_message )?;
 
+log("neutron","there's gotta be a bug here somewhere....");
         // set some additional meta information about the new mechtron
         {
             new_mechtron_id.append(&Path::new(path!("id")), &mut call.state.meta)?;

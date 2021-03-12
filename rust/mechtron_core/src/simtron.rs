@@ -41,25 +41,33 @@ log("CREATING SIMTRON");
         let sim_config = match &create_message.meta
         {
             None => {
+log("NONE");
                 return Err("bootstrap meta is not set".into())
             }
             Some(bootstrap_meta) => match bootstrap_meta.get("sim_config")
             {
                 None => {
+log("SOME THEN NONE");
                     return Err("sim_config is not set in bootstrap_meta".into())
                 }
                 Some(sim_config_artifact) => {
+log("ALL SOMES");
                     let artifact = Artifact::from(sim_config_artifact.as_str())?;
+
+log(format!("artifact: {}",artifact.to()).as_str());
+                    CONFIGS.sims.cache(&artifact)?;
                     CONFIGS.sims.get(&artifact)?
                 }
             }
         };
 
+log("gettings state");
         let mut state = self.state.borrow_mut();
         let state = state.as_mut().unwrap();
         let data_buffer = state.buffers.get_mut("data").unwrap();
         data_buffer.set(&path!["config"], sim_config.source.to() )?;
 
+log("moreover...");
 
         // now create each of the Nucleus in turn
 
@@ -73,6 +81,7 @@ log("CREATING SIMTRON");
             builder.to_nucleus_id=Option::Some(self.context.key.nucleus.clone());
             builder.to_tron_id=Option::Some(self.context.key.mechtron.clone());
             builder.to_cycle_kind=Option::Some(Cycle::Present);
+            builder.to_port=Option::Some("create".to_string());
             builder.payloads.replace(Option::Some(CreateApiCallCreateNucleus::payloads(create_api_call_create_nucleus,&CONFIGS)?));
             builders.push( builder );
         }

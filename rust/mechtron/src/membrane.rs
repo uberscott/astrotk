@@ -284,15 +284,22 @@ log("debug","message requested");
 
     let mut state = *state.replace(Option::None).unwrap();
 
-log("debug","Ogres are people too");
+log("debug","Ogres are people too... REALLY");
+log("debug",format!("port is '{}'",message.to.port.clone()).as_str());
     let response = match handler
     {
         MessageHandler::None => Response::None,
         MessageHandler::Handler(func) => func(&context,& mut state,message).unwrap()
     };
 
+log("debug","respondo!");
+
     let (state,builder) = handle_response(response,state);
+
+log("debug","annd.... return state!");
     return_state(state,state_id);
+
+log("debug","create is done!");
 
     builder
 }
