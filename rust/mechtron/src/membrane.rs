@@ -27,6 +27,9 @@ lazy_static! {
   pub static ref STATE: Mutex<HashMap<i32,State>> = Mutex::new(HashMap::new());
 }
 
+pub static EMPTY : i32 = -1;
+pub static ERROR : i32 = -2;
+
 pub struct BufferInfo
 {
     len: usize,
@@ -416,6 +419,7 @@ pub fn mechtron_extra(context: i32, state_id: i32, message: i32) -> i32
 
 fn handle_response( response: Response, state: State )->(State,i32)
 {
+log("debug", "hello?");
     let builders= match response {
         Response::None => {
             -1
@@ -424,10 +428,24 @@ fn handle_response( response: Response, state: State )->(State,i32)
 log("debug", "gettign to the meat of it....valid?");
 for builder in &builders
 {
-    builder.validate().unwrap();
+    match builder.validate()
+    {
+        Ok(_) => {}
+        Err(err) => {log("ERROR", format!("{:?}",err).as_str())}
+    }
+
+    match builder.validate_build()
+    {
+        Ok(_) => {}
+        Err(err) => {log("ERROR", format!("{:?}",err).as_str())}
+    }
+    builder.validate_build().unwrap();
 }
 log("debug", "is valid!");
             let buffer = MessageBuilder::to_buffer(builders,&CONFIGS).unwrap();
+log("debug", "LINE AFTER");
+
+
 log("debug", "now we here... it....");
             let bytes = Buffer::bytes(buffer);
             let buffer_id = wasm_write_buffer(bytes);

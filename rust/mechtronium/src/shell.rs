@@ -195,7 +195,7 @@ impl <'a> MechtronShell<'a> {
         {
             for message in messages.get(port).unwrap()
             {
-                self.kernel.message(&kernel_context, &message);
+                self.kernel.message(&kernel_context, &message)?;
             }
         }
 

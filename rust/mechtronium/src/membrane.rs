@@ -99,8 +99,7 @@ impl WasmMembrane {
             };
         }
 
-
-        match self.instance.exports.get_native_function::<(),()>("mechtron_init"){
+        match self.instance.exports.get_native_function::<(),()>("wasm_init"){
             Ok(func) => {
 
                 self.log("wasm", "verified: wasm_init( )");
@@ -117,6 +116,28 @@ impl WasmMembrane {
             }
             Err(e) => {
                 self.log("wasm", format!("failed: wasm_init( ) {:?}", e).as_str());
+                pass=false
+            }
+        }
+
+
+        match self.instance.exports.get_native_function::<(),()>("mechtron_init"){
+            Ok(func) => {
+
+                self.log("wasm", "verified: mechtron_init( )");
+                match func.call()
+                {
+                    Ok(_) => {
+                        self.log("wasm", "passed: mechtron_init( )");
+                    }
+                    Err(e) => {
+
+                        self.log("wasm", format!("failed: mechtron_init( ).  {:?}", e).as_str());
+                    }
+                }
+            }
+            Err(e) => {
+                self.log("wasm", format!("failed: mechtron_init( ) {:?}", e).as_str());
                 pass=false
             }
         }
@@ -600,16 +621,24 @@ impl MechtronMembrane
 
     pub fn message(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
+        let port = message.to.port.clone();
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-        let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state()?, message_lock.id())?;
-        if builders == -1
-        {
-            Ok(vec![])
-        }
-        else {
-            let builders = self.consume_builders(builders)?;
-            Ok(builders)
+        let result = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state()?, message_lock.id());
+        match result{
+            Ok(builders) => {
+               match builders{
+                   -1 => Ok(vec!()),
+                   -2 => Err(format!("{}.inbound.{} wasm return -2 ERROR code.",self.original_state.config.kind.clone(),port).into()),
+                   builders=> {
+                       let builders = self.consume_builders(builders)?;
+                       Ok(builders)
+                   }
+               }
+            }
+            Err(error) => {
+                Err(format!("{}.{} received error from wasm: {:?}",self.original_state.config.kind.clone(),port,error).into())
+            }
         }
     }
 

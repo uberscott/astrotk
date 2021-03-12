@@ -23,6 +23,7 @@ use std::rc::Rc;
 use crate::mechtron::Mechtron;
 use mechtron_common::state::State;
 use std::cell::{Cell, RefCell};
+use mechtron_common::logger::{Appender, replace_logger};
 
 
 
@@ -34,6 +35,30 @@ extern "C"
 {
     fn mechtron_init();
     pub fn mechtron(kind: &str, context: Context, state: Rc<RefCell<Option<Box<State>>>> )->Option<Box<dyn Mechtron>>;
+}
+
+pub struct WasmLogger
+{
+
+}
+
+impl Appender for WasmLogger
+{
+    fn log(&self, message: &str) {
+        log("wasm", message );
+    }
+}
+
+unsafe impl Send for WasmLogger{}
+unsafe impl Sync for WasmLogger{}
+
+#[no_mangle]
+#[wasm_bindgen]
+pub fn wasm_init()
+{
+    replace_logger( Box::new(WasmLogger{}) );
+    mechtron_common::logger::log( "wasm logs init." );
+
 }
 
 #[wasm_bindgen]
@@ -77,7 +102,7 @@ pub fn wasm_test_ok()
 
 
 
-                             #[wasm_bindgen]
+#[wasm_bindgen]
 pub fn mechtron_message_port(kind: i32,
                              state: i32,
                              port: i32,
