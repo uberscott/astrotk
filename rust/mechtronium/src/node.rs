@@ -234,8 +234,8 @@ struct WasmModuleParser {
 }
 
 impl Parser<Module> for WasmModuleParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<Module, mechtron_common::error::Error> {
-        let result = Module::new(&self.wasm_store, str);
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<Module, mechtron_common::error::Error> {
+        let result = Module::new(&self.wasm_store, data);
         match result {
             Ok(module) => Ok(module),
             Err(e) => Err("wasm compile error".into()),

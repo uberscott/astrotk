@@ -154,21 +154,33 @@ impl<V> Keeper<V> {
     }
 
     pub fn cache(&self, artifact: &Artifact) -> Result<(),Error>  {
+
         let mut cache = self.config_cache.write().unwrap();
 
         if cache.contains_key(artifact) {
             return Ok(());
         }
 
-        println!("caching: {}",artifact.to());
+        print!("caching: {} ... ",artifact.to());
+        match
+        {
+            self.repo.cache(&artifact)?;
 
-        self.repo.cache(&artifact)?;
+            let data = self.repo.load(&artifact)?;
 
-        let str = String::from_utf8(self.repo.load(&artifact)?)?;
-
-        let value = self.parser.parse(&artifact, str.as_ref())?;
-        cache.insert(artifact.clone(), Arc::new(value));
-        Ok(())
+            let value = self.parser.parse(&artifact, data)?;
+            cache.insert(artifact.clone(), Arc::new(value));
+            Ok(())
+        } {
+            Ok(_)=>{
+                println!("done.");
+                Ok(())
+            },
+            Err(e)=>{
+                println!("failed!");
+                Err(e)
+            }
+        }
     }
 
     pub fn get<'get>(&self, artifact: &Artifact) -> Result<Arc<V>,Error>  where V: 'get {
@@ -190,14 +202,16 @@ impl<V> Keeper<V> {
 }
 
 pub trait Parser<V> {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<V, Error>;
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<V, Error>;
 }
 
 struct NP_Buffer_Factory_Parser;
 
 impl<'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<NP_Factory<'fact>, Error> {
-        let result = NP_Factory::new(str);
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<NP_Factory<'fact>, Error> {
+
+        let str = String::from_utf8(data )?;
+        let result = NP_Factory::new(str.as_str());
         match result {
             Ok(rtn) => Ok(rtn),
             Err(e) => Err(format!(
@@ -212,8 +226,9 @@ impl<'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser {
 struct SimConfigParser;
 
 impl Parser<SimConfig> for SimConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<SimConfig, Error> {
-        let sim_config_yaml = SimConfigYaml::from(str)?;
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<SimConfig, Error> {
+        let str = String::from_utf8(data )?;
+        let sim_config_yaml = SimConfigYaml::from(str.as_str())?;
         let sim_config = sim_config_yaml.to_config(artifact)?;
         Ok(sim_config)
     }
@@ -222,8 +237,9 @@ impl Parser<SimConfig> for SimConfigParser {
 struct MechtronConfigParser;
 
 impl Parser<MechtronConfig> for MechtronConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<MechtronConfig, Error> {
-        let mechtron_config_yaml = MechtronConfigYaml::from_yaml(str)?;
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<MechtronConfig, Error> {
+        let str = String::from_utf8(data )?;
+        let mechtron_config_yaml = MechtronConfigYaml::from_yaml(str.as_str())?;
         let mechtron_config = mechtron_config_yaml.to_config(artifact)?;
         Ok(mechtron_config)
 
@@ -241,8 +257,10 @@ impl Parser<MechtronConfig> for MechtronConfigParser {
 struct BindParser;
 
 impl Parser<BindConfig> for BindParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<BindConfig, Error> {
-        let bind_yaml = BindYaml::from_yaml(str)?;
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<BindConfig, Error> {
+
+        let str = String::from_utf8(data )?;
+        let bind_yaml = BindYaml::from_yaml(str.as_str())?;
         let bind = bind_yaml.to_config(artifact)?;
         Ok(bind)
     }
@@ -252,8 +270,9 @@ impl Parser<BindConfig> for BindParser {
 struct NucleusConfigParser;
 
 impl Parser<NucleusConfig> for NucleusConfigParser {
-    fn parse(&self, artifact: &Artifact, str: &str) -> Result<NucleusConfig, Error> {
-        let nucleus_config_yaml = NucleusConfigYaml::from_yaml(str)?;
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<NucleusConfig, Error> {
+        let str = String::from_utf8(data )?;
+        let nucleus_config_yaml = NucleusConfigYaml::from_yaml(str.as_str())?;
         let nucleus_config = nucleus_config_yaml.to_config(artifact)?;
         Ok(nucleus_config)
     }
@@ -310,7 +329,6 @@ impl Cacher<NucleusConfig> for NucleusConfigArtifactCacher
             rtn.push( mechtron.artifact.clone() );
         }
 
-println!("........ CACHING {:?}",&rtn );
         Ok(rtn)
     }
 }

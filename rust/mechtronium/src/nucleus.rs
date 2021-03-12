@@ -1847,19 +1847,17 @@ mod test
     fn test_create_sim()
     {
         let cache = Node::default_cache();
-        cache.wasms.cache(&Artifact::from("mechtron.io:core:1.0.0:wasm/core.wasm:wasm").unwrap()).unwrap();
-/*        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
+        let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
         cache.configs.sims.cache(&SIM_CONFIG ).unwrap();
         let SIM_CONFIG = cache.configs.sims.get(&SIM_CONFIG).unwrap();
-        let node = Node::new(Option::Some(cache));
 
+        let node = Node::new(Option::Some(cache));
         let sim_id = node.create_sim_from_scratch(SIM_CONFIG.clone()).unwrap();
 
         // verify sim exists
 
         node.shutdown();
 
- */
     }
 
     /*
