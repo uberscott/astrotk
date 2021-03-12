@@ -1,3 +1,5 @@
+mod hello_world;
+
 #[macro_use]
 extern crate wasm_bindgen;
 

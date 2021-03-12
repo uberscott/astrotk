@@ -1,6 +1,6 @@
 use std::borrow::BorrowMut;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
@@ -11,6 +11,7 @@ use crate::core::*;
 
 use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository, ArtifactYaml };
 use crate::error::Error;
+use crate::logger::log;
 
 pub struct Configs {
     pub artifacts: Arc<dyn ArtifactCache + Sync + Send>,
@@ -91,7 +92,10 @@ impl Configs {
                         }
                         Ok(())
                     },
-                    k => Err(format!("unrecognized kind: {}",k).into())
+                    k =>{
+                        log(format!("skipping : {} : {}",k, artifact.to()).as_str());
+                        Ok(())
+                    }
                 }
             }
         }
@@ -151,6 +155,12 @@ impl<V> Keeper<V> {
             cacher: cacher,
             repo: repo,
         }
+    }
+
+    pub fn is_cached(&self, artifact: &Artifact ) ->Result<bool,Error>
+    {
+        let mut cache = self.config_cache.read().unwrap();
+        Ok(cache.contains_key(artifact))
     }
 
     pub fn cache(&self, artifact: &Artifact) -> Result<(),Error>  {
@@ -384,12 +394,11 @@ impl Cacher<SimConfig> for SimConfigArtifactCacher
 {
     fn artifacts(&self, source: Arc<SimConfig>) -> Result<Vec<Artifact>, Error> {
         let mut rtn = vec!();
-/*        for tron in &source.trons
-        {
-            rtn.push(tron.artifact.clone() );
-        }
 
- */
+        for nucleus in &source.nucleus
+        {
+            rtn.push(nucleus.artifact.clone() );
+        }
 
         Ok(rtn)
     }
@@ -402,6 +411,7 @@ impl Cacher<MechtronConfig> for MechtronConfigCacher
     fn artifacts(&self, source: Arc<MechtronConfig>) -> Result<Vec<Artifact>, Error> {
         let mut rtn = vec!();
         rtn.push( source.bind.artifact.clone() );
+        rtn.push( source.wasm.artifact.clone() );
         Ok(rtn)
     }
 }

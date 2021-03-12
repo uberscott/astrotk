@@ -178,6 +178,7 @@ impl  NucleusContext
 
 
     pub fn new_kernel_from_state(&self, state: Arc<ReadOnlyState>) ->Result<Arc<Mutex<MechtronMembrane>>,Error>{
+self.cache.wasms.cache(&state.config.wasm.artifact)?;
        let wasm_membrane = self.cache.wasms.get_membrane(&state.config.wasm.artifact)?;
        let kernel = Arc::new( Mutex::new(MechtronMembrane::new( wasm_membrane, state )));
        Ok(kernel)
@@ -879,6 +880,8 @@ impl MechtronShellContext for NucleusCycle
 log("neutron_api_create");
         let config = state.config.clone();
         let mechtron_id = state.get_mechtron_id();
+
+log("neutron_api_create: mectron_id");
         match mechtron_id {
             Err(e) => { self.panic(e.into()) }
             Ok(mechtron_id) => {
@@ -890,6 +893,7 @@ log("neutron_api_create");
                     Ok(kernel) => {
                         let key = MechtronKey::new(self.info.id, mechtron_id);
 
+log("neutron_api_create: blah");
                         let kernel = match kernel.lock()
                         {
                             Ok(kernel) => {kernel}
@@ -899,6 +903,7 @@ log("neutron_api_create");
                             }
                         };
 
+log("neutron_api_create: humbolt");
                         match MechtronShell::new(kernel, key.clone(), &self.context.cache.configs )
                         {
                             Ok(mut shell) => {

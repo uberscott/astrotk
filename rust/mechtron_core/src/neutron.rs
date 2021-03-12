@@ -14,6 +14,7 @@ use mechtron_common::mechtron::Context;
 use std::rc::Rc;
 use std::cell::{Cell, RefCell};
 use mechtron::membrane::log;
+use mechtron_common::configs::MechtronConfig;
 
 pub struct Neutron {
     context: Context,
@@ -56,8 +57,22 @@ log("neutron","where is starhelix");
 log("neutron","uno");
         let new_mechtron_config = Artifact::from(&new_mechtron_config)?;
 log("neutron",format!("duso for {}",new_mechtron_config.to()).as_str());
-        let new_mechtron_config = CONFIGS.mechtrons.get(&new_mechtron_config)?;
+// must find a better way to do this!
+// all caching should be done before the simulation starts
+CONFIGS.cache(&new_mechtron_config);
+        let new_mechtron_config = CONFIGS.mechtrons.get(&new_mechtron_config);
+        match &new_mechtron_config
+        {
+            Ok(_) => {
+                log("neutron", "Was okay?");
+            }
+            Err(err) => {
+                log("neutron", format!("BLINK BLING {:?}",err).as_str());
+            }
+        }
 log("neutron","configs......");
+        let new_mechtron_config = new_mechtron_config.unwrap();
+
 
         // increment the neutron's mechtron_index
         let mut mechtron_index = neutron_state.buffers.get("data").unwrap().get::<i64>(&path!["mechtron_index"] )?;

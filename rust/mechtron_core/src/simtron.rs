@@ -55,13 +55,16 @@ log("ALL SOMES");
                     let artifact = Artifact::from(sim_config_artifact.as_str())?;
 
 log(format!("artifact: {}",artifact.to()).as_str());
-                    CONFIGS.sims.cache(&artifact)?;
+                    CONFIGS.cache(&artifact)?;
                     CONFIGS.sims.get(&artifact)?
                 }
             }
         };
 
-log("gettings state");
+         log("precache simconfig");
+         CONFIGS.cache(&sim_config.source )?;
+
+         log("gettings state");
         let mut state = self.state.borrow_mut();
         let state = state.as_mut().unwrap();
         let data_buffer = state.buffers.get_mut("data").unwrap();

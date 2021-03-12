@@ -13,6 +13,7 @@ use std::sync::Arc;
 use crate::error::Error;
 use no_proto::pointer::bytes::NP_Bytes;
 use std::collections::HashMap;
+use crate::logger::log;
 
 #[derive(Clone)]
 pub struct State {
@@ -25,8 +26,12 @@ pub struct State {
 
 impl State {
     pub fn new_buffers(configs: &Configs, config: Arc<MechtronConfig>) -> Result<HashMap<String,Buffer>, Error> {
+
+log(format!("State:: new_buffers! for {}",&config.bind.artifact.to()).as_str());
+        log(format!("State:: isCached({}) -> {}",&config.bind.artifact.to(), configs.binds.is_cached(&config.bind.artifact)?).as_str());
         let bind = configs.binds.get( &config.bind.artifact )?;
 
+log(format!("State:: got bind ::: > {}",&config.bind.artifact.to()).as_str());
         let mut buffers = HashMap::new();
         for buffer_config in &bind.state.buffers
         {
@@ -44,7 +49,7 @@ impl State {
     }
 
     pub fn new(configs: &Configs, config: Arc<MechtronConfig>) -> Result<Self, Error> {
-
+log("State:: new");
         let mut meta = Buffer::new(
             configs
                 .schemas
@@ -52,9 +57,14 @@ impl State {
                 .new_buffer(Option::None),
         );
 
+log("State:: new -- we got the meta");
+
         meta.set(&path!["config"], config.source.to());
+log("State:: new -- config is set");
 
         let mut buffers = State::new_buffers(configs,config.clone())?;
+
+log("State:: new -- and new buffers seem happy");
 
         Ok(State {
             meta: meta,

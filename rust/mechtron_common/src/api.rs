@@ -6,6 +6,7 @@ use crate::error::Error;
 use crate::message::{Message, Payload};
 use crate::state::{State, StateMeta};
 use std::sync::Arc;
+use crate::logger::log;
 
 pub struct NeutronApiCallCreateMechtron<'message>
 {
@@ -23,10 +24,12 @@ impl <'message> NeutronApiCallCreateMechtron<'message> {
              .new_buffer(Option::None),
       );
 
+log( "NeutronAPiCallCreateMechtron entry?");
       meta.set(&path!["api"], "neutron_api")?;
       meta.set(&path!["call"], "create_mechtron")?;
-
+log( "NeutronAPiCallCreateMechtron whatta going on?");
        let mut state = State::new(configs, config)?;
+log( "NeutronAPiCallCreateMechtron new state is ready!??");
 
       Ok(NeutronApiCallCreateMechtron {
          meta: meta,
@@ -38,6 +41,7 @@ impl <'message> NeutronApiCallCreateMechtron<'message> {
    pub fn payloads(call: NeutronApiCallCreateMechtron, configs: &Configs) -> Result<Vec<Payload>, Error>
    {
 
+log( "NeutronAPiCallCreateMechtron payload time!");
       Ok(vec![Payload{
                  buffer: call.meta.read_only(),
                  schema: CORE_SCHEMA_META_API.clone(),
