@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use mechtron_common::mechtron::Context;
 use mechtron_common::state::State;
+use crate::hello_world::HelloWorldMechtron;
 
 #[no_mangle]
 pub extern "C" fn mechtron_init()
@@ -21,7 +22,7 @@ pub extern "C" fn mechtron(kind: &str, context: Context, state: Rc<RefCell<Optio
 {
     log("typal", kind);
     match kind{
-//        "Neutron"=>Box::new(Neutron::new(context, state)),
+        "HelloWorldMechtron"=>Box::new(HelloWorldMechtron::new(context, state)),
         _ => Box::new(BlankMechtron::new(context, state))
     }
 }

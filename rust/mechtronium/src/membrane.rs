@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Debug;
 use std::ops::Deref;
@@ -22,12 +22,14 @@ use crate::cache::Cache;
 use crate::error::Error;
 use mechtron_common::mechtron::Context;
 use mechtron_common::buffers::Buffer;
+use mechtron_common::logger::log;
 
 pub struct WasmMembrane {
     module: Arc<Module>,
     instance: Instance,
     host: Arc<RwLock<WasmHost>>,
-    configs: Arc<Configs>
+    configs: Arc<Configs>,
+    cache: HashSet<Artifact>
 }
 
 impl WasmMembrane {
@@ -42,6 +44,27 @@ impl WasmMembrane {
             }
             Err(_) => {
                 self.log("wasm", "failed: memory. could not access wasm memory. (expecting the memory module named 'memory')");
+                pass=false
+            }
+        }
+
+        match self.instance.exports.get_native_function::<(),()>("wasm_init"){
+            Ok(func) => {
+
+                self.log("wasm", "verified: wasm_init( )");
+                match func.call()
+                {
+                    Ok(_) => {
+                        self.log("wasm", "passed: wasm_init( )");
+                    }
+                    Err(e) => {
+
+                        self.log("wasm", format!("failed: wasm_init( ).  {:?}", e).as_str());
+                    }
+                }
+            }
+            Err(e) => {
+                self.log("wasm", format!("failed: wasm_init( ) {:?}", e).as_str());
                 pass=false
             }
         }
@@ -99,26 +122,7 @@ impl WasmMembrane {
             };
         }
 
-        match self.instance.exports.get_native_function::<(),()>("wasm_init"){
-            Ok(func) => {
 
-                self.log("wasm", "verified: wasm_init( )");
-                match func.call()
-                {
-                    Ok(_) => {
-                        self.log("wasm", "passed: wasm_init( )");
-                    }
-                    Err(e) => {
-
-                        self.log("wasm", format!("failed: wasm_init( ).  {:?}", e).as_str());
-                    }
-                }
-            }
-            Err(e) => {
-                self.log("wasm", format!("failed: wasm_init( ) {:?}", e).as_str());
-                pass=false
-            }
-        }
 
 
         match self.instance.exports.get_native_function::<(),()>("mechtron_init"){
@@ -142,6 +146,9 @@ impl WasmMembrane {
             }
         }
 
+        //let mut memory = self.instance.exports.get_memory("memory")?;
+        //memory.grow(10).unwrap();
+
 
         match pass{
             true => Ok(()),
@@ -150,10 +157,26 @@ impl WasmMembrane {
 
     }
 
+    pub fn cache( &self, artifact: &Artifact )
+    {
+        if !self.cache.contains(artifact)
+        {
+            match self.write_string(&artifact.to())
+            {
+                Ok(buffer_id) => {
+                    self.instance.exports.get_native_function::<i32,()>("wasm_cache").unwrap().call(buffer_id );
+                }
+                Err(_) => {
+                    println!("ERROR: could not cache: {}",artifact.to());
+                }
+            }
+        }
+    }
+
 
     pub fn log( &self, log_type:&str, message: &str )
     {
-        println!("{} : {}",log_type,message);
+        eprintln!("{} : {}",log_type,message);
     }
 
     fn write_string(&self, string: &str )->Result<i32,Error>
@@ -217,6 +240,16 @@ impl WasmMembrane {
         Ok(rtn)
     }
 
+    fn consume_string(&self, buffer_id: i32 ) ->Result<String,Error>
+    {
+        let raw = self.read_buffer(buffer_id)?;
+        let rtn = String::from_utf8(raw)?;
+        self.wasm_dealloc_buffer(buffer_id)?;
+        Ok(rtn)
+    }
+
+
+
     fn wasm_dealloc_buffer( &self, buffer_id: i32 )->Result<(),Error>
     {
         self.instance.exports.get_native_function::<i32,()>("wasm_dealloc_buffer")?.call(buffer_id.clone())?;
@@ -236,9 +269,22 @@ impl WasmMembrane {
 
     fn inject_state(&self, state: &ReadOnlyState) ->Result<i32,Error>
     {
-        let state_buffer_id = self.write_buffer( &state.to_bytes(&self.configs)?)?;
-        self.instance.exports.get_native_function::<i32,()>("wasm_inject_state").unwrap().call(state_buffer_id.clone() )?;
-        Ok(state_buffer_id)
+        let bytes = &state.to_bytes(&self.configs)?;
+
+        // test
+        if( State::from_bytes(bytes.clone(), &self.configs ).is_err() )
+        {
+            println!( "ERROR state could not be extracted from bytes!")
+        }
+
+        println!("membrane injecting state size: {}",bytes.len());
+        let state_buffer_id = self.write_buffer( bytes )?;
+        let rtn = self.instance.exports.get_native_function::<i32,i32>("wasm_inject_state").unwrap().call(state_buffer_id.clone() )?;
+        match rtn
+        {
+            0 => Ok(state_buffer_id),
+            _ => Err("wasm_inject_state returned a non 0".into())
+        }
     }
 
     fn extract_state(&self, state: i32) ->Result<State,Error>
@@ -384,6 +430,19 @@ impl WasmMembrane {
                    Err(_)=>{}
                 }
             }),
+
+        "mechtronium_panic"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,buffer_id:i32| {
+                match env.unwrap()
+                {
+                   Ok(membrane)=>{
+                      let panic_message = membrane.consume_string(buffer_id).unwrap();
+                      println!("WASM PANIC: {}",panic_message);
+                   },
+                   Err(_)=>{
+                   println!("error panic");
+                   }
+                }
+            }),
         "mechtronium_cache"=>Function::new_native_with_env(module.store(),Env{host:host.clone()},|env:&Env,artifact_id:i32| {
                 match env.unwrap()
                 {
@@ -423,7 +482,8 @@ impl WasmMembrane {
             module: module,
             instance: instance,
             host: host.clone(),
-            configs:configs
+            configs:configs,
+            cache: HashSet::new()
         });
 
         {
@@ -477,6 +537,14 @@ pub enum MechtronMembraneStatus
     Extracted
 }
 
+impl MechtronMembraneStatus
+{
+    pub fn is_injected(&self)->bool
+    {
+        matches!(self,MechtronMembraneStatus::Injected(_))
+    }
+}
+
 pub enum StateExtraction
 {
     Unchanged(Arc<ReadOnlyState>),
@@ -499,6 +567,12 @@ impl MechtronMembrane
             original_state: state,
             status: MechtronMembraneStatus::None
         }
+    }
+
+    // things that must be done before state can be injected
+    fn checklist(&self)
+    {
+        self.wasm_membrane.cache(&self.original_state.config.source);
     }
 
     fn state(&mut self) ->Result<i32,Error>
@@ -623,9 +697,7 @@ impl MechtronMembrane
         let port = message.to.port.clone();
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
-println!("Fascinating.");
         let result = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state()?, message_lock.id());
-println!("Doctor.");
         match result{
             Ok(builders) => {
                match builders{
@@ -633,7 +705,6 @@ println!("Doctor.");
                    -2 => Err(format!("{}.inbound.{} wasm return -2 ERROR code.",self.original_state.config.kind.clone(),port).into()),
                    builders=> {
                        let builders = self.consume_builders(builders)?;
-println!("Ok Builders.");
                        Ok(builders)
                    }
                }
@@ -646,6 +717,7 @@ println!("Ok Builders.");
 
     pub fn extra(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
+        self.checklist();
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
         let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_extra").unwrap().call(context_lock.id(), self.state()?, message_lock.id())?;
@@ -665,15 +737,28 @@ println!("Ok Builders.");
         self.original_state.config.clone()
     }
 
+    fn status(&self) ->String
+    {
+        match &self.status{
+            MechtronMembraneStatus::None => "None".to_string(),
+            MechtronMembraneStatus::Ejected(_) => "Ejected".to_string(),
+            MechtronMembraneStatus::Injected(_) => "Injected".to_string(),
+            MechtronMembraneStatus::Extracted => "Extracted".to_string()
+        }
+    }
+
     fn inject(&mut self) -> Result<i32, Error>
     {
+
         self.status = MechtronMembraneStatus::Injected(match &self.status
         {
             MechtronMembraneStatus::None => {
+                self.checklist();
                 let state_buffer_id = self.wasm_membrane.inject_state(&self.original_state)?;
                 state_buffer_id
             }
             MechtronMembraneStatus::Ejected(state) => {
+                self.checklist();
                 let state = state.lock()?;
                 let state_buffer_id = self.wasm_membrane.inject_state(&state.read_only()? )?;
                 state_buffer_id
@@ -685,6 +770,8 @@ println!("Ok Builders.");
                 return Err("this MechtronMembrane's state has already been extracted and can no longer be used.".into());
             }
         });
+assert!(matches!(self.status,MechtronMembraneStatus::Injected(_)));
+
 
         return match self.status{
             MechtronMembraneStatus::Injected(state_buffer_id) => Ok(state_buffer_id),

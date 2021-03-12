@@ -907,6 +907,7 @@ log("neutron_api_create: humbolt");
                         match MechtronShell::new(kernel, key.clone(), &self.context.cache.configs )
                         {
                             Ok(mut shell) => {
+log("neutron_api_create: creating in shell");
                                 shell.create(&create_message, self);
                             }
                             Err(e) => {

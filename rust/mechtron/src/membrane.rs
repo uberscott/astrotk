@@ -20,6 +20,7 @@ use mechtron_common::buffers::Buffer;
 use crate::mechtron::{MessageHandler, Response};
 use std::rc::Rc;
 use std::cell::{Cell, RefCell};
+use mechtron_common::artifact::Artifact;
 
 lazy_static! {
   pub static ref BUFFERS: RwLock<HashMap<i32,Vec<u8>>> = RwLock::new(HashMap::new());
@@ -38,13 +39,23 @@ extern "C"
     pub fn mechtronium_log( type_ptr: *const u8, type_len: i32, message_ptr: *const u8, message_len: i32);
     pub fn mechtronium_cache( artifact_id: i32 );
     pub fn mechtronium_load( artifact_id: i32 )->i32;
+    pub fn mechtronium_panic( buffer_id: i32 );
 }
+
 
 pub fn log( log_type: &str, string: &str ){
     unsafe
         {
             mechtronium_log(log_type.as_ptr(), log_type.len() as _, string.as_ptr(), string.len() as _ );
         }
+}
+
+pub fn panic( message: String )
+{
+    let buffer_id = wasm_write_string(message);
+    unsafe {
+        mechtronium_panic(buffer_id);
+    }
 }
 
 pub fn mechtronium_read_string(buffer_id: i32) -> Result<String, Error>
@@ -63,8 +74,10 @@ pub fn mechtronium_consume_string(buffer_id: i32) -> Result<String, Error>
 
 pub fn mechtronium_consume_buffer(buffer_id: i32) -> Result<Vec<u8>, Error>
 {
-    let mut buffers = BUFFERS.write()?;
-    let bytes = buffers.remove(&buffer_id).unwrap();
+    let bytes = {
+      let mut buffers = BUFFERS.write()?;
+      buffers.remove(&buffer_id).unwrap()
+    };
     Ok(bytes)
 }
 
@@ -114,11 +127,13 @@ pub fn wasm_dealloc_buffer(id: i32)
 #[wasm_bindgen]
 pub fn wasm_alloc_buffer(len: i32) ->i32
 {
-    let buffer_id = BUFFER_INDEX.fetch_add(1, Ordering::Relaxed );
-    let mut buffers = BUFFERS.write().unwrap();
-    let mut bytes:Vec<u8> = Vec::with_capacity(len as _ );
-    unsafe{ bytes.set_len(len as _)}
-    buffers.insert( buffer_id , bytes );
+    let buffer_id = BUFFER_INDEX.fetch_add(1, Ordering::Relaxed);
+    {
+        let mut buffers = BUFFERS.write().unwrap();
+        let mut bytes: Vec<u8> = Vec::with_capacity(len as _);
+        unsafe { bytes.set_len(len as _) }
+        buffers.insert(buffer_id, bytes);
+    }
     buffer_id
 }
 
@@ -142,22 +157,33 @@ pub fn wasm_write_buffer(mut bytes: Vec<u8>) -> i32{
 
 
 #[wasm_bindgen]
-pub fn wasm_inject_state(state_buffer_id: i32 )
+pub fn wasm_inject_state(state_buffer_id: i32 ) -> i32
 {
     let state = mechtronium_consume_buffer(state_buffer_id).unwrap();
-    let state = State::from_bytes(state, &CONFIGS ).unwrap();
-
-    let mut states = STATE.lock().unwrap();
-    states.insert(state_buffer_id, state );
+    let state = State::from_bytes(state, &CONFIGS );
+    if state.is_err()
+    {
+        log("ERROR", format!("STATE {} NOT OK", state_buffer_id).as_str());
+        panic(format!("STATE {} NOT OK", state_buffer_id));
+        return -1;
+    }
+    else {
+        let state = state.unwrap();
+        let mut states = STATE.lock().unwrap();
+        states.insert(state_buffer_id, state);
+        return 0;
+    }
 }
 
 #[wasm_bindgen]
 pub fn wasm_move_state_to_buffers(state_buffer_id: i32 )
 {
-    let state = checkout_state(state_buffer_id);
-    let bytes = state.to_bytes(&CONFIGS).unwrap();
-    let mut buffers = BUFFERS.write().unwrap();
-    buffers.insert( state_buffer_id, bytes );
+    {
+        let state = checkout_state(state_buffer_id);
+        let bytes = state.to_bytes(&CONFIGS).unwrap();
+        let mut buffers = BUFFERS.write().unwrap();
+        buffers.insert(state_buffer_id, bytes);
+    }
 }
 
 
@@ -178,13 +204,26 @@ pub fn wasm_test_log( )
     log("test", "this is a TEST log file from WASM");
 }
 
+#[wasm_bindgen]
+pub fn wasm_cache( buffer_id: i32 )
+{
+    let artifact = mechtronium_consume_string(buffer_id).unwrap();
+    let artifact = Artifact::from(&artifact).unwrap();
+    CONFIGS.cache(&artifact).unwrap();
+}
+
 
 fn checkout_state(state_id: i32 ) ->State
 {
     let states = STATE.lock();
     let mut states = states.unwrap();
-    let state = states.remove(&state_id).unwrap();
-    state
+    let state = states.remove(&state_id);
+    if( state.is_none() )
+    {
+        log("ERROR", format!("state is not set for this state_id {}", state_id).as_str());
+        panic(format!("state is not set for this state_id {}", state_id));
+    }
+    state.unwrap()
 }
 
 fn return_state(state: State, state_id: i32 )
@@ -211,27 +250,30 @@ pub fn mechtron_is_tainted( state: i32) -> i32
 }
 
 #[wasm_bindgen]
+pub fn mechtron_cache(artifact: i32) -> i32
+{
+    match mechtron_cache_inner(artifact)
+    {
+        Ok(_) => 0,
+        Err(error) => {
+            wasm_write_string(format!("ERROR {}",error))
+        }
+    }
+}
+
+
+
+#[wasm_bindgen]
 pub fn mechtron_create(context: i32, state_id: i32, message: i32 ) -> i32
 {
-    let state = checkout_state(state_id);
-    let config = state.config.clone();
-    let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
-    let context = mechtronium_consume_context(context ).unwrap();
-    let message = mechtronium_consume_messsage(message).unwrap();
-
-    let mut mechtron = unsafe{
-        mechtron(config.kind.as_str(),context.clone(),state.clone())
-    }.unwrap();
-
-    let response = mechtron.create(&message).unwrap();
-
-    let state = state.replace(Option::None);
-    let state = state.unwrap();
-
-    let (state,builder) = handle_response(response,*state);
-    return_state(state,state_id);
-
-    builder
+    match mechtron_create_inner(context,state_id,message)
+    {
+        Ok(builder_id) => builder_id,
+        Err(err) => {
+            panic(format!("{}",err));
+            -1
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -259,47 +301,31 @@ pub fn mechtron_update(context: i32, state_id: i32) -> i32
 pub fn mechtron_message(context: i32, state_id: i32, message: i32) -> i32
 {
 
-log("debug","mechtron_message() entry");
-
     let state = checkout_state(state_id);
-log("debug","checkout state");
     let config = state.config.clone();
-log("debug","clone config ");
     let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
-log("debug","new refcel");
     let context = mechtronium_consume_context(context ).unwrap();
-log("debug","contet consumed");
     let message = mechtronium_consume_messsage(message).unwrap();
-log("debug","mechtron_message() message consumed");
 
     let mut mechtron = unsafe{
         mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
-log("debug","created mechtron");
 
     let handler = mechtron.message( &message.to.port ).unwrap();
 
-log("debug","message requested");
 
     let mut state = *state.replace(Option::None).unwrap();
 
-log("debug","Ogres are people too... REALLY");
-log("debug",format!("port is '{}'",message.to.port.clone()).as_str());
     let response = match handler
     {
         MessageHandler::None => Response::None,
         MessageHandler::Handler(func) => func(&context,& mut state,message).unwrap()
     };
 
-log("debug","respondo!");
-
     let (state,builder) = handle_response(response,state);
 
-log("debug","annd.... return state!");
     return_state(state,state_id);
-
-log("debug","create is done!");
 
     builder
 }
@@ -371,3 +397,34 @@ for builder in &builders
     (state,builders)
 }
 
+pub fn mechtron_cache_inner(artifact: i32) -> Result<(),Error>
+{
+    let artifact = mechtronium_consume_string(artifact)?;
+    let artifact = Artifact::from(artifact.as_str() )?;
+    CONFIGS.cache(&artifact)?;
+    Ok(())
+}
+
+
+pub fn mechtron_create_inner(context: i32, state_id: i32, message: i32 ) -> Result<i32,Error>
+{
+    let state = checkout_state(state_id);
+    let config = state.config.clone();
+    let state = Rc::new(RefCell::new( Option::Some( Box::new(state) )));
+    let context = mechtronium_consume_context(context )?;
+    let message = mechtronium_consume_messsage(message)?;
+
+    let mut mechtron = unsafe{
+        mechtron(config.kind.as_str(),context.clone(),state.clone())
+    }.unwrap();
+
+    let response = mechtron.create(&message)?;
+
+    let state = state.replace(Option::None);
+    let state = state.unwrap();
+
+    let (state,builder) = handle_response(response,*state);
+    return_state(state,state_id);
+
+    Ok(builder)
+}

@@ -26,6 +26,8 @@ use std::cell::{Cell, RefCell};
 use mechtron_common::logger::{Appender, replace_logger};
 
 
+extern crate console_error_panic_hook;
+use std::panic;
 
 lazy_static! {
   pub static ref CONFIGS: Configs = Configs::new(Arc::new(WasmArtifactRepository::new()));
@@ -56,6 +58,7 @@ unsafe impl Sync for WasmLogger{}
 #[wasm_bindgen]
 pub fn wasm_init()
 {
+//    panic::set_hook(Box::new(console_error_panic_hook::hook));
     replace_logger( Box::new(WasmLogger{}) );
     mechtron_common::logger::log( "wasm logs init." );
     CONFIGS.cache_core();

@@ -27,11 +27,8 @@ pub struct State {
 impl State {
     pub fn new_buffers(configs: &Configs, config: Arc<MechtronConfig>) -> Result<HashMap<String,Buffer>, Error> {
 
-log(format!("State:: new_buffers! for {}",&config.bind.artifact.to()).as_str());
-        log(format!("State:: isCached({}) -> {}",&config.bind.artifact.to(), configs.binds.is_cached(&config.bind.artifact)?).as_str());
         let bind = configs.binds.get( &config.bind.artifact )?;
 
-log(format!("State:: got bind ::: > {}",&config.bind.artifact.to()).as_str());
         let mut buffers = HashMap::new();
         for buffer_config in &bind.state.buffers
         {
@@ -49,7 +46,6 @@ log(format!("State:: got bind ::: > {}",&config.bind.artifact.to()).as_str());
     }
 
     pub fn new(configs: &Configs, config: Arc<MechtronConfig>) -> Result<Self, Error> {
-log("State:: new");
         let mut meta = Buffer::new(
             configs
                 .schemas
@@ -57,14 +53,11 @@ log("State:: new");
                 .new_buffer(Option::None),
         );
 
-log("State:: new -- we got the meta");
 
         meta.set(&path!["config"], config.source.to());
-log("State:: new -- config is set");
 
         let mut buffers = State::new_buffers(configs,config.clone())?;
 
-log("State:: new -- and new buffers seem happy");
 
         Ok(State {
             meta: meta,
@@ -145,6 +138,7 @@ log("State:: new -- and new buffers seem happy");
             buffer
         };
 
+
         let (config, bind) = {
             let config = buffer.get::<String>(&path!["config"])?;
             let config = Artifact::from(&config)?;
@@ -152,6 +146,7 @@ log("State:: new -- and new buffers seem happy");
             let bind = configs.binds.get(&config.bind.artifact)?;
             (config,bind)
         };
+
 
         let meta = {
             let factory = configs.schemas.get(&CORE_SCHEMA_META_STATE)?;
@@ -164,7 +159,8 @@ log("State:: new -- and new buffers seem happy");
         let buffers = {
             let mut buffers = HashMap::new();
             let path = Path::new(path!["buffers"]);
-            for key in &buffer.get_keys(&path!["buffers"])?.unwrap()
+
+            for key in &buffer.get_keys(&path!["buffers"])?.unwrap_or(vec!())
             {
                 let buffer_config = bind.state.get_buffer(key.clone());
                 if buffer_config.is_some()
