@@ -271,13 +271,6 @@ impl WasmMembrane {
     {
         let bytes = &state.to_bytes(&self.configs)?;
 
-        // test
-        if( State::from_bytes(bytes.clone(), &self.configs ).is_err() )
-        {
-            println!( "ERROR state could not be extracted from bytes!")
-        }
-
-        println!("membrane injecting state size: {}",bytes.len());
         let state_buffer_id = self.write_buffer( bytes )?;
         let rtn = self.instance.exports.get_native_function::<i32,i32>("wasm_inject_state").unwrap().call(state_buffer_id.clone() )?;
         match rtn

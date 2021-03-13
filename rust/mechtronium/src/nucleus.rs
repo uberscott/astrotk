@@ -475,7 +475,6 @@ impl MechtronShellContext for Nucleus
     }
 
     fn neutron_api_create(&self, state: ReadOnlyState, create: Message)  {
-        println!("hello from neutron_api_create()");
 
 /*        let config = self.configs().binds.get(&config)?;
         let tron = init_tron(&config)?;
@@ -877,11 +876,9 @@ impl MechtronShellContext for NucleusCycle
 
     fn neutron_api_create(&self, mut state: ReadOnlyState, create_message: Message)
     {
-log("neutron_api_create");
         let config = state.config.clone();
         let mechtron_id = state.get_mechtron_id();
 
-log("neutron_api_create: mectron_id");
         match mechtron_id {
             Err(e) => { self.panic(e.into()) }
             Ok(mechtron_id) => {
@@ -893,7 +890,6 @@ log("neutron_api_create: mectron_id");
                     Ok(kernel) => {
                         let key = MechtronKey::new(self.info.id, mechtron_id);
 
-log("neutron_api_create: blah");
                         let kernel = match kernel.lock()
                         {
                             Ok(kernel) => {kernel}
@@ -903,11 +899,9 @@ log("neutron_api_create: blah");
                             }
                         };
 
-log("neutron_api_create: humbolt");
                         match MechtronShell::new(kernel, key.clone(), &self.context.cache.configs )
                         {
                             Ok(mut shell) => {
-log("neutron_api_create: creating in shell");
                                 shell.create(&create_message, self);
                             }
                             Err(e) => {

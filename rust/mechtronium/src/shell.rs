@@ -196,9 +196,7 @@ impl <'a> MechtronShell<'a> {
         {
             for message in messages.get(port).unwrap()
             {
-log("BLAHBIE");
                 let builders = self.kernel.message(&kernel_context, &message)?;
-println!("builders: {}", builders.len());
                 self.handle(Option::Some(builders), context )?;
             }
         }
@@ -285,16 +283,13 @@ println!("builders: {}", builders.len());
         builders: Option<Vec<MessageBuilder>>,
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error> {
-log("SHELL: handle");
         match builders {
             None => Ok(()),
             Some(builders) => {
-log("handling builders!");
                 for mut builder in builders
                 {
 
                     builder.from = Option::Some(self.from(context, MechtronLayer::Kernel));
-log("first one is blah builders!");
 
                     if builder.to_nucleus_lookup_name.is_some()
                     {
@@ -302,7 +297,6 @@ log("first one is blah builders!");
                         builder.to_nucleus_id = Option::Some(nucleus_id);
                         builder.to_nucleus_lookup_name = Option::None;
                     }
-log("okay!");
 
                     if builder.to_tron_lookup_name.is_some()
                     {
@@ -341,7 +335,6 @@ log("okay!");
         context: &dyn MechtronShellContext,
     ) -> Result<(), Error>
     {
-log("Handle API call");
         builder.to_cycle_kind = Option::Some(Cycle::Present);
         builder.to_nucleus_id = Option::Some(self.info.key.nucleus.clone());
         builder.to_tron_id = Option::Some(self.info.key.mechtron.clone());
@@ -355,30 +348,23 @@ log("Handle API call");
 
         let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
 
-println!("imp here API call {}",api);
         match api.as_str() {
             "neutron_api" => {
 
-println!("Access to neutron_api ..." );
                 // need some test to make sure this is actually a neutron
                 if !bind.kind.eq("Neutron")
                 {
                     self.panic(format!("attempt for non Neutron to access neutron_api {}", bind.kind));
                 } else {
                     let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
-println!("neutron_api call is {}",call);
                     match call.as_str() {
                         "create_mechtron" => {
                             // now get the state of the mechtronmessage.payloads
-println!("the moment before...");
                             let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
-println!("and::::...");
                             let new_mechtron_state = new_mechtron_state.read_only()?;
-println!("we are Here~~~~");
                             // very wasteful to be cloning the bytes here...
                             let create_message = message.payloads[2].buffer.read_bytes().to_vec();
                             let create_message = Message::from_bytes(create_message, context.configs())?;
-log("could I be here after all???");
                             context.neutron_api_create(new_mechtron_state, create_message);
                         }
                         _ => { return Err(format!("we don't have an api {} call {}", api, call).into()); }
