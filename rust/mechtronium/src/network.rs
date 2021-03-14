@@ -11,41 +11,23 @@ use std::cell::Cell;
 
 static PROTOCOL_VERSION: i32 = 1;
 
-pub struct Tunnel
+
+pub fn connect( a: Arc<dyn WireListener>, b: Arc<dyn WireListener> )->(Arc<Connection>,Arc<Connection>)
 {
-    a: Cell<Option<Arc<Connection>>>,
-    b: Cell<Option<Arc<Connection>>>
+    let mut a = Arc::new(Connection::new(a));
+    let mut b= Arc::new(Connection::new(b));
+    a.remote.replace(Option::Some( b.clone() ));
+    b.remote.replace(Option::Some( a.clone() ));
+
+    (a,b)
 }
 
-impl Tunnel
-{
-    pub fn new()->Arc<Self>
-    {
-        let mut tunnel = Arc::new( Tunnel{
-             a: Cell::new(Option::None ),
-             b: Cell::new(Option::None )
-        } );
-
-        let a = Arc::new(Connection::new( tunnel.clone() ));
-        let b = Arc::new(Connection::new( tunnel.clone() ));
-
-        a.arc_ref.replace(Option::Some(Arc::downgrade(&a.clone() )));
-        b.arc_ref.replace(Option::Some(Arc::downgrade(&b.clone() )));
-
-        tunnel.a.replace(Option::Some(a) );
-        tunnel.b.replace(Option::Some(b) );
-
-        tunnel
-    }
-}
 
 pub struct Connection
 {
     init: bool,
-    node_id: Option<Id>,
-//    local: Cell<Option<Arc<Node>>>,
-    remote: Arc<Tunnel>,
-    arc_ref: Cell<Option<Weak<Connection>>>
+    local: Arc<dyn WireListener>,
+    remote: Cell<Option<Arc<Connection>>>
 }
 
 impl Route for Connection
@@ -61,14 +43,12 @@ impl Route for Connection
 
 impl Connection
 {
-    pub fn new( tunnel: Arc<Tunnel>)->Self
+    pub fn new( local: Arc<dyn WireListener>)->Self
     {
         Connection{
             init: false,
-            node_id: Option::None,
-            //local: Cell::new(Option::None),
-            remote: tunnel,
-            arc_ref: Cell::new(Option::None),
+            local: local,
+            remote: Cell::new(Option::None),
         }
     }
     pub fn relay(&self, command: Wire) ->Result<(),Error>
@@ -219,6 +199,11 @@ pub trait Route
 pub struct ExternalRoute
 {
     pub nodes: HashSet<Id>
+}
+
+pub trait WireListener
+{
+    fn wire( &self, wire: Wire, connection: Arc<Connection> )->Result<(),Error>;
 }
 
 
