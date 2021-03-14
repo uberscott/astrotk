@@ -1,0 +1,25 @@
+
+
+
+Send a messsage, receive a response...
+
+
+bind   Dot   -> "mechtron.io:blah:1.0.7:bind/dot.bind" 
+buffer Point -> "mechtron.io:blah:1.0.7:schema/point.schema" 
+buffer Wall  -> "mechtron.io:blah:1.0.7:schema/wall.schema" 
+buffer Mood  -> "mechtron.io:blah:1.0.7:schema/wall.schema" 
+
+mechtron Familiar: Dot
+{
+
+  pos: Point;
+  vel: Point;
+
+  phase update()
+  {
+     self.pos = nucleus.math.add( pos, vel )?;
+  }
+
+  port mood() -> (Mood);
+
+}

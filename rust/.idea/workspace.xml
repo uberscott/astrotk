@@ -18,12 +18,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/wasm/core.wasm" beforeDir="false" afterPath="$PROJECT_DIR$/../repo/mechtron.io/core/1.0.0/wasm/core.wasm" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/cache.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/cache.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/shell.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -319,7 +314,7 @@
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
       <workItem from="1615415460309" duration="86815000" />
-      <workItem from="1615556882339" duration="26997000" />
+      <workItem from="1615556882339" duration="30658000" />
     </task>
     <servers />
   </component>

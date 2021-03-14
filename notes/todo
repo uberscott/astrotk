@@ -1,0 +1,77 @@
+WHAT IS THE CONCEPT?
+A framework for creating applications composed of WebAssembly modules.
+
+MECHTRON 
+The Mechtron itself is executed within a WebAssembly module.  It can send and receive messages from other mechtrons.  
+
+MECHTRONIUM
+"The substance through which Mechtrons flow."  Mechtronium is the host environment for Mechtrons.  It can run as a stand alone program or incorporated into another program via a library.
+
+THE MECHTRONIVERSE
+"Where Mechtrons live forever."  A cloud solution for proper care and feeding of your mechtrons.
+
+WHERE DOES IT EXIST?
+Mechtrons execute on the CLIENT, SERVER, CLOUD, EDGE, MOBILE and IoT DEVICE.  In fact a single Mechtronized Application may span all of these places simultaneously. 
+
+WHAT SOLUTIONS DOES IT PROVIDE?
+This is the most difficult question to answer, because Mechtron aims to solve about 6 different problems.  
+
+The short answer makes Mechtron seem like the overly ambitious brain child of a delusional person:
+SAFE, CONSISTENT, UBIQUITOUS, POLYGLOT, FAST, DELIVERABLE, EXTENSABLE ... 
+
+The medium answer is that Mechtron is WebAssembly + a few things WebAssembly lacks + some some opinionated 'must have in every application' type solutions sprinkled in by Mechtron.io:
+WEBASSEMBLY + DELIVERABLE, INTEROPABILE, EXTENSIBLE
+
+And sorry to do this to you, but to truly understand what problems the Mechtron solves you must undergo the baptism we call "The Long Explanation":
+
+THE LONG EXPLANATION: PROBLEMS MECHTRON AIMS TO SOLVE
+The best way to start is to first ask 'What problems does WebAssembly solve?' as WebAssembly is the key innovation that made Mechtron possible.  
+
+So what DID WebAssembly solve? It made it possible to SAFELY and CONSISTENTLY run executables on ANY DEVICE created by ANY LANGUAGE at NEAR NATIVE SPEEDS. 
+I emphasized the important parts: SAFE, CONSISTENT, ANY DEVICE (ubiquitous), ANY LANGUAGE (polyglot) and NEAR NATIVE SPEEDS (fast). Although there were solutions and workarounds for each of these problems before it was not until the advent of WebAssembly that ALL of these problems were addressed in one comprehensive solution.
+
+Next we ask "What does WebAssembly lack?" -- and we don't use the word 'lack' disparagingly -- we at Mechtron.io are HUGE fans of WebAssembly, it's just WebAssembly's mandate doesn't solve every problem in the world!  
+
+DELIVERY
+WebAssembly's primary means of delivery is within a webpage invoked and managed by JavaScript -- which works well for WebAssembly's original purpose to allow native code execution in a browser.  But this is not useful if you want to execute WebAssembly in a non-browser application running on a server, mobile device, or iot device or even if you have a non-browser desktop application.  
+
+Mechtrons are packaged in artifacts (which in turn may reference other mechtron artifacts.)  Given a web address pointing to a valid Mechtron artifact any Mechtronium enabled program can execute :w
+ 
+
+
+
+
+HOW DOES IT DO THIS?
+Mechtron includes mechanisms for PACKAGING and INTERFACING with WebAssembly modules. 
+
+
+
+
+
+
+
+BUFFER SIMPLIFICATION
+
+* make PATH part of buffers
+* ability to push & pop path
+
+* formal way to APPEND/
+
+WASM MEMBRANE
+* Versioned BufferTranser
+  - Wasm returns membrane_version as an i32.
+  - a github project named wasm_membrane is tagged by VERSION
+  - each 
+  
+
+
+
+
+REPLICATION
+* ability  
+
+
+ARTIFACTS
+* 
+
+PERSISTENCE
