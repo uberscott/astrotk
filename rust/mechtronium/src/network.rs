@@ -41,10 +41,145 @@ pub struct Connection
     remote_node_id: Option<Id>
 }
 
+
+
+pub struct InternalRouter
+{
+    routes: RwLock<Vec<Box<dyn InternalRoute>>>,
+}
+
+impl InternalRouter
+{
+    pub fn new()->Self
+    {
+        InternalRouter{
+            routes: RwLock::new(vec!()),
+
+        }
+    }
+
+    pub fn has_nucleus( &self, nucleus_id: Id )->bool
+    {
+        let routes = self.routes.read().unwrap();
+        for route in &(*routes)
+        {
+            if route.has_nucleus(nucleus_id)
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+
+    pub fn add_route( &mut self, route: Box<dyn InternalRoute> )
+    {
+        let mut routes = self.routes.write().expect("hopefully we haven't poisoned the lock");
+        routes.push( route );
+    }
+
+
+}
+
+pub struct ExternalRouter
+{
+    inner: RwLock<ExternalRouterInner>,
+    hold: Mutex<Vec<MessageTransport>>
+}
+
+impl ExternalRouter
+{
+    pub fn new()->Self
+    {
+        ExternalRouter{
+            inner: RwLock::new(ExternalRouterInner::new()),
+        hold: Mutex::new( vec ! () )
+        }
+    }
+
+    pub fn add_to_hold(&self, message_transport: MessageTransport )
+    {
+        let mut hold = self.hold.lock().unwrap();
+        hold.push(message_transport);
+    }
+
+    fn request_node_id_for_nucleus( &self, nucleus_id: Id)
+    {
+
+    }
+
+    fn request_route_for_node_id( &self, node_id: Id)
+    {
+
+    }
+
+}
+
+impl Route for ExternalRouter
+{
+    fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
+        let inner = self.inner.read()?;
+        match inner.get_route(&message_transport)
+        {
+            Ok(route) => {
+                route.relay(Wire::MessageTransport(message_transport))
+            }
+            Err(error) => match error {
+                NodeNotKnown(node_id) => {
+                    self.add_to_hold(message_transport);
+                    self.request_route_for_node_id(node_id);
+                    Ok(())
+                }
+                NucleusNotKnown => {
+                    let nucleus_id = message_transport.message.to.tron.nucleus.clone();
+                    self.add_to_hold(message_transport);
+                    self.request_node_id_for_nucleus(nucleus_id);
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+
+
+
+
 pub struct NodeRouter
 {
-    inner: Router<Route>,
-    outer: Router<NetworkRoute>
+    internal: InternalRouter,
+//    outer: Router<NetworkRoute>
+}
+
+
+impl Route for NodeRouter
+{
+    fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
+        let nucleus_id = message_transport.message.to.tron.nucleus.clone();
+        if self.internal.has_nucleus(nucleus_id)
+        {
+            Ok(self.forward(message_transport))
+        }
+        else {
+            unimplemented!()
+        }
+    }
+}
+
+
+impl ExternalRoute for NodeRouter
+{
+    fn relay(&self, wire: Wire) -> Result<(), Error> {
+        match wire{
+            Wire::MessageTransport(transport) =>
+                self.forward(transport),
+            _ => {
+                unimplemented!();
+            }
+        }
+        Ok(())
+    }
 }
 
 impl NodeRouter
@@ -52,8 +187,7 @@ impl NodeRouter
     pub fn new( )->Self
     {
         NodeRouter{
-            inner: Router::new(),
-            outer: Router::new()
+            internal: InternalRouter::new(),
         }
     }
     pub fn forward( &self, message_transport: MessageTransport )
@@ -67,9 +201,6 @@ impl NodeRouter
 
 impl Route for Connection
 {
-    fn node_id(&self) -> Id {
-        unimplemented!()
-    }
 
     fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
         self.relay(Wire::MessageTransport(message_transport));
@@ -199,60 +330,34 @@ pub struct WireUniqueSeqRequest
 
 pub enum RouteProblem
 {
-    NodeNotKnown,
+    NodeNotKnown(Id),
     NucleusNotKnown
 }
 
 
-
-
-pub struct Router<R: ?Sized + Route>
-{
-    inner: RwLock<RouterInner<R>>
-}
-
-impl <R: ?Sized+Route> Router<R>
-{
-    pub fn new()->Self
-    {
-        Router{
-            inner: RwLock::new(RouterInner::new() )
-        }
-    }
-
-    pub fn forward( &self, message_transport: MessageTransport )
-    {
-
-    }
-
-    pub fn add_route(&self, search: WireGraphSearch, route: Arc<dyn Route> )
-    {
-
-    }
-}
-
-struct RouterInner<R: ?Sized+Route>
+struct ExternalRouterInner
 {
   pub nucleus_to_node_table: HashMap<Id,Id>,
-  pub node_to_route_table: HashMap<Id,Box<R>>
+  pub node_to_route_table: HashMap<Id,Box<dyn ExternalRoute>>
 }
 
-impl <R> RouterInner<R> where R: ?Sized+Route
+impl ExternalRouterInner
 {
     pub fn new()->Self
     {
-        RouterInner{
+        ExternalRouterInner {
             nucleus_to_node_table: HashMap::new(),
             node_to_route_table: HashMap::new()
         }
     }
 
-    pub fn add_route( &mut self, route: Box<R> )
+    pub fn add_route( &mut self, route: Box<ExternalRoute> )
     {
-        self.node_to_route_table.insert(route.node_id(), route );
+        unimplemented!()
+     //   self.node_to_route_table.insert(route.node_id(), route );
     }
 
-    pub fn get_route( &self, transport: &MessageTransport )->Result<&Box<R>,RouteProblem>
+    pub fn get_route( &self, transport: &MessageTransport )->Result<&Box<dyn ExternalRoute>,RouteProblem>
     {
         let node = self.nucleus_to_node_table.get(&transport.message.to.tron.nucleus);
         if node.is_none()
@@ -265,7 +370,7 @@ impl <R> RouterInner<R> where R: ?Sized+Route
 
         if route.is_none()
         {
-            return Err(RouteProblem::NodeNotKnown);
+            return Err(RouteProblem::NodeNotKnown(node.clone()));
         }
 
         let route = route.unwrap();
@@ -276,23 +381,23 @@ impl <R> RouterInner<R> where R: ?Sized+Route
 
 pub trait Route
 {
-    fn node_id(&self)->Id;
     fn forward( &self, message_transport: MessageTransport )->Result<(),Error>;
 }
 
-pub trait NetworkRoute: Route
+pub trait InternalRoute: Route
+{
+    fn has_nucleus(&self, nucleus_id: Id)->bool;
+}
+
+pub trait ExternalRoute: Route
 {
     fn relay( &self, wire: Wire )->Result<(),Error>;
 }
 
-pub struct ExternalRoute
-{
-    pub nodes: HashSet<Id>
-}
 
 pub trait WireListener
 {
-    fn wire( &self, wire: Wire, connection: Arc<Connection> )->Result<(),Error>;
+    fn on_wire(&self, wire: Wire, connection: Arc<Connection> ) ->Result<(),Error>;
 }
 
 

@@ -21,8 +21,6 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/network.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/network.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/simulation.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -109,8 +107,8 @@
         <option name="Make" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Expand mechtronium::mechtron [mechtron_core]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="expand --lib --color=always --theme=GitHub --tests mechtron" />
+    <configuration name="Expand mechtronium::network [mechtron_core]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="expand --lib --color=always --theme=GitHub --tests network" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtronium" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -265,19 +263,19 @@
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_state" />
-      <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
       <item itemvalue="Cargo.Test membrane::test::test_grow_state (1)" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_and_extract_state" />
       <item itemvalue="Cargo.Test nucleus::state::test::test" />
       <item itemvalue="Cargo.Test nucleus" />
+      <item itemvalue="Cargo.Expand mechtronium::network [mechtron_core]" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Expand mechtronium::network [mechtron_core]" />
         <item itemvalue="Cargo.Test membrane::test::test_grow_state (1)" />
         <item itemvalue="Cargo.Test nucleus" />
         <item itemvalue="Cargo.Test nucleus::state::test::test" />
         <item itemvalue="Cargo.Test membrane::test::test_inject_and_extract_state" />
-        <item itemvalue="Cargo.Expand mechtronium::mechtron [mechtron_core]" />
       </list>
     </recent_temporary>
   </component>
@@ -319,7 +317,7 @@
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
       <workItem from="1615415460309" duration="86815000" />
-      <workItem from="1615556882339" duration="63356000" />
+      <workItem from="1615556882339" duration="67865000" />
     </task>
     <servers />
   </component>

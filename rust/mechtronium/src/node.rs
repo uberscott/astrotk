@@ -20,7 +20,7 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{Router, Wire, Connection, Route, WireListener, NodeRouter};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener};
 
 pub struct Node{
     pub id: Option<Id>,
@@ -106,17 +106,6 @@ impl Node {
      //   self.internal_router.send( Arc::new(message))
     }
 
-}
-
-impl Route for Node
-{
-    fn node_id(&self) -> Id {
-        self.id.expect("Node CANNOT become a route until it has been given an Id")
-    }
-
-    fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
-        unimplemented!()
-    }
 }
 
 
@@ -250,7 +239,7 @@ impl Network {
 
 impl WireListener for Node
 {
-    fn wire(&self, wire: Wire, connection: Arc<Connection>) -> Result<(), Error> {
+    fn on_wire(&self, wire: Wire, connection: Arc<Connection>) -> Result<(), Error> {
 
         match wire{
             Wire::RequestUniqueSeq => {
