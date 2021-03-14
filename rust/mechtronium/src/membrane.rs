@@ -860,9 +860,11 @@ mod test
     use crate::error::Error;
     use crate::membrane::WasmMembrane;
     use crate::node::Node;
+    use crate::cache::default_cache;
 
     fn membrane() -> Result<Arc<WasmMembrane>, Error>
     {
+        /*
         let path = "../../repo/mechtron.io/examples/0.0.1/hello-world/wasm/hello-world.wasm";
 
         let mut file = File::open(path)?;
@@ -875,6 +877,9 @@ mod test
         membrane.init()?;
 
         Ok(membrane)
+
+         */
+        unimplemented!()
     }
 
 
@@ -942,7 +947,7 @@ mod test
     #[test]
     fn test_inject_and_extract_state() -> Result<(), Error>
     {
-        let cache = Node::default_cache();
+        let cache = default_cache();
         let membrane = membrane()?;
 
         let config = cache.configs.mechtrons.get(&CORE_MECHTRON_NEUTRON )?;
@@ -960,7 +965,7 @@ mod test
     #[test]
     fn test_grow_state() -> Result<(), Error>
     {
-        let cache = Node::default_cache();
+        let cache = default_cache();
         let membrane = membrane()?;
 
         let config = cache.configs.mechtrons.get(&CORE_MECHTRON_NEUTRON )?;

@@ -8,7 +8,7 @@ use mechtron_common::message::{Message, MessageKind, To, MechtronLayer, Cycle, D
 use std::sync::Arc;
 use std::time::SystemTime;
 use crate::error::Error;
-use crate::router::Router;
+use crate::router::InternalRouter;
 
 pub struct Simulation {}
 

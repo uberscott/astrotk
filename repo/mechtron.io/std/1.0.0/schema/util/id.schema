@@ -1,0 +1,4 @@
+struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})

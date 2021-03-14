@@ -127,6 +127,8 @@ impl Configs {
         self.cache(&CORE_SCHEMA_TEXT)?;
         self.cache(&CORE_SCHEMA_OK)?;
         self.cache(&CORE_SCHEMA_MECHTRON_CONTEXT)?;
+        self.cache(&CORE_SCHEMA_TYPE_ID)?;
+        self.cache(&CORE_SCHEMA_TYPE_ID_VALUE)?;
 
         self.cache(&CORE_NUCLEUS_SIMULATION)?;
         self.cache(&CORE_MECHTRON_NEUTRON)?;

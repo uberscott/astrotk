@@ -25,7 +25,7 @@ use crate::shell::{MechtronShell};
 use crate::node::{Local, Node, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{Lookup, MechtronKernels, StateHistory};
-use crate::router::{HasNucleus, Router};
+use crate::router::{HasNucleus, InternalRouter};
 use crate::mechtron::CreatePayloadsBuilder;
 use crate::membrane::{WasmMembrane, MechtronMembrane};
 use mechtron_common::logger::log;
@@ -43,7 +43,7 @@ pub struct Nuclei {
 impl Nuclei {
     pub fn new(cache: Arc<Cache>,
                seq: Arc<IdSeq>,
-               router: Arc<dyn Router>) -> Arc<Self> {
+               router: Arc<dyn InternalRouter>) -> Arc<Self> {
         let rtn = Arc::new(Nuclei {
             nuclei: RwLock::new(HashMap::new()),
             context: NucleusContext {
@@ -152,7 +152,7 @@ pub struct NucleusContext
 {
     pub cache: Arc<Cache>,
     pub seq: Arc<IdSeq>,
-    pub router: Arc<dyn Router>,
+    pub router: Arc<dyn InternalRouter>,
     pub nuclei: RefCell<Option<Weak<Nuclei>>>
 }
 
@@ -944,7 +944,7 @@ impl MechtronShellContext for NucleusCycle
 
 
 
-impl Router for NucleusCycle {
+impl InternalRouter for NucleusCycle {
     fn send(&self, message: Arc<Message>) {
         unimplemented!()
         /*
@@ -1839,19 +1839,22 @@ mod test
     use mechtron_common::message::*;
     use mechtron_common::util::PingPayloadBuilder;
 
-    use crate::node::Node;
+    use crate::node::{Node, Central};
     use std::io;
     use std::io::Write;
 
-    fn create_node() ->Node
+    fn create_node() -> Node<Central>
     {
-        let node = Node::new(Option::None);
-        node
+//        let node = Node::new(Central::new(), Option::None);
+ //       node
+        unimplemented!()
     }
 
     #[test]
     fn test_create_sim()
     {
+        unimplemented!()
+        /*
         let cache = Node::default_cache();
         let SIM_CONFIG = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
         cache.configs.sims.cache(&SIM_CONFIG ).unwrap();
@@ -1863,6 +1866,8 @@ mod test
         // verify sim exists
 
         node.shutdown();
+
+         */
     }
 
     /*

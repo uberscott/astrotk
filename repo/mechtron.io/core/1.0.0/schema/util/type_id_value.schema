@@ -1,0 +1,16 @@
+
+struct({fields: {
+
+key: struct({fields: {
+      type: string(),
+      id: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+    }}),
+value: struct({fields: {
+        seq_id: i64(),
+        id: i64()
+      }})
+
+}})

@@ -1,16 +1,18 @@
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Weak;
 
 use mechtron_common::id::Id;
-use mechtron_common::message::Message;
+use mechtron_common::message::{Message, MessageTransport};
 
+use crate::network::Connection;
 use crate::node::{Local, Node};
 use crate::nucleus::{Nuclei, NucleiContainer};
 
-pub trait Router {
+pub trait InternalRouter {
     fn send(&self, message: Arc<Message>);
     fn receive(&self, message: Arc<Message>);
     fn has_nucleus_local(&self, nucleus: &Id) ->HasNucleus;
@@ -36,7 +38,7 @@ impl  NetworkRouter
     }
 }
 
-impl Router for NetworkRouter{
+impl InternalRouter for NetworkRouter{
 
     fn send(&self, message: Arc<Message>) {
 
@@ -76,7 +78,7 @@ impl LocalRouter {
     }
 }
 
-impl Router for LocalRouter {
+impl InternalRouter for LocalRouter {
 
     fn send(&self, message: Arc<Message>) {
         match self.has_nucleus_local(&message.to.tron.nucleus)
@@ -113,13 +115,13 @@ impl Drop for LocalRouter
     }
 }
 
-pub struct SharedRouter<L: Router,R: Router>
+pub struct SharedRouter<L: InternalRouter,R: InternalRouter>
 {
     pub local : RefCell<Option<Weak<L>>>,
     pub remote: RefCell<Option<Weak<R>>>,
 }
 
-impl <L: Router,R: Router> SharedRouter<L,R>
+impl <L: InternalRouter,R: InternalRouter> SharedRouter<L,R>
 {
     pub fn new( ) -> Self {
         SharedRouter{
@@ -144,7 +146,7 @@ impl <L: Router,R: Router> SharedRouter<L,R>
     }
 }
 
-impl <L: Router,R: Router>Router for  SharedRouter<L,R>
+impl <L: InternalRouter,R: InternalRouter> InternalRouter for  SharedRouter<L,R>
 {
     fn send(&self, message: Arc<Message>) {
 
@@ -226,5 +228,6 @@ impl <L: Router,R: Router>Router for  SharedRouter<L,R>
 
 
 }
+
 
 

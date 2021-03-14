@@ -14,6 +14,7 @@ extern crate mechtron_common;
 
 pub mod neutron;
 pub mod simtron;
+pub mod central;
 
 #[no_mangle]
 pub extern "C" fn mechtron_init()

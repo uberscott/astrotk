@@ -9,49 +9,37 @@ use wasmer::{Cranelift, JIT, Module, Store};
 use mechtron_common::artifact::Artifact;
 use mechtron_common::core::*;
 use mechtron_common::id::{Id, IdSeq, MechtronKey};
-use mechtron_common::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment};
+use mechtron_common::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment, MessageTransport};
 
 use crate::artifact::MechtroniumArtifactRepository;
-use crate::cache::Cache;
+use crate::cache::{Cache, default_cache};
 use crate::error::Error;
 use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
-use crate::router::{HasNucleus, LocalRouter, NetworkRouter, Router, SharedRouter};
+use crate::router::{HasNucleus, LocalRouter, NetworkRouter, InternalRouter, SharedRouter};
 use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
+use crate::cluster::Cluster;
+use crate::network::{Router, Wire, Connection};
 
-pub struct Node {
+pub struct Node<M> where M: NodeManager {
+    pub id: Option<Id>,
+    pub manager: M,
     pub local: Option<Arc<Local>>,
     pub net: Arc<Network>,
     pub cache: Arc<Cache>,
-    pub router: Arc<dyn Router>
+    pub router: Router,
 }
 
 
-impl Node {
-
-    pub fn default_cache()->Arc<Cache>
-    {
-        let repo = Arc::new(MechtroniumArtifactRepository::new("../../repo/"));
-        let wasm_store = Arc::new(Store::new(&JIT::new(Cranelift::default()).engine()));
-        let configs = Arc::new(Configs::new(repo.clone()));
-        let wasms = Keeper::new(
-            repo.clone(),
-            Box::new(WasmModuleParser {
-                wasm_store: wasm_store.clone(),
-            },
-            ),
-            Option::None);
+impl<M> Node<M> where M: NodeManager {
 
 
-        Arc::new(Cache::new(configs,wasm_store,wasms ) )
-    }
-
-    pub fn new(cache: Option<Arc<Cache>>) -> Node {
+    pub fn new(node_manager: M, cache: Option<Arc<Cache>>) -> Self {
 
         let cache = match cache{
             None => {
-                Node::default_cache()
+                default_cache()
             }
             Some(cache) => cache
         };
@@ -72,12 +60,30 @@ impl Node {
         inter_gateway_router.set_remote( network_router.clone() );
 
         let mut rtn = Node {
+            id: node_manager.default_id(),
+            manager: node_manager,
             cache: cache.clone(),
             local: Option::Some(local),
             net: network.clone(),
-            router: local_router.clone()
+            router: Router::new()
         };
         rtn
+    }
+
+    fn relay(&self, command: Wire, connection: Arc<Connection> ) ->Result<(),Error> {
+        match command{
+           _ => {
+                return Err("don't know how to handle command".into());
+            }
+        }
+        Ok(())
+    }
+
+
+
+    pub fn route( transport: MessageTransport )
+    {
+
     }
 
     pub fn shutdown(&self) {}
@@ -96,21 +102,17 @@ impl Node {
 
     pub fn send( &self, message: Message )
     {
-        self.router.send( Arc::new(message))
+        unimplemented!()
+     //   self.internal_router.send( Arc::new(message))
     }
 
 }
 
-impl Drop for Node
-{
-    fn drop(&mut self) {
-        self.local = Option::None;
-    }
-}
+
 
 pub struct Local {
     sources: Arc<Nuclei>,
-    router: Arc<dyn Router>,
+    router: Arc<dyn InternalRouter>,
     seq: Arc<IdSeq>,
     cache: Arc<Cache>
 }
@@ -124,7 +126,7 @@ impl NucleiContainer for Local
 }
 
 impl  Local{
-    fn new(cache: Arc<Cache>, seq: Arc<IdSeq>, router: Arc<dyn Router>) -> Self {
+    fn new(cache: Arc<Cache>, seq: Arc<IdSeq>, router: Arc<dyn InternalRouter>) -> Self {
         let rtn = Local {
             sources: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
             router: router,
@@ -156,7 +158,7 @@ impl  Local{
     }
 }
 
-impl Router for Local
+impl InternalRouter for Local
 {
     fn send(&self, message: Arc<Message>) {
         self.router.send(message)
@@ -185,16 +187,17 @@ impl Router for Local
 
 }
 
+
 #[derive(Clone)]
-pub struct NucleusContext {
-    sys: Arc<Node>,
+pub struct NucleusContext<M> where M: NodeManager {
+    sys: Arc<Node<M>>,
 }
 
-impl NucleusContext {
-    pub fn new(sys: Arc<Node>) -> Self {
+impl<M> NucleusContext<M> where M: NodeManager {
+    pub fn new(sys: Arc<Node<M>>) -> Self {
         NucleusContext { sys: sys }
     }
-    pub fn sys<'get>(&'get self) -> Arc<Node> {
+    pub fn sys<'get>(&'get self) -> Arc<Node<M>> {
         self.sys.clone()
     }
 }
@@ -224,21 +227,57 @@ impl Network {
         self.seq.clone()
     }
 
-    pub fn router(&self)->Arc<dyn Router>
+    pub fn router(&self)->Arc<dyn InternalRouter>
     {
         self.router.clone()
     }
 }
-struct WasmModuleParser {
-    wasm_store: Arc<Store>,
+
+pub trait NodeManager
+{
+    fn default_id(&self)->Option<Id>;
 }
 
-impl Parser<Module> for WasmModuleParser {
-    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<Module, mechtron_common::error::Error> {
-        let result = Module::new(&self.wasm_store, data);
-        match result {
-            Ok(module) => Ok(module),
-            Err(e) => Err("wasm compile error".into()),
+pub struct Central
+{
+    cluster: Cluster,
+    node: Option<Weak<Node<Central>>>
+}
+
+impl Central{
+
+    pub fn new(cache: Arc<Cache>) -> Self
+    {
+        Central{
+            cluster: Cluster::new(),
+            node: Option::None
         }
     }
 }
+
+impl NodeManager for Central
+{
+    fn default_id(&self) -> Option<Id> {
+        Option::Some(Id::new(0,0))
+    }
+}
+
+
+pub struct Server
+{
+}
+
+
+
+pub struct Mesh
+{
+}
+
+pub struct Gateway
+{
+}
+
+pub struct Client
+{
+}
+

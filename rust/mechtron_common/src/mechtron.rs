@@ -3,6 +3,8 @@ use crate::id::{Revision, MechtronKey};
 use crate::buffers::{Path, Buffer, ReadOnlyBuffer};
 use crate::error::Error;
 use crate::core::*;
+use crate::message::{MessageBuilder, MessageKind, DeliveryMoment, MechtronLayer};
+use std::ops::{Deref, DerefMut};
 
 #[derive(Clone)]
 pub struct Context
@@ -23,6 +25,15 @@ impl Context
             phase: phase
         }
     }
+
+    pub fn message_builder(&self)->ContextualMessageBuilder
+    {
+        ContextualMessageBuilder{
+            context: self.clone(),
+            builder: MessageBuilder::new()
+        }
+    }
+
 
     pub fn to_bytes( &self, configs: &Configs)->Result<Vec<u8>,Error>
     {
@@ -76,3 +87,44 @@ impl Context
         })
     }
 }
+
+
+pub struct ContextualMessageBuilder
+{
+    context: Context,
+    builder: MessageBuilder
+}
+
+impl ContextualMessageBuilder
+{
+  pub fn api_call(&mut self)
+  {
+      self.builder.kind = Option::Some(MessageKind::Api);
+      self.to_shell();
+  }
+
+  pub fn to_shell(&mut self)
+  {
+      self.builder.to_layer = Option::Some(MechtronLayer::Shell);
+      self.builder.to_tron_id = Option::Some(self.context.key.mechtron.clone());
+      self.builder.to_nucleus_id = Option::Some(self.context.key.nucleus.clone());
+      self.builder.to_phase = Option::Some("default".to_string());
+      self.builder.to_port = Option::Some("api".to_string());
+      self.builder.to_delivery = Option::Some(DeliveryMoment::Phasic);
+  }
+
+  pub fn to_kernel(&mut self)
+  {
+    self.builder.to_layer = Option::Some(MechtronLayer::Kernel);
+    self.builder.to_tron_id = Option::Some(self.context.key.mechtron.clone());
+    self.builder.to_nucleus_id = Option::Some(self.context.key.nucleus.clone());
+    self.builder.to_phase = Option::Some("default".to_string());
+    self.builder.to_port = Option::Some("api".to_string());
+    self.builder.to_delivery = Option::Some(DeliveryMoment::Phasic);
+  }
+
+
+}
+
+
+

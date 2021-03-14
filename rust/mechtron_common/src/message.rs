@@ -1,3 +1,4 @@
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -14,13 +15,11 @@ use no_proto::pointer::option::NP_Enum;
 use crate::artifact::Artifact;
 use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
 use crate::configs::Configs;
-use crate::error::Error;
-use crate::id::{DeliveryMomentKey, Id, IdSeq, Revision, MechtronKey};
-use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 use crate::core::*;
-use std::cell::{Cell, RefCell};
+use crate::error::Error;
+use crate::id::{DeliveryMomentKey, Id, IdSeq, MechtronKey, Revision};
 use crate::logger::log;
-
+use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct To {
@@ -106,6 +105,18 @@ impl To {
             layer: MechtronLayer::Kernel
         }
     }
+
+    pub fn extra(tron: MechtronKey, port: String) -> Self {
+        To {
+            tron: tron,
+            port: port,
+            cycle: Cycle::Present,
+            phase: "default".to_string(),
+            delivery: DeliveryMoment::ExtraCyclic,
+            layer: MechtronLayer::Kernel
+        }
+    }
+
 
     pub fn inter_phasic(tron: MechtronKey, port: String, phase: String) -> Self {
         To {
@@ -334,6 +345,7 @@ pub struct MessageBuilder {
     pub meta: Option<HashMap<String, String>>,
     pub transaction: Option<Id>,
     pub callback: Option<To>,
+    pub to_my_shell: bool,
 }
 
 impl MessageBuilder {
@@ -353,7 +365,8 @@ impl MessageBuilder {
             payloads: RefCell::new(None),
             meta: None,
             transaction: None,
-            callback: None
+            callback: None,
+            to_my_shell: false
         }
     }
 
@@ -986,23 +999,23 @@ fn cat(path: &[&str]) -> String {
 
 #[cfg(test)]
 pub mod tests {
+    use std::collections::{HashMap, HashSet};
+    use std::fs::File;
+    use std::io::Read;
     use std::sync::{Arc, RwLock};
 
     use no_proto::buffer::NP_Buffer;
     use no_proto::memory::NP_Memory_Ref;
     use no_proto::NP_Factory;
 
-    use crate::artifact::{Artifact, ArtifactBundle, ArtifactRepository, ArtifactCache};
+    use crate::artifact::{Artifact, ArtifactBundle, ArtifactCache, ArtifactRepository};
     use crate::buffers::{Buffer, BufferFactories, Path};
+    use crate::configs::Configs;
+    use crate::core::*;
     use crate::error::Error;
     use crate::id::{Id, IdSeq, MechtronKey};
-    use crate::core::*;
     use crate::message;
-    use std::collections::{HashSet, HashMap};
-    use std::fs::File;
-    use std::io::Read;
-    use crate::configs::Configs;
-    use crate::message::{To, Message, MessageKind, Cycle, DeliveryMoment, MechtronLayer, Payload, MessageBuilder};
+    use crate::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
 
     static TEST_SCHEMA: &'static str = r#"list({of: string()})"#;
 
@@ -1339,4 +1352,9 @@ pub mod tests {
         }
          */
     }
+}
+
+pub struct MessageTransport
+{
+    pub message: Message
 }
