@@ -7,7 +7,7 @@ use crate::error::Error;
 use mechtron_common::id::Id;
 use std::collections::{HashMap, HashSet};
 use crate::network::RouteProblem::{NodeNotKnown, NucleusNotKnown};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 static PROTOCOL_VERSION: i32 = 1;
 
@@ -19,6 +19,9 @@ pub fn connect( a: Arc<dyn WireListener>, b: Arc<dyn WireListener> )->(Arc<Conne
     a.remote.replace(Option::Some( b.clone() ));
     b.remote.replace(Option::Some( a.clone() ));
 
+    a.init();
+    b.init();
+
     (a,b)
 }
 
@@ -27,7 +30,7 @@ pub struct Connection
 {
     init: bool,
     local: Arc<dyn WireListener>,
-    remote: Cell<Option<Arc<Connection>>>
+    remote: RefCell<Option<Arc<Connection>>>
 }
 
 impl Route for Connection
@@ -37,26 +40,33 @@ impl Route for Connection
     }
 
     fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
-        self.relay( Wire::MessageTransport(message_transport) )
+        self.relay(Wire::MessageTransport(message_transport));
+        Ok(())
     }
 }
 
 impl Connection
 {
+    pub fn init(&self)
+    {
+        self.relay( Wire::ProtocolVersion(PROTOCOL_VERSION) );
+    }
+
     pub fn new( local: Arc<dyn WireListener>)->Self
     {
         Connection{
             init: false,
             local: local,
-            remote: Cell::new(Option::None),
+            remote: RefCell::new(Option::None),
         }
     }
-    pub fn relay(&self, command: Wire) ->Result<(),Error>
+    pub fn relay(&self, wire: Wire) ->Result<(),Error>
     {
-        unimplemented!("i guess we send the message transport to the adjacent node.... WEEE!")
+        self.remote.borrow().as_ref().unwrap().receive( wire);
+        Ok(())
     }
 
-    pub fn receive( & mut self, command: Wire)
+    pub fn receive( &self, command: Wire)
     {
         if !self.init
         {
@@ -68,7 +78,8 @@ impl Connection
                         self.close();
                     }
                     else {
-                        self.init = true;
+                     //   self.init = true;
+                        unimplemented!()
                     }
                 }
                 _ => {
@@ -111,7 +122,8 @@ pub enum Wire
 pub struct GraphSearch
 {
     pub id: Id,
-    pub hops: i32
+    pub hops: i32,
+    pub timestamp: i32
 }
 
 
@@ -140,7 +152,12 @@ impl Router
         }
     }
 
-    pub fn forward( message_transport: MessageTransport )
+    pub fn forward( &self, message_transport: MessageTransport )
+    {
+
+    }
+
+    pub fn add_route( &self, search: GraphSearch, route: Arc<dyn Route> )
     {
 
     }

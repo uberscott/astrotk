@@ -268,7 +268,35 @@ impl Central{
 impl WireListener for Central
 {
     fn wire(&self, wire: Wire, connection: Arc<Connection>) -> Result<(), Error> {
-        unimplemented!()
+
+        match wire{
+            Wire::RequestUniqueSeq => {
+                connection.relay( Wire::RespondUniqueSeq(self.cluster.seq.next().id));
+            }
+            Wire::RespondUniqueSeq(_) => {}
+            Wire::NodeSearch(search) => {
+               let node = self.node.as_ref().unwrap().upgrade().unwrap();
+               if search.id == node.id.unwrap()
+               {
+                   let mut search = search;
+                   search.hops = search.hops+1;
+                   connection.relay( Wire::NodeFound(search));
+               }
+            }
+            Wire::NodeFound(search) => {
+                let node = self.node.as_ref().unwrap().upgrade().unwrap();
+                node.router.add_route( search, connection );
+            }
+            Wire::MessageTransport(transport) => {
+                let node = self.node.as_ref().unwrap().upgrade().unwrap();
+                node.router.forward( transport );
+            }
+            Wire::Panic(_) => {}
+            _ => {
+                return Err("don't know how to hanle this Wire.".into());
+            }
+        }
+        Ok(())
     }
 }
 
