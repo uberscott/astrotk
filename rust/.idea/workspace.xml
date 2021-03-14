@@ -21,6 +21,8 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/network.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/network.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/node.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/simulation.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -317,7 +319,7 @@
       <workItem from="1615414397381" duration="969000" />
       <workItem from="1615415394786" duration="49000" />
       <workItem from="1615415460309" duration="86815000" />
-      <workItem from="1615556882339" duration="56618000" />
+      <workItem from="1615556882339" duration="63356000" />
     </task>
     <servers />
   </component>

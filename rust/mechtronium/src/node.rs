@@ -20,22 +20,22 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{Router, Wire, Connection, Route, WireListener};
+use crate::network::{Router, Wire, Connection, Route, WireListener, NodeRouter};
 
-pub struct Node<M> where M: NodeManager {
+pub struct Node{
     pub id: Option<Id>,
-    pub manager: M,
+    pub kind: NodeKind,
     pub local: Option<Arc<Local>>,
     pub net: Arc<Network>,
     pub cache: Arc<Cache>,
-    pub router: Router,
+    pub router: NodeRouter,
 }
 
 
-impl<M> Node<M> where M: NodeManager {
+impl Node {
 
 
-    pub fn new(node_manager: M, cache: Option<Arc<Cache>>) -> Self {
+    pub fn new(kind: NodeKind, cache: Option<Arc<Cache>>) -> Self {
 
         let cache = match cache{
             None => {
@@ -60,12 +60,12 @@ impl<M> Node<M> where M: NodeManager {
         inter_gateway_router.set_remote( network_router.clone() );
 
         let mut rtn = Node {
-            id: node_manager.default_id(),
-            manager: node_manager,
+            id: kind.create_id(),
+            kind: kind,
             cache: cache.clone(),
             local: Option::Some(local),
             net: network.clone(),
-            router: Router::new()
+            router: NodeRouter::new()
         };
         rtn
     }
@@ -108,7 +108,7 @@ impl<M> Node<M> where M: NodeManager {
 
 }
 
-impl <M> Route for Node<M>  where M: NodeManager
+impl Route for Node
 {
     fn node_id(&self) -> Id {
         self.id.expect("Node CANNOT become a route until it has been given an Id")
@@ -198,8 +198,9 @@ impl InternalRouter for Local
 }
 
 
+/*
 #[derive(Clone)]
-pub struct NucleusContext<M> where M: NodeManager {
+pub struct NucleusContext{
     sys: Arc<Node<M>>,
 }
 
@@ -211,6 +212,7 @@ impl<M> NucleusContext<M> where M: NodeManager {
         self.sys.clone()
     }
 }
+ */
 
 
 pub struct WasmStuff
@@ -243,53 +245,33 @@ impl Network {
     }
 }
 
-pub trait NodeManager
-{
-    fn default_id(&self)->Option<Id>;
-}
 
-pub struct Central
-{
-    cluster: Cluster,
-    node: Option<Weak<Node<Central>>>
-}
 
-impl Central{
 
-    pub fn new(cache: Arc<Cache>) -> Self
-    {
-        Central{
-            cluster: Cluster::new(),
-            node: Option::None
-        }
-    }
-}
-
-impl WireListener for Central
+impl WireListener for Node
 {
     fn wire(&self, wire: Wire, connection: Arc<Connection>) -> Result<(), Error> {
 
         match wire{
             Wire::RequestUniqueSeq => {
-                connection.relay( Wire::RespondUniqueSeq(self.cluster.seq.next().id));
+                match &self.kind
+                {
+                    NodeKind::Central(cluster) => {
+                        connection.relay( Wire::RespondUniqueSeq(0,Option::Some(cluster.seq.next())));
+                    }
+                    NodeKind::Server => {}
+                    NodeKind::Mesh => {}
+                    NodeKind::Gateway => {}
+                    NodeKind::Client => {}
+                }
             }
-            Wire::RespondUniqueSeq(_) => {}
+            Wire::RespondUniqueSeq(_,_) => {}
             Wire::NodeSearch(search) => {
-               let node = self.node.as_ref().unwrap().upgrade().unwrap();
-               if search.id == node.id.unwrap()
-               {
-                   let mut search = search;
-                   search.hops = search.hops+1;
-                   connection.relay( Wire::NodeFound(search));
-               }
+
             }
             Wire::NodeFound(search) => {
-                let node = self.node.as_ref().unwrap().upgrade().unwrap();
-                node.router.add_route( search, connection );
             }
             Wire::MessageTransport(transport) => {
-                let node = self.node.as_ref().unwrap().upgrade().unwrap();
-                node.router.forward( transport );
             }
             Wire::Panic(_) => {}
             _ => {
@@ -299,19 +281,6 @@ impl WireListener for Central
         Ok(())
     }
 }
-
-impl NodeManager for Central
-{
-    fn default_id(&self) -> Option<Id> {
-        Option::Some(Id::new(0,0))
-    }
-}
-
-
-pub struct Server
-{
-}
-
 
 
 pub struct Mesh
@@ -326,3 +295,22 @@ pub struct Client
 {
 }
 
+pub enum NodeKind
+{
+    Central(Cluster),
+    Server,
+    Mesh,
+    Gateway,
+    Client
+}
+
+impl NodeKind
+{
+    fn create_id(&self)->Option<Id>
+    {
+       match self{
+           NodeKind::Central(cluster) => Option::Some(Id::new(0, 0)),
+           _ => Option::None
+       }
+    }
+}

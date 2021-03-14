@@ -1839,11 +1839,11 @@ mod test
     use mechtron_common::message::*;
     use mechtron_common::util::PingPayloadBuilder;
 
-    use crate::node::{Node, Central};
     use std::io;
     use std::io::Write;
+    use crate::node::Node;
 
-    fn create_node() -> Node<Central>
+    fn create_node() -> Node
     {
 //        let node = Node::new(Central::new(), Option::None);
  //       node

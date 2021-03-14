@@ -8,8 +8,9 @@ use mechtron_common::id::Id;
 use std::collections::{HashMap, HashSet};
 use crate::network::RouteProblem::{NodeNotKnown, NucleusNotKnown};
 use std::cell::{Cell, RefCell};
+use crate::router::NetworkRouter;
 
-static PROTOCOL_VERSION: i32 = 1;
+static PROTOCOL_VERSION: i32 = 100_001;
 
 
 pub fn connect( a: Arc<dyn WireListener>, b: Arc<dyn WireListener> )->(Arc<Connection>,Arc<Connection>)
@@ -25,13 +26,44 @@ pub fn connect( a: Arc<dyn WireListener>, b: Arc<dyn WireListener> )->(Arc<Conne
     (a,b)
 }
 
+pub enum ConnectionStatus{
+    WaitVersion,
+    WaitNodeId,
+    Ready,
+    Error
+}
 
 pub struct Connection
 {
-    init: bool,
+    status: ConnectionStatus,
     local: Arc<dyn WireListener>,
-    remote: RefCell<Option<Arc<Connection>>>
+    remote: RefCell<Option<Arc<Connection>>>,
+    remote_node_id: Option<Id>
 }
+
+pub struct NodeRouter
+{
+    inner: Router<Route>,
+    outer: Router<NetworkRoute>
+}
+
+impl NodeRouter
+{
+    pub fn new( )->Self
+    {
+        NodeRouter{
+            inner: Router::new(),
+            outer: Router::new()
+        }
+    }
+    pub fn forward( &self, message_transport: MessageTransport )
+    {
+        // test if inner contains nucleus and if so forward to inner
+
+        // otherwise forward to outer
+    }
+}
+
 
 impl Route for Connection
 {
@@ -49,49 +81,78 @@ impl Connection
 {
     pub fn init(&self)
     {
-        self.relay( Wire::ProtocolVersion(PROTOCOL_VERSION) );
+        self.relay( Wire::ReportVersion(PROTOCOL_VERSION) );
     }
 
     pub fn new( local: Arc<dyn WireListener>)->Self
     {
         Connection{
-            init: false,
+            status: ConnectionStatus::WaitVersion,
             local: local,
             remote: RefCell::new(Option::None),
+            remote_node_id: None
         }
     }
     pub fn relay(&self, wire: Wire) ->Result<(),Error>
     {
-        self.remote.borrow().as_ref().unwrap().receive( wire);
+        unimplemented!();
+//        self.remote.borrow().as_ref().unwrap().receive( wire);
         Ok(())
     }
 
-    pub fn receive( &self, command: Wire)
+    pub fn receive( &mut self, command: Wire)
     {
-        if !self.init
+        match self.status
         {
-            match command{
-                Wire::ProtocolVersion(pv) => {
-                    if( pv != PROTOCOL_VERSION)
-                    {
-                        self.relay(Wire::Panic("Bad Protocol version".to_string()));
-                        self.close();
+            ConnectionStatus::WaitVersion => {
+                match command{
+                    Wire::ReportVersion(v) => {
+                        if v == PROTOCOL_VERSION{
+                            self.status=ConnectionStatus::WaitNodeId
+                        }
+                        else {
+                            self.status=ConnectionStatus::Error;
+                        }
                     }
-                    else {
-                     //   self.init = true;
-                        unimplemented!()
+                    _ => {
+                        self.status=ConnectionStatus::Error;
                     }
-                }
-                _ => {
-                    self.relay(Wire::Panic("Bad Protocol version".to_string()));
-                    self.close();
                 }
             }
-            return;
-        }
-
-
-        //self.local.receive(command, self);
+            ConnectionStatus::WaitNodeId => {
+                match command{
+                    Wire::ReportNodeId(id) => {
+                        self.remote_node_id = Option::Some(id);
+                        self.status = ConnectionStatus::Ready
+                    }
+                    Wire::RequestUniqueSeq => {
+                        self.relay(command);
+                    }
+                    _  => {
+                        self.status = ConnectionStatus::Error;
+                    }
+                }
+            }
+            ConnectionStatus::Ready => {
+                match command{
+                    Wire::ReportVersion(_) => {
+                        self.status = ConnectionStatus::Error;
+                    }
+                    Wire::ReportNodeId(_) => {
+                        self.status = ConnectionStatus::Error;
+                    }
+                   Wire::Panic(_) => {
+                       self.status = ConnectionStatus::Error;
+                   }
+                    _=>{
+                        self.relay(command);
+                    }
+                }
+            }
+            _ => {
+                println!("not sure what to do with this STATUS!!!")
+            }
+        };
     }
 
     pub fn panic( &self, message: Message )
@@ -109,21 +170,28 @@ impl Connection
 
 pub enum Wire
 {
-   ProtocolVersion(i32),
+   ReportVersion(i32),
+   ReportNodeId(Id),
    RequestUniqueSeq,
-   RespondUniqueSeq(i64),
-   NodeSearch(GraphSearch),
-   NodeFound(GraphSearch),
+   RespondUniqueSeq(i64,Option<Id>),
+   NodeSearch(WireGraphSearch),
+   NodeFound(WireGraphSearch),
    MessageTransport(MessageTransport),
    Panic(String)
 }
 
 #[derive(Clone)]
-pub struct GraphSearch
+pub struct WireGraphSearch
 {
     pub id: Id,
     pub hops: i32,
     pub timestamp: i32
+}
+
+#[derive(Clone)]
+pub struct WireUniqueSeqRequest
+{
+
 }
 
 
@@ -138,12 +206,12 @@ pub enum RouteProblem
 
 
 
-pub struct Router
+pub struct Router<R: ?Sized + Route>
 {
-    inner: RwLock<RouterInner>
+    inner: RwLock<RouterInner<R>>
 }
 
-impl Router
+impl <R: ?Sized+Route> Router<R>
 {
     pub fn new()->Self
     {
@@ -157,20 +225,19 @@ impl Router
 
     }
 
-    pub fn add_route( &self, search: GraphSearch, route: Arc<dyn Route> )
+    pub fn add_route(&self, search: WireGraphSearch, route: Arc<dyn Route> )
     {
 
     }
 }
 
-
-struct RouterInner
+struct RouterInner<R: ?Sized+Route>
 {
   pub nucleus_to_node_table: HashMap<Id,Id>,
-  pub node_to_route_table: HashMap<Id,Box<dyn Route>>
+  pub node_to_route_table: HashMap<Id,Box<R>>
 }
 
-impl RouterInner
+impl <R> RouterInner<R> where R: ?Sized+Route
 {
     pub fn new()->Self
     {
@@ -180,12 +247,12 @@ impl RouterInner
         }
     }
 
-    pub fn add_route( &mut self, route: Box<dyn Route> )
+    pub fn add_route( &mut self, route: Box<R> )
     {
         self.node_to_route_table.insert(route.node_id(), route );
     }
 
-    pub fn get_route( &self, transport: &MessageTransport )->Result<&Box<dyn Route+'static>,RouteProblem>
+    pub fn get_route( &self, transport: &MessageTransport )->Result<&Box<R>,RouteProblem>
     {
         let node = self.nucleus_to_node_table.get(&transport.message.to.tron.nucleus);
         if node.is_none()
@@ -211,6 +278,11 @@ pub trait Route
 {
     fn node_id(&self)->Id;
     fn forward( &self, message_transport: MessageTransport )->Result<(),Error>;
+}
+
+pub trait NetworkRoute: Route
+{
+    fn relay( &self, wire: Wire )->Result<(),Error>;
 }
 
 pub struct ExternalRoute
