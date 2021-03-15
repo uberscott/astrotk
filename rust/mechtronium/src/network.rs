@@ -7,8 +7,9 @@ use crate::error::Error;
 use mechtron_common::id::Id;
 use std::collections::{HashMap, HashSet};
 use crate::network::RouteProblem::{NodeNotKnown, NucleusNotKnown};
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
 use crate::router::NetworkRouter;
+use std::fmt;
 
 static PROTOCOL_VERSION: i32 = 100_001;
 
@@ -20,12 +21,19 @@ pub fn connect( a: Arc<dyn WireListener>, b: Arc<dyn WireListener> )->(Arc<Conne
     a.remote.replace(Option::Some( b.clone() ));
     b.remote.replace(Option::Some( a.clone() ));
 
+    a.this.replace(Option::Some( Arc::downgrade(&a.clone() )));
+    b.this.replace(Option::Some( Arc::downgrade(&b.clone() )));
+
     a.init();
     b.init();
+
+    a.init2();
+    b.init2();
 
     (a,b)
 }
 
+#[derive(Clone)]
 pub enum ConnectionStatus{
     WaitVersion,
     WaitNodeId,
@@ -35,14 +43,111 @@ pub enum ConnectionStatus{
 
 pub struct Connection
 {
-    status: ConnectionStatus,
+    status: RefCell<ConnectionStatus>,
     local: Arc<dyn WireListener>,
     remote: RefCell<Option<Arc<Connection>>>,
-    remote_node_id: Option<Id>
+    remote_node_id: Option<Id>,
+    this: RefCell<Option<Weak<Connection>>>,
 }
 
+impl Connection
+{
+    pub fn init(&self)
+    {
+        self.relay( Wire::ReportVersion(PROTOCOL_VERSION) );
+    }
+
+    pub fn init2(&self)
+    {
+        self.local.on_wire( Wire::ReportVersion(PROTOCOL_VERSION), self.this() );
+    }
 
 
+    pub fn new( local: Arc<dyn WireListener>)->Self
+    {
+        Connection{
+            status: RefCell::new(ConnectionStatus::WaitVersion),
+            local: local,
+            remote: RefCell::new(Option::None),
+            this: RefCell::new(Option::None),
+            remote_node_id: None
+        }
+    }
+
+    pub fn relay(&self, wire: Wire) ->Result<(),Error>
+    {
+        let remote = self.remote.borrow();
+        remote.as_ref().unwrap().receive( wire);
+        Ok(())
+    }
+
+    fn error( &self, message: &str )
+    {
+        println!("{}",message);
+        self.status.replace(ConnectionStatus::Error);
+    }
+
+    fn this(&self)->Arc<Connection>
+    {
+        self.this.borrow().as_ref().unwrap().upgrade().unwrap().clone()
+    }
+
+    pub fn receive(&self, wire: Wire)
+    {
+        let status = { (*self.status.borrow()).clone() };
+        match status
+        {
+            ConnectionStatus::WaitVersion => {
+                match wire{
+                    Wire::ReportVersion(version) => {
+                        if version != PROTOCOL_VERSION
+                        {
+                            self.error("connection ERROR. did not report the expected VERSION")
+                        }
+                        else {
+println!("VERSION SET");
+                            self.status.replace(ConnectionStatus::WaitNodeId );
+                        }
+                    }
+                    _ => {
+                        self.error(format!("connection ERROR. expected Version. Got {}",wire).as_str());
+                    }
+                }
+            }
+            ConnectionStatus::WaitNodeId => match wire{
+                Wire::ReportNodeId(remote_node_id) => {
+                    self.status.replace( ConnectionStatus::Ready );
+                },
+                Wire::ReportUniqueSeq(seq)=>
+                    {
+
+                    },
+
+                _ => {
+                    self.error(format!("connection ERROR. expected Report NodeId. Got {}",wire).as_str());
+                }
+            },
+
+            ConnectionStatus::Ready => {}
+
+            ConnectionStatus::Error => {
+                return;
+            }
+        }
+//        let connection = self.this.borrow().as_ref().unwrap().upgrade().unwrap().clone();
+//        self.local.on_wire(wire,connection);
+    }
+
+    pub fn panic( &self, message: Message )
+    {
+
+    }
+
+    pub fn close(&self)
+    {
+
+    }
+}
 pub struct InternalRouter
 {
     routes: RwLock<Vec<Box<dyn InternalRoute>>>,
@@ -63,7 +168,7 @@ impl InternalRouter
         let routes = self.routes.read().unwrap();
         for route in &(*routes)
         {
-            if route.has_nucleus(nucleus_id)
+            if route.has_nucleus(&nucleus_id)
             {
                 return true;
             }
@@ -77,6 +182,22 @@ impl InternalRouter
     {
         let mut routes = self.routes.write().expect("hopefully we haven't poisoned the lock");
         routes.push( route );
+    }
+
+    pub fn relay( &self, message_transport: MessageTransport )->Result<(),Error>
+    {
+        let routes = self.routes.read().unwrap();
+        for route in &(*routes)
+        {
+            if route.has_nucleus(&message_transport.message.to.tron.nucleus)
+            {
+unimplemented!();
+//                route.relay(message_transport);
+                break;
+            }
+        }
+
+        Err("could not find route".into())
     }
 
 
@@ -98,7 +219,7 @@ impl ExternalRouter
         }
     }
 
-    pub fn add_to_hold(&self, message_transport: MessageTransport )
+    fn add_to_hold(&self, message_transport: MessageTransport )
     {
         let mut hold = self.hold.lock().unwrap();
         hold.push(message_transport);
@@ -114,16 +235,71 @@ impl ExternalRouter
 
     }
 
+    fn flush_hold(&self)
+    {
+        let transports: Vec<MessageTransport> = {
+            let mut hold = self.hold.lock().expect("cannot get hold lock");
+            hold.drain(..).collect()
+        };
+
+        for transport in transports
+        {
+unimplemented!();
+//            self.relay(transport);
+        }
+    }
+
+    pub fn add_node_route( &self, node_id: Id, route: Arc<dyn ExternalRoute> )->Result<(),Error>
+    {
+        {
+            let mut inner = self.inner.write()?;
+            inner.add_route(node_id, route);
+        }
+
+        self.flush_hold();
+
+        Ok(())
+    }
+
+    pub fn add_nucleus_to_node( &self, nucleus_id: Id, node_id: Id )->Result<(),Error>
+    {
+        {
+            let mut inner = self.inner.write()?;
+            inner.add_nucleus_to_node(nucleus_id, node_id);
+        }
+
+        self.flush_hold();
+
+        Ok(())
+    }
+
+
+    pub fn remove_route( &mut self, node_id: &Id )
+    {
+        let mut inner = self.inner.write().unwrap();
+        inner.remove_route(node_id);
+    }
+
+    pub fn remove_nucleus( &mut self, nucleus_id: &Id )
+    {
+        let mut inner = self.inner.write().unwrap();
+        inner.remove_nucleus(nucleus_id);
+    }
+
+
+
+
 }
 
+/*
 impl Route for ExternalRouter
 {
-    fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
+    fn relay(&self, message_transport: MessageTransport) -> Result<(), Error> {
         let inner = self.inner.read()?;
         match inner.get_route(&message_transport)
         {
             Ok(route) => {
-                route.relay(Wire::MessageTransport(message_transport))
+                route.wire(Wire::MessageTransport(message_transport))
             }
             Err(error) => match error {
                 NodeNotKnown(node_id) => {
@@ -141,6 +317,7 @@ impl Route for ExternalRouter
         }
     }
 }
+ */
 
 
 
@@ -149,34 +326,22 @@ impl Route for ExternalRouter
 pub struct NodeRouter
 {
     internal: InternalRouter,
-//    outer: Router<NetworkRoute>
+    external: ExternalRouter
 }
 
 
 impl Route for NodeRouter
 {
-    fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
-        let nucleus_id = message_transport.message.to.tron.nucleus.clone();
+    fn relay(&self, message: Arc<Message>) -> Result<(), Error> {
+        let nucleus_id = message.to.tron.nucleus.clone();
         if self.internal.has_nucleus(nucleus_id)
         {
-            Ok(self.forward(message_transport))
+unimplemented!()
+//            self.internal.relay(message)?;
         }
         else {
-            unimplemented!()
-        }
-    }
-}
-
-
-impl ExternalRoute for NodeRouter
-{
-    fn relay(&self, wire: Wire) -> Result<(), Error> {
-        match wire{
-            Wire::MessageTransport(transport) =>
-                self.forward(transport),
-            _ => {
-                unimplemented!();
-            }
+unimplemented!()
+//            self.external.relay(MessageTransport::new())?;
         }
         Ok(())
     }
@@ -188,114 +353,25 @@ impl NodeRouter
     {
         NodeRouter{
             internal: InternalRouter::new(),
+            external: ExternalRouter::new(),
         }
-    }
-    pub fn forward( &self, message_transport: MessageTransport )
-    {
-        // test if inner contains nucleus and if so forward to inner
-
-        // otherwise forward to outer
     }
 }
 
 
-impl Route for Connection
+impl ExternalRoute for Connection
 {
+    fn wire(&self, wire: Wire) -> Result<(), Error> {
+        unimplemented!()
+    }
 
-    fn forward(&self, message_transport: MessageTransport) -> Result<(), Error> {
+    fn relay(&self, message_transport: MessageTransport) -> Result<(), Error> {
         self.relay(Wire::MessageTransport(message_transport));
         Ok(())
     }
 }
 
-impl Connection
-{
-    pub fn init(&self)
-    {
-        self.relay( Wire::ReportVersion(PROTOCOL_VERSION) );
-    }
 
-    pub fn new( local: Arc<dyn WireListener>)->Self
-    {
-        Connection{
-            status: ConnectionStatus::WaitVersion,
-            local: local,
-            remote: RefCell::new(Option::None),
-            remote_node_id: None
-        }
-    }
-    pub fn relay(&self, wire: Wire) ->Result<(),Error>
-    {
-        unimplemented!();
-//        self.remote.borrow().as_ref().unwrap().receive( wire);
-        Ok(())
-    }
-
-    pub fn receive( &mut self, command: Wire)
-    {
-        match self.status
-        {
-            ConnectionStatus::WaitVersion => {
-                match command{
-                    Wire::ReportVersion(v) => {
-                        if v == PROTOCOL_VERSION{
-                            self.status=ConnectionStatus::WaitNodeId
-                        }
-                        else {
-                            self.status=ConnectionStatus::Error;
-                        }
-                    }
-                    _ => {
-                        self.status=ConnectionStatus::Error;
-                    }
-                }
-            }
-            ConnectionStatus::WaitNodeId => {
-                match command{
-                    Wire::ReportNodeId(id) => {
-                        self.remote_node_id = Option::Some(id);
-                        self.status = ConnectionStatus::Ready
-                    }
-                    Wire::RequestUniqueSeq => {
-                        self.relay(command);
-                    }
-                    _  => {
-                        self.status = ConnectionStatus::Error;
-                    }
-                }
-            }
-            ConnectionStatus::Ready => {
-                match command{
-                    Wire::ReportVersion(_) => {
-                        self.status = ConnectionStatus::Error;
-                    }
-                    Wire::ReportNodeId(_) => {
-                        self.status = ConnectionStatus::Error;
-                    }
-                   Wire::Panic(_) => {
-                       self.status = ConnectionStatus::Error;
-                   }
-                    _=>{
-                        self.relay(command);
-                    }
-                }
-            }
-            _ => {
-                println!("not sure what to do with this STATUS!!!")
-            }
-        };
-    }
-
-    pub fn panic( &self, message: Message )
-    {
-
-    }
-
-    pub fn close(&self)
-    {
-
-    }
-}
 
 
 
@@ -304,27 +380,52 @@ pub enum Wire
    ReportVersion(i32),
    ReportNodeId(Id),
    RequestUniqueSeq,
-   RespondUniqueSeq(i64,Option<Id>),
-   NodeSearch(WireGraphSearch),
-   NodeFound(WireGraphSearch),
+   ReportUniqueSeq(ReportUniqueSeqPayload),
+   NodeSearch(NodeSearchPayload),
+   NodeFound(NodeSearchPayload),
    MessageTransport(MessageTransport),
+   Relay(RelayPayload),
    Panic(String)
 }
 
-#[derive(Clone)]
-pub struct WireGraphSearch
+
+impl fmt::Display for Wire {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let r = match self {
+            Wire::ReportVersion(_) => { "ReportVersion" }
+            Wire::ReportNodeId(_) => { "ReportNodeId" }
+            Wire::RequestUniqueSeq => { "RequestUniqueSeq" }
+            Wire::ReportUniqueSeq(_) => { "ReportUniqueSeq" }
+            Wire::NodeSearch(_) => { "NodeSearch" }
+            Wire::NodeFound(_) => { "NodeFound" }
+            Wire::MessageTransport(_) => { "MessageTransport" }
+            Wire::Relay(relay) => { "Relay<>"}
+            Wire::Panic(_) => { "Panic" }
+        };
+        write!(f, "{}",r)
+    }
+}
+
+pub struct RelayPayload
+{
+   from: Id,
+   to: Id,
+   wire: Box<Wire>,
+   transaction: Id
+}
+
+#[derive(Clone,Debug)]
+pub struct NodeSearchPayload
 {
     pub id: Id,
     pub hops: i32,
     pub timestamp: i32
 }
 
-#[derive(Clone)]
-pub struct WireUniqueSeqRequest
+pub struct ReportUniqueSeqPayload
 {
-
+    pub seq: i64
 }
-
 
 
 
@@ -338,7 +439,7 @@ pub enum RouteProblem
 struct ExternalRouterInner
 {
   pub nucleus_to_node_table: HashMap<Id,Id>,
-  pub node_to_route_table: HashMap<Id,Box<dyn ExternalRoute>>
+  pub node_to_route_table: HashMap<Id,Arc<dyn ExternalRoute>>
 }
 
 impl ExternalRouterInner
@@ -351,13 +452,30 @@ impl ExternalRouterInner
         }
     }
 
-    pub fn add_route( &mut self, route: Box<ExternalRoute> )
+    pub fn add_route( &mut self, node_id: Id, route: Arc<ExternalRoute> )
     {
-        unimplemented!()
-     //   self.node_to_route_table.insert(route.node_id(), route );
+        self.node_to_route_table.insert(node_id, route );
     }
 
-    pub fn get_route( &self, transport: &MessageTransport )->Result<&Box<dyn ExternalRoute>,RouteProblem>
+    pub fn remove_route( &mut self, node_id: &Id )
+    {
+        self.node_to_route_table.remove(node_id);
+    }
+
+
+    pub fn add_nucleus_to_node( &mut self, nucleus_id: Id, node_id: Id,  )
+    {
+        self.nucleus_to_node_table.insert(node_id, node_id );
+    }
+
+    pub fn remove_nucleus( &mut self, nucleus_id: &Id )
+    {
+        self.nucleus_to_node_table.remove(nucleus_id);
+    }
+
+
+
+    pub fn get_route( &self, transport: &MessageTransport )->Result<Arc<dyn ExternalRoute>,RouteProblem>
     {
         let node = self.nucleus_to_node_table.get(&transport.message.to.tron.nucleus);
         if node.is_none()
@@ -375,23 +493,24 @@ impl ExternalRouterInner
 
         let route = route.unwrap();
 
-        Ok(&route)
+        Ok(route.clone())
     }
 }
 
 pub trait Route
 {
-    fn forward( &self, message_transport: MessageTransport )->Result<(),Error>;
+    fn relay(&self, message: Arc<Message>) ->Result<(),Error>;
 }
 
 pub trait InternalRoute: Route
 {
-    fn has_nucleus(&self, nucleus_id: Id)->bool;
+    fn has_nucleus(&self, nucleus_id: &Id)->bool;
 }
 
-pub trait ExternalRoute: Route
+pub trait ExternalRoute
 {
-    fn relay( &self, wire: Wire )->Result<(),Error>;
+    fn wire(&self, wire: Wire ) ->Result<(),Error>;
+    fn relay(&self, message_transport: MessageTransport ) ->Result<(),Error>;
 }
 
 
@@ -403,4 +522,21 @@ pub trait WireListener
 
 
 
+#[cfg(test)]
+mod test
+{
+    use crate::node::{Node, NodeKind};
+    use crate::cluster::Cluster;
+    use crate::network::connect;
+    use std::sync::Arc;
 
+    #[test]
+    pub fn test_connection()
+    {
+        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), Option::None ));
+        let server = Arc::new(Node::new(NodeKind::Server, Option::None ));
+
+        let (a,b) = connect(central,server);
+
+    }
+}

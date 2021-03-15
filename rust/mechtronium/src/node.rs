@@ -24,11 +24,11 @@ use crate::network::{NodeRouter, Wire, Connection, Route, WireListener};
 
 pub struct Node{
     pub id: Option<Id>,
+    pub seq: Option<Arc<IdSeq>>,
     pub kind: NodeKind,
     pub local: Option<Arc<Local>>,
-    pub net: Arc<Network>,
     pub cache: Arc<Cache>,
-    pub router: NodeRouter,
+    pub router: Arc<NodeRouter>,
 }
 
 
@@ -44,46 +44,31 @@ impl Node {
             Some(cache) => cache
         };
 
-        let inter_local_router = Arc::new(SharedRouter::new());
-        let inter_gateway_router= Arc::new(SharedRouter::new());
-        let local_router = Arc::new(LocalRouter::new(inter_local_router.clone()));
-        let network_router = Arc::new(NetworkRouter::new(inter_gateway_router.clone() )  );
-
-        let seq = Arc::new(IdSeq::new(0));
-        let network = Arc::new(Network::new(network_router.clone()));
-
-        let local =Arc::new(Local::new(cache.clone(), seq.clone(), inter_local_router.clone()));
-
-        inter_local_router.set_local( local.clone() );
-        inter_local_router.set_remote( local_router.clone() );
-        inter_gateway_router.set_local( local_router.clone() );
-        inter_gateway_router.set_remote( network_router.clone() );
 
         let mut rtn = Node {
-            id: kind.create_id(),
             kind: kind,
+            id: Option::None,
+            seq: Option::None,
             cache: cache.clone(),
-            local: Option::Some(local),
-            net: network.clone(),
-            router: NodeRouter::new()
+            local: Option::None,
+            router: Arc::new(NodeRouter::new())
         };
+
+        if rtn.kind.is_central()
+        {
+           rtn.init_with_sequence(0);
+        }
+
         rtn
     }
 
-    fn relay(&self, command: Wire, connection: Arc<Connection> ) ->Result<(),Error> {
-        match command{
-           _ => {
-                return Err("don't know how to handle command".into());
-            }
-        }
-        Ok(())
-    }
-
-
-
-    pub fn route( transport: MessageTransport )
+    fn init_with_sequence(&mut self, seq: i64 )
     {
+        self.id = Option::Some(Id::new(seq,0));
+        let seq = Arc::new(IdSeq::new(seq));
+        self.seq = Option::Some(seq.clone());
 
+        self.local = Option::Some(Arc::new(Local::new(self.cache.clone(), seq.clone(), self.router.clone())));
     }
 
     pub fn shutdown(&self) {}
@@ -111,7 +96,7 @@ impl Node {
 
 pub struct Local {
     sources: Arc<Nuclei>,
-    router: Arc<dyn InternalRouter>,
+    router: Arc<dyn Route>,
     seq: Arc<IdSeq>,
     cache: Arc<Cache>
 }
@@ -125,7 +110,7 @@ impl NucleiContainer for Local
 }
 
 impl  Local{
-    fn new(cache: Arc<Cache>, seq: Arc<IdSeq>, router: Arc<dyn InternalRouter>) -> Self {
+    fn new(cache: Arc<Cache>, seq: Arc<IdSeq>, router: Arc<dyn Route>) -> Self {
         let rtn = Local {
             sources: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
             router: router,
@@ -160,7 +145,7 @@ impl  Local{
 impl InternalRouter for Local
 {
     fn send(&self, message: Arc<Message>) {
-        self.router.send(message)
+        self.router.relay(message);
     }
 
     fn receive(&self, message: Arc<Message>) {
@@ -210,51 +195,29 @@ pub struct WasmStuff
     pub wasms: Keeper<Module>,
 }
 
-pub struct Network {
-    seq: Arc<IdSeq>,
-    router: Arc<NetworkRouter>,
-}
-
-impl Network {
-    fn new(router: Arc<NetworkRouter>) -> Self {
-        Network {
-            seq: Arc::new(IdSeq::new(0)),
-            router: router
-        }
-    }
-
-    pub fn seq(&self) -> Arc<IdSeq>
-    {
-        self.seq.clone()
-    }
-
-    pub fn router(&self)->Arc<dyn InternalRouter>
-    {
-        self.router.clone()
-    }
-}
-
-
 
 
 impl WireListener for Node
 {
-    fn on_wire(&self, wire: Wire, connection: Arc<Connection>) -> Result<(), Error> {
+    fn on_wire(&self, wire: Wire, mut connection: Arc<Connection>) -> Result<(), Error> {
 
+println!("ON WIRE!");
         match wire{
-            Wire::RequestUniqueSeq => {
-                match &self.kind
+            Wire::ReportVersion(_)=> {
+                // if we have a Node Id, return it
+                if self.id.is_some()
                 {
-                    NodeKind::Central(cluster) => {
-                        connection.relay( Wire::RespondUniqueSeq(0,Option::Some(cluster.seq.next())));
-                    }
-                    NodeKind::Server => {}
-                    NodeKind::Mesh => {}
-                    NodeKind::Gateway => {}
-                    NodeKind::Client => {}
+                    connection.relay(Wire::ReportNodeId(self.id.unwrap()));
                 }
+                else
+                {
+                    connection.relay(Wire::RequestUniqueSeq);
+                }
+            },
+            Wire::RequestUniqueSeq => {
+
             }
-            Wire::RespondUniqueSeq(_,_) => {}
+            Wire::ReportUniqueSeq(_) => {}
             Wire::NodeSearch(search) => {
 
             }
@@ -301,5 +264,13 @@ impl NodeKind
            NodeKind::Central(cluster) => Option::Some(Id::new(0, 0)),
            _ => Option::None
        }
+    }
+
+    fn is_central(&self)->bool
+    {
+        match self{
+            NodeKind::Central(_) => true,
+            _ => false
+        }
     }
 }

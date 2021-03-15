@@ -67,7 +67,7 @@ CONFIGS.cache(&new_mechtron_config);
                 log("neutron", "Was okay?");
             }
             Err(err) => {
-                log("neutron", format!("BLINK BLING {:?}",err).as_str());
+                log("neutron", format!("{:?}",err).as_str());
             }
         }
 log("neutron","configs......");

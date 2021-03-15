@@ -29,6 +29,7 @@ use crate::router::{HasNucleus, InternalRouter};
 use crate::mechtron::CreatePayloadsBuilder;
 use crate::membrane::{WasmMembrane, MechtronMembrane};
 use mechtron_common::logger::log;
+use crate::network::Route;
 
 pub trait NucleiContainer
 {
@@ -43,7 +44,7 @@ pub struct Nuclei {
 impl Nuclei {
     pub fn new(cache: Arc<Cache>,
                seq: Arc<IdSeq>,
-               router: Arc<dyn InternalRouter>) -> Arc<Self> {
+               router: Arc<dyn Route>) -> Arc<Self> {
         let rtn = Arc::new(Nuclei {
             nuclei: RwLock::new(HashMap::new()),
             context: NucleusContext {
@@ -152,7 +153,7 @@ pub struct NucleusContext
 {
     pub cache: Arc<Cache>,
     pub seq: Arc<IdSeq>,
-    pub router: Arc<dyn InternalRouter>,
+    pub router: Arc<dyn Route>,
     pub nuclei: RefCell<Option<Weak<Nuclei>>>
 }
 
@@ -340,7 +341,7 @@ impl Nucleus {
                 for message in messages
                 {
 println!("Sending message of type: {:?} ", &message.kind );
-                    self.context.router.send(Arc::new(message));
+                    self.context.router.relay(Arc::new(message));
                 }
     }
 
@@ -377,7 +378,7 @@ println!("Sending message of type: {:?} ", &message.kind );
 
         for message in messages {
             let router = self.context.router.clone();
-            router.send(message);
+            router.relay(message);
         }
 
 //        self.head.cycle = self.head.cycle+1;
@@ -431,7 +432,7 @@ println!("Sending message of type: {:?} ", &message.kind );
 
         for message in messages {
             let router = &mut self.context.router;
-            router.send(message);
+            router.relay(message);
         }
 
         Ok(())

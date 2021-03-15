@@ -146,3 +146,16 @@ impl Parser<Module> for WasmModuleParser {
         }
     }
 }
+
+#[cfg(test)]
+mod test
+{
+    use crate::cache::default_cache;
+
+    #[test]
+    fn load( )
+    {
+        let cache = default_cache();
+    }
+
+}

@@ -34,8 +34,8 @@ lazy_static! {
     pub static ref CORE_SCHEMA_ARTIFACT: Artifact = CORE.path_and_kind(&"schema/util/artifact.schema", "schema");
     pub static ref CORE_SCHEMA_OK : Artifact = CORE.path_and_kind(&"schema/util/ok.schema", "schema");
     pub static ref CORE_SCHEMA_MECHTRON_CONTEXT : Artifact = CORE.path_and_kind(&"schema/mechtron/context.schema", "schema");
-    pub static ref CORE_SCHEMA_TYPE_ID: Artifact = CORE.path_and_kind(&"schema/util/type_id.yaml", "schema");
-    pub static ref CORE_SCHEMA_TYPE_ID_VALUE: Artifact = CORE.path_and_kind(&"schema/util/type_id_value.yaml", "schema");
+    pub static ref CORE_SCHEMA_TYPE_ID: Artifact = CORE.path_and_kind(&"schema/util/type_id.schema", "schema");
+    pub static ref CORE_SCHEMA_TYPE_ID_VALUE: Artifact = CORE.path_and_kind(&"schema/util/type_id_value.schema", "schema");
 
     pub static ref CORE_NUCLEUS_SIMULATION: Artifact = CORE.path_and_kind(&"nucleus/sim.yaml", "nucleus");
 
