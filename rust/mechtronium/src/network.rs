@@ -105,7 +105,6 @@ impl Connection
                             self.error("connection ERROR. did not report the expected VERSION")
                         }
                         else {
-println!("VERSION SET");
                             self.status.replace(ConnectionStatus::WaitNodeId );
                         }
                     }
@@ -114,13 +113,18 @@ println!("VERSION SET");
                     }
                 }
             }
-            ConnectionStatus::WaitNodeId => match wire{
+            ConnectionStatus::WaitNodeId => match &wire{
                 Wire::ReportNodeId(remote_node_id) => {
                     self.status.replace( ConnectionStatus::Ready );
+                    self.local.on_wire( wire, self.this() );
                 },
+                Wire::RequestUniqueSeq=>
+                    {
+                        self.local.on_wire( wire, self.this() );
+                    }
                 Wire::ReportUniqueSeq(seq)=>
                     {
-
+                        self.local.on_wire( wire, self.this() );
                     },
 
                 _ => {
@@ -128,9 +132,13 @@ println!("VERSION SET");
                 }
             },
 
-            ConnectionStatus::Ready => {}
+            ConnectionStatus::Ready => {
+                self.local.on_wire(wire,self.this());
+
+            }
 
             ConnectionStatus::Error => {
+                println!("Connection is Errored, no further processing.");
                 return;
             }
         }
@@ -356,6 +364,12 @@ impl NodeRouter
             external: ExternalRouter::new(),
         }
     }
+
+    pub fn add_external_connection( &self, node_id: Id, connection: Arc<Connection>)
+    {
+        self.external.add_node_route(node_id, connection );
+    }
+
 }
 
 
@@ -529,14 +543,18 @@ mod test
     use crate::cluster::Cluster;
     use crate::network::connect;
     use std::sync::Arc;
+    use crate::cache::default_cache;
 
     #[test]
     pub fn test_connection()
     {
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), Option::None ));
-        let server = Arc::new(Node::new(NodeKind::Server, Option::None ));
+        let cache = Option::Some(default_cache());
+        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
+        let server = Arc::new(Node::new(NodeKind::Server, cache ));
 
-        let (a,b) = connect(central,server);
+        let (a,b) = connect(central.clone(),server.clone() );
 
+        assert!( central.is_init() );
+        assert!( server.is_init() );
     }
 }

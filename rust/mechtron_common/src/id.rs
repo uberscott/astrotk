@@ -44,9 +44,14 @@ pub struct IdSeq {
 
 impl IdSeq {
     pub fn new(seq_id: i64) -> Self {
+
+        IdSeq::with_seq_and_start_index(seq_id,0)
+    }
+
+    pub fn with_seq_and_start_index(seq_id: i64, start_index: i64) -> Self {
         IdSeq {
             seq_id: seq_id,
-            seq: AtomicI64::new(0),
+            seq: AtomicI64::new(start_index ),
         }
     }
 

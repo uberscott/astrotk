@@ -20,13 +20,14 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload};
+use std::fmt;
 
 pub struct Node{
-    pub id: Option<Id>,
-    pub seq: Option<Arc<IdSeq>>,
+    pub id: RefCell<Option<Id>>,
+    pub seq: RefCell<Option<Arc<IdSeq>>>,
+    pub local: RefCell<Option<Arc<Local>>>,
     pub kind: NodeKind,
-    pub local: Option<Arc<Local>>,
     pub cache: Arc<Cache>,
     pub router: Arc<NodeRouter>,
 }
@@ -47,10 +48,10 @@ impl Node {
 
         let mut rtn = Node {
             kind: kind,
-            id: Option::None,
-            seq: Option::None,
+            id: RefCell::new(Option::None),
+            seq: RefCell::new(Option::None),
+            local: RefCell::new(Option::None),
             cache: cache.clone(),
-            local: Option::None,
             router: Arc::new(NodeRouter::new())
         };
 
@@ -62,25 +63,50 @@ impl Node {
         rtn
     }
 
-    fn init_with_sequence(&mut self, seq: i64 )
+    pub fn id(&self)->Id
     {
-        self.id = Option::Some(Id::new(seq,0));
-        let seq = Arc::new(IdSeq::new(seq));
-        self.seq = Option::Some(seq.clone());
-
-        self.local = Option::Some(Arc::new(Local::new(self.cache.clone(), seq.clone(), self.router.clone())));
+        self.id.borrow().as_ref().expect("this node has not been initialized.").clone()
     }
+
+    pub fn seq(&self)->Arc<IdSeq>
+    {
+        self.seq.borrow().as_ref().expect("this node has not been initialized.").clone()
+    }
+
+    fn local(&self)->Arc<Local>
+    {
+        self.local.borrow().as_ref().expect("this node has not been initialized.").clone()
+    }
+
+    pub fn is_init(&self)->bool
+    {
+        self.id.borrow().is_some()
+    }
+
+    fn init_with_sequence(&self, seq: i64 )->Result<(),Error>
+    {
+        if self.id.borrow().is_some()
+        {
+            return Err("Node id is already set and cannot be modified!".into());
+        }
+        self.id.replace(Option::Some(Id::new(seq,0)));
+        let seq = Arc::new(IdSeq::with_seq_and_start_index(seq,1 ));
+        self.seq.replace(Option::Some(seq.clone()));
+        self.local.replace(Option::Some(Arc::new(Local::new(self.cache.clone(), seq.clone(), self.router.clone()))));
+        Ok(())
+    }
+
 
     pub fn shutdown(&self) {}
 
     pub fn create_sim_from_scratch(&self, config: Arc<SimConfig>) -> Result<Id, Error> {
 
-        if self.local.is_none()
+        if self.local.borrow().is_none()
         {
             return Err("local is none".into())
         }
 
-        let id = self.local.as_ref().unwrap().sources.create_sim(config)?;
+        let id = self.local.borrow().as_ref().unwrap().sources.create_sim(config)?;
 
        Ok(id)
     }
@@ -201,13 +227,12 @@ impl WireListener for Node
 {
     fn on_wire(&self, wire: Wire, mut connection: Arc<Connection>) -> Result<(), Error> {
 
-println!("ON WIRE!");
         match wire{
             Wire::ReportVersion(_)=> {
                 // if we have a Node Id, return it
-                if self.id.is_some()
+                if self.id.borrow().is_some()
                 {
-                    connection.relay(Wire::ReportNodeId(self.id.unwrap()));
+                    connection.relay(Wire::ReportNodeId(self.id()));
                 }
                 else
                 {
@@ -216,8 +241,21 @@ println!("ON WIRE!");
             },
             Wire::RequestUniqueSeq => {
 
+                if self.kind.is_central()
+                {
+                    connection.relay( Wire::ReportUniqueSeq(ReportUniqueSeqPayload{ seq: self.seq().next().id }));
+                }
+                else {
+
+                }
+
             }
-            Wire::ReportUniqueSeq(_) => {}
+            Wire::ReportUniqueSeq(payload) => {
+                self.init_with_sequence(payload.seq);
+            }
+            Wire::ReportNodeId(node_id) => {
+                self.router.add_external_connection( node_id, connection);
+            }
             Wire::NodeSearch(search) => {
 
             }
@@ -272,5 +310,18 @@ impl NodeKind
             NodeKind::Central(_) => true,
             _ => false
         }
+    }
+}
+
+impl fmt::Display for NodeKind{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let r = match self {
+            NodeKind::Central(_) => {"Central"}
+            NodeKind::Server => {"Server"}
+            NodeKind::Mesh => {"Mesh"}
+            NodeKind::Gateway => {"Gateway"}
+            NodeKind::Client => {"Client"}
+        };
+        write!(f, "{}",r)
     }
 }
