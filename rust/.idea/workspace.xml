@@ -19,14 +19,8 @@
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/cluster.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/cluster.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/network.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/network.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/star.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/router.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/router.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/simulation.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/star.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/star.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -99,7 +93,7 @@
       <recent name="$PROJECT_DIR$/mechtron/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test network::test::test_supervisor">
+  <component name="RunManager" selected="Cargo.Test network::test">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -275,8 +269,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test network::test::test_supervisor" />
         <item itemvalue="Cargo.Test network::test" />
+        <item itemvalue="Cargo.Test network::test::test_supervisor" />
         <item itemvalue="Cargo.Test network::test::test_circular_graph" />
         <item itemvalue="Cargo.Test network::test::test_long_relay" />
         <item itemvalue="Cargo.Test network::test::test_report_request_unique_seq_twice" />

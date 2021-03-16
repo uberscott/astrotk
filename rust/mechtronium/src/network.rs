@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, Mutex, Weak};
 
 use mechtron_common::message::{Message, MessageTransport};
 
-use crate::star::Star;
+use crate::star::{Star, StarCore, StarKind};
 use crate::error::Error;
 use mechtron_common::id::Id;
 use std::collections::{HashMap, HashSet};
@@ -122,7 +122,6 @@ println!("to_remote() {} - {} -> {}", self.local.describe(), wire, remote.descri
 
     pub fn add_found_node(&self, node: Id, find: NodeFind )
     {
-println!("ADD FOUND {}",find.hops.clone());
         self.found_nodes.borrow_mut().insert(node,find);
     }
 
@@ -393,10 +392,25 @@ impl ExternalRouter
         }
     }
 
-    pub fn relay_wire(&self, wire: Wire )->Result<(),Error>
+    pub fn relay_wire(&self, wire: Wire ) ->Result<(),Error>
+    {
+        self.relay_wire_excluding(wire,Option::None)
+    }
+
+    pub fn relay_wire_excluding(&self, wire: Wire, exclude:Option<Id> ) ->Result<(),Error>
     {
         match &wire
         {
+            Wire::Search(search) => {
+                let routes = {
+                    let inner = self.inner.read()?;
+                    inner.get_all_routes_excluding(&exclude)
+                }?;
+                for route in routes
+                {
+                    route.wire(Wire::Search(search.clone()));
+                }
+            }
             Wire::Relay(payload) => {
                 let route = {
                     let inner = self.inner.read()?;
@@ -405,7 +419,6 @@ impl ExternalRouter
                 match route
                 {
                     Ok(route) => {
-println!("sending wire to route: {:?}",route.get_remote_node());
                         route.wire(wire)?;
                     }
                     Err(error) => {
@@ -540,6 +553,12 @@ impl NodeRouter
         self.external.relay_wire(wire)
     }
 
+    pub fn relay_wire_excluding(&self, wire: Wire, excluding: Option<Id> )->Result<(),Error>
+    {
+        self.external.relay_wire_excluding(wire, excluding )
+    }
+
+
     pub fn add_route( &self, route: Arc<dyn ExternalRoute>)
     {
         self.external.add_route(route);
@@ -639,6 +658,7 @@ pub enum Wire
    NodeFound(NodeSearchPayload),
    NodeNotFound(NodeSearchPayload),
    MessageTransport(MessageTransport),
+   Search(Search),
    Relay(Relay),
    Panic(String)
 }
@@ -656,11 +676,76 @@ impl fmt::Display for Wire {
             Wire::NodeFound(_) => { "NodeFound" }
             Wire::MessageTransport(_) => { "MessageTransport" }
             Wire::Relay(relay) => { "Relay<>"}
+            Wire::Search(_) => { "Search<>"}
             Wire::Panic(_) => { "Panic" }
         };
         write!(f, "{}",r)
     }
 }
+
+#[derive(Clone)]
+pub struct Search
+{
+    pub from: Id,
+    pub kind: SearchKind,
+    pub hops: i32,
+    pub max_hops: i32,
+    pub transaction: Option<Id>
+}
+
+pub struct SearchResult
+{
+    pub found: Id,
+    pub kind: SearchKind,
+    pub hops: i32,
+    pub transaction: Option<Id>
+}
+
+impl Search{
+    pub fn new(from:Id,kind:SearchKind)->Self
+    {
+        Search{
+            from: from,
+            kind: kind,
+            hops: 0,
+            max_hops: 16,
+            transaction: Option::None
+        }
+    }
+
+    pub fn inc_hops(self)->Self
+    {
+        Search{
+            from:self.from,
+            kind: self.kind,
+            hops: self.hops+1,
+            max_hops: self.max_hops,
+            transaction: None
+        }
+    }
+}
+
+
+
+#[derive(Clone,Eq,PartialEq)]
+pub enum SearchKind
+{
+    StarKind(StarKind)
+}
+
+impl SearchKind
+{
+    pub fn matches( &self, star: &Star )->bool
+    {
+        match self
+        {
+            SearchKind::StarKind(star_kind) => {
+               star.core.kind() == *star_kind
+            }
+        }
+    }
+}
+
 
 pub struct Relay
 {
@@ -721,13 +806,15 @@ pub enum RelayPayload
     NodeNotFound(NodeSearchPayload),
     ReportSupervisorAvailable,
     RequestCreateSimulation(RequestCreateSimulation),
-    ReportAssignSimulation(ReportAssignSimulation),
+    AssignSimulationToSupervisor(ReportAssignSimulation),
+    RequestServerForSupervisor(Id),
+    AssignServerToSupervisor(Id),
     RequestSupervisorForSim(Id),
     ReportSupervisorForSim(ReportSupervisorForSim),
     RequestNucleusNode(Id),
     ReportNucleusNode(ReportNucleusNodePayload),
+    SearchResult(SearchResult)
 }
-
 
 
 pub struct RequestCreateSimulation
@@ -832,6 +919,26 @@ impl ExternalRouterInner
     {
         self.remove_route(route);
     }
+
+    pub fn get_all_routes_excluding(&self,  exclude: &Option<Id> ) ->Result<Vec<Arc<dyn ExternalRoute>>,Error>
+    {
+        Ok(self.routes.iter().map(|route|route.clone()).filter(|route|match route.get_remote_node(){
+            None => {
+                return false;
+            }
+            Some(star) => {
+                match exclude{
+                    None => {
+                        return true;
+                    }
+                    Some(exclude) => {
+                        return *exclude != star;
+                    }
+                }
+            }
+        } ).collect())
+    }
+
 
     pub fn get_all_posible_routes_for_node(&self, node: &Id ) ->Result<Vec<Arc<dyn ExternalRoute>>,Error>
     {
@@ -948,7 +1055,7 @@ pub struct NucleusRoute
 #[cfg(test)]
 mod test
 {
-    use crate::star::{Star, StarKind, Supervisor, PanicErrorHandler};
+    use crate::star::{Star, StarCore, Supervisor, PanicErrorHandler, Server};
     use crate::cluster::Cluster;
     use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload, Relay, RelayPayload, RequestCreateSimulation};
     use std::sync::{Arc, RwLock};
@@ -961,8 +1068,8 @@ mod test
     pub fn test_connection()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
         let (mut a,mut b) = connect(central.clone(),server.clone() );
 
@@ -981,8 +1088,8 @@ mod test
     pub fn test_report_report_node_id_twice()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -998,8 +1105,8 @@ mod test
     pub fn test_report_request_unique_seq_after_node_set()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -1015,8 +1122,8 @@ mod test
     pub fn test_report_request_unique_seq_twice()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -1030,8 +1137,8 @@ mod test
     pub fn test_report_report_node_id_not_from_seq()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -1046,9 +1153,9 @@ mod test
     pub fn test_relay_unique_seq()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let mesh= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
         let (central_to_mesh,mesh_to_central) = connect(central.clone(),mesh.clone() );
 
@@ -1068,11 +1175,11 @@ mod test
     pub fn test_long_relay()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let mesh= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache.clone() ));
-        let gateway = Arc::new(Star::new(StarKind::Gateway, cache.clone() ));
-        let client = Arc::new(Star::new(StarKind::Client, cache.clone() ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache.clone() ));
+        let gateway = Arc::new(Star::new(StarCore::Gateway, cache.clone() ));
+        let client = Arc::new(Star::new(StarCore::Client, cache.clone() ));
 
         let (central_to_mesh,mesh_to_central) = connect(central.clone(),mesh.clone() );
 
@@ -1109,12 +1216,12 @@ mod test
     pub fn test_supervisor()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let mesh= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
-        let supervisor = Arc::new(Star::new(StarKind::Supervisor(RwLock::new(Supervisor::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarKind::Server, cache.clone() ));
-        let gateway = Arc::new(Star::new(StarKind::Gateway, cache.clone() ));
-        let client = Arc::new(Star::new(StarKind::Client, cache.clone() ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        let supervisor = Arc::new(Star::new(StarCore::Supervisor(RwLock::new(Supervisor::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache.clone() ));
+        let gateway = Arc::new(Star::new(StarCore::Gateway, cache.clone() ));
+        let client = Arc::new(Star::new(StarCore::Client, cache.clone() ));
 
         central.error_handler.replace(Box::new(PanicErrorHandler::new()) );
         mesh.error_handler.replace(Box::new(PanicErrorHandler::new()) );
@@ -1124,6 +1231,7 @@ mod test
         client.error_handler.replace(Box::new(PanicErrorHandler::new()) );
 
         let (central_to_mesh,mesh_to_central) = connect(central.clone(),mesh.clone() );
+        connect(supervisor.clone(),mesh.clone() );
 
         assert!( central.is_init() );
         assert!( mesh.is_init() );
@@ -1141,23 +1249,12 @@ mod test
 
         assert!( client.is_init() );
 
-        connect(supervisor.clone(),mesh.clone() );
 
-        client.router.relay_wire(Wire::Relay(
-            Relay{
-                from: client.id(),
-                to: supervisor.id(),
-                payload: RelayPayload::Ping(Id::new(123,321)),
-                transaction: Option::None,
-                hops: 0
-            }
-        ));
-
-        match &central.kind
+       match &central.core
         {
-            StarKind::Central(cluster) => {
+            StarCore::Central(cluster) => {
                 let cluster = cluster.read().unwrap();
-                println!("CHECKING AVAILABLE SUPERVISTORS...");
+println!("CHECKING AVAILABLE SUPERS...");
                 assert_eq!(cluster.available_supervisors.len(),1);
             },
             _ => {assert!(false)}
@@ -1168,6 +1265,15 @@ mod test
             simulation_config: Default::default()
         }))));
 
+        match &server.core
+        {
+            StarCore::Server(server) => {
+                let server = server.read().unwrap();
+                assert_eq!(server.nearest_supervisors.len(), 1);
+            }
+            _ => {}
+        }
+
     }
 
 
@@ -1176,18 +1282,18 @@ mod test
     pub fn test_circular_graph()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let mesh1= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh1= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
         connect(central.clone(),mesh1.clone() );
 
         assert!( central.is_init() );
         assert!( mesh1.is_init() );
 
-        let mesh2= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
+        let mesh2= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
         connect(central.clone(),mesh2.clone() );
         assert!( mesh2.is_init() );
 
-        let mesh3= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
+        let mesh3= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
         connect(mesh1.clone(),mesh2.clone() );
         let (_,connection)=connect(mesh1.clone(),mesh3.clone() );
         assert!( mesh3.is_init() );

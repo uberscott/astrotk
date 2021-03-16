@@ -20,7 +20,7 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation, Search, SearchResult, SearchKind};
 use std::fmt;
 use crate::network::RelayPayload::ReportSupervisorAvailable;
 
@@ -29,7 +29,7 @@ pub struct Star {
     pub id: RefCell<Option<Id>>,
     pub seq: RefCell<Option<Arc<IdSeq>>>,
     pub local: RefCell<Option<Arc<Local>>>,
-    pub kind: StarKind,
+    pub core: StarCore,
     pub cache: Arc<Cache>,
     pub router: Arc<NodeRouter>,
     connection_transactions: Mutex<HashMap<Id,Arc<Connection>>>,
@@ -40,7 +40,7 @@ pub struct Star {
 impl Star {
 
 
-    pub fn new(kind: StarKind, cache: Option<Arc<Cache>>) -> Self {
+    pub fn new(kind: StarCore, cache: Option<Arc<Cache>>) -> Self {
 
         let cache = match cache{
             None => {
@@ -51,7 +51,7 @@ impl Star {
 
 
         let mut rtn = Star {
-            kind: kind,
+            core: kind,
             id: RefCell::new(Option::None),
             seq: RefCell::new(Option::None),
             local: RefCell::new(Option::None),
@@ -61,7 +61,7 @@ impl Star {
             error_handler: RefCell::new( Box::new(LogErrorHandler{}) )
         };
 
-        if rtn.kind.is_central()
+        if rtn.core.is_central()
         {
            rtn.init_with_sequence(0);
         }
@@ -113,15 +113,16 @@ impl Star {
 
     fn start(&self)
     {
-        match &self.kind
+        match &self.core
         {
-            StarKind::Supervisor(supervisor) => {
-                println!("***");
-                println!("REPORTING SUPERVISTOR AVAILABLE!!!!") ;
-                println!("***");
+            StarCore::Supervisor(supervisor) => {
                 self.router.relay_wire(Wire::Relay(Relay::to_central(self.id(),
                                                                      ReportSupervisorAvailable)));
-            }
+            },
+            StarCore::Server(_) => {
+                self.router.relay_wire(Wire::Search(Search::new(self.id(),
+                                                                     SearchKind::StarKind(StarKind::Supervisor) )));
+            },
             _ => {}
         }
 
@@ -154,6 +155,38 @@ impl Star {
      //   self.internal_router.send( Arc::new(message))
     }
 
+    fn on_search( &self, search: Search, connection: Arc<Connection> )->Result<(),Error>
+    {
+        if search.hops < 0
+        {
+            self.error("Illegal search hops!");
+        }
+        if search.max_hops > 16
+        {
+            self.error("Illegal max search hops!");
+        }
+        else if search.hops > search.max_hops
+        {
+            self.error("Too many search hops!");
+        }
+
+        let search = search.inc_hops();
+
+        if search.kind.matches(self)
+        {
+            let reply = Relay::new(self.id(),search.from.clone(), RelayPayload::SearchResult(SearchResult{
+                found: self.id().clone(),
+                kind: search.kind.clone(),
+                hops: search.hops.clone(),
+                transaction: Option::None
+            }));
+            self.router.relay_wire(Wire::Relay(reply) );
+        }
+        self.router.relay_wire_excluding(Wire::Search(search), connection.get_remote_node_id());
+
+        Ok(())
+    }
+
     fn on_relay( &self, relay: Relay, connection: Arc<Connection> )->Result<(),Error>
     {
 
@@ -170,14 +203,12 @@ impl Star {
         match &relay.payload
         {
             RelayPayload::NodeFound(search)=> {
-                println!("RELAY: Node found");
                 connection.add_found_node(search.seeking_id.clone() , NodeFind::new(search.hops,self.timestamp()));
                 self.router.notify_found( &search.seeking_id );
 
             }
             RelayPayload::NodeNotFound(search)=> {
                 connection.add_unfound_node(search.seeking_id.clone() );
-                println!("RELAY: Node NOT found")
             }
             _ => {}
         }
@@ -199,10 +230,20 @@ impl Star {
                     self.router.relay_wire(Wire::Relay(reply))?;
                 }
                 RelayPayload::Pong(id)=> {
-println!("RECEIVED PONG: {:?}",id);
+                }
+                RelayPayload::SearchResult(result)=>
+                {
+                    match &self.core
+                    {
+                        StarCore::Server(server) => {
+                            let mut server = server.write().unwrap();
+                            server.nearest_supervisors.insert(result.found, result.hops );
+                        }
+                        _ => {}
+                    }
                 }
                 RelayPayload::RequestUniqueSeq => {
-                    if self.kind.is_central()
+                    if self.core.is_central()
                     {
                         let reply = relay.reply(RelayPayload::ReportUniqueSeq(ReportUniqueSeqPayload{seq:self.seq().next().id}));
                         self.router.relay_wire(Wire::Relay(reply))?;
@@ -212,13 +253,10 @@ println!("RECEIVED PONG: {:?}",id);
                     }
                 },
                 RelayPayload::ReportSupervisorAvailable=> {
-                    match &self.kind
+                    match &self.core
                     {
 
-                        StarKind::Central(cluster) => {
-println!("***");
-println!("~~~ RECEIVED: REPORT SUPERVISTOR AVAILABLE!!!!") ;
-println!("***");
+                        StarCore::Central(cluster) => {
                             let mut cluster = cluster.write()?;
                             cluster.available_supervisors.push(relay.from.clone());
                         }
@@ -228,16 +266,16 @@ println!("***");
                     }
                 }
                 RelayPayload::RequestCreateSimulation(request_create_simulation)=> {
-                    match &self.kind
+                    match &self.core
                     {
-                        StarKind::Central(cluster) => {
+                        StarCore::Central(cluster) => {
                             let mut cluster = cluster.write()?;
                             let index = (cluster.available_supervisors_round_robin_index % cluster.available_supervisors.len());
                             let star = cluster.available_supervisors[index].clone();
                             let forward = Wire::Relay(Relay {
                                 from: self.id(),
                                 to: star,
-                                payload: RelayPayload::ReportAssignSimulation(ReportAssignSimulation {
+                                payload: RelayPayload::AssignSimulationToSupervisor(ReportAssignSimulation {
                                     simulation: request_create_simulation.simulation.clone(),
                                     simulation_config: request_create_simulation.simulation_config.clone(),
                                     inform: relay.from
@@ -388,12 +426,12 @@ impl WireListener for Star
 {
     fn describe(&self)->String
     {
-        format!("NodeKind: {}",self.kind)
+        format!("NodeKind: {}",self.core)
     }
 
     fn on_wire(&self, wire: Wire, mut connection: Arc<Connection>) -> Result<(), Error> {
 
-println!("on_wire()  {} -> {}",wire,self.kind,);
+println!("on_wire()  {} -> {}", wire, self.core,);
         match wire{
             Wire::ReportVersion(_)=> {
                 // if we have a Node Id, return it
@@ -408,12 +446,11 @@ println!("on_wire()  {} -> {}",wire,self.kind,);
             },
             Wire::RequestUniqueSeq => {
 
-                if self.kind.is_central()
+                if self.core.is_central()
                 {
                     connection.to_remote( Wire::ReportUniqueSeq(ReportUniqueSeqPayload{ seq: self.seq().next().id }));
                 }
                 else {
-println!("don't know how to provide a unique sequence... relaying to central");
                     let transaction = self.seq().next();
                     let wire = Wire::Relay(
                             Relay{
@@ -435,11 +472,19 @@ println!("don't know how to provide a unique sequence... relaying to central");
             Wire::ReportUniqueSeq(payload) => {
                 self.init_with_sequence(payload.seq);
                 connection.to_remote( Wire::ReportNodeId(self.id()));
-                self.start();
+                if connection.get_remote_node_id().is_some()
+                {
+                    self.router.add_external_connection(connection);
+                    self.start();
+                }
             }
             Wire::ReportNodeId(node_id) => {
                 connection.add_found_node(node_id, NodeFind::new(1,u64::MAX));
                 self.router.add_external_connection( connection);
+                if self.is_init()
+                {
+                    self.start();
+                }
             }
             Wire::NodeSearch(search) => {
                 let mut search  = search.clone();
@@ -451,10 +496,8 @@ println!("don't know how to provide a unique sequence... relaying to central");
                 connection.add_unfound_node(search.seeking_id.clone() );
 
 
-println!("seeking: {:?} and this is: {:?}",search.seeking_id.clone(), self.id());
                 if search.seeking_id == self.id()
                 {
-println!("~~~~~ FOUND ~~~~~");
                     connection.wire(Wire::Relay(
                         Relay{
                             from: self.id(),
@@ -483,9 +526,7 @@ println!("~~~~~ FOUND ~~~~~");
                 }
                 else
                 {
-println!("~~~~~ RELAY NODE SEARCH ~~~~~");
                     let mut search = search.clone();
-println!("~~~~~ SEARCH hops {} ~~~~~",&search.hops);
                     self.router.relay_wire( Wire::NodeSearch(search) )?;
                 }
             }
@@ -496,6 +537,10 @@ println!("~~~~~ SEARCH hops {} ~~~~~",&search.hops);
             }
             Wire::Relay(relay) => {
                 self.on_relay(relay,connection);
+
+            }
+            Wire::Search(search) => {
+                self.on_search(search,connection);
 
             }
 
@@ -521,22 +566,33 @@ pub struct Client
 {
 }
 
+#[derive(Clone,Eq,PartialEq)]
 pub enum StarKind
 {
-    Central(RwLock<Cluster>),
+    Central,
     Server,
+    Mesh,
+    Gateway,
+    Client,
+    Supervisor
+}
+
+pub enum StarCore
+{
+    Central(RwLock<Cluster>),
+    Server(RwLock<Server>),
     Mesh,
     Gateway,
     Client,
     Supervisor(RwLock<Supervisor>)
 }
 
-impl StarKind
+impl StarCore
 {
     fn create_id(&self)->Option<Id>
     {
        match self{
-           StarKind::Central(cluster) => Option::Some(Id::new(0, 0)),
+           StarCore::Central(cluster) => Option::Some(Id::new(0, 0)),
            _ => Option::None
        }
     }
@@ -544,21 +600,59 @@ impl StarKind
     fn is_central(&self)->bool
     {
         match self{
-            StarKind::Central(_) => true,
+            StarCore::Central(_) => true,
             _ => false
+        }
+    }
+
+    fn is_server(&self)->bool
+    {
+        match self{
+            StarCore::Server(_) => true,
+            _ => false
+        }
+    }
+
+
+    pub fn kind(&self)->StarKind
+    {
+        match self
+        {
+            StarCore::Central(_) => StarKind::Central,
+            StarCore::Server(_) => StarKind::Server,
+            StarCore::Mesh => StarKind::Mesh,
+            StarCore::Gateway => StarKind::Gateway,
+            StarCore::Client => StarKind::Client,
+            StarCore::Supervisor(_) => StarKind::Supervisor
+        }
+    }
+
+}
+
+pub struct Server
+{
+    pub nearest_supervisors: HashMap<Id,i32>
+}
+
+impl Server
+{
+    pub fn new()->Self
+    {
+        Server{
+            nearest_supervisors: HashMap::new()
         }
     }
 }
 
-impl fmt::Display for StarKind {
+impl fmt::Display for StarCore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let r = match self {
-            StarKind::Central(_) => {"Central"}
-            StarKind::Server => {"Server"}
-            StarKind::Mesh => {"Mesh"}
-            StarKind::Gateway => {"Gateway"}
-            StarKind::Client => {"Client"}
-            StarKind::Supervisor(_) => {"Supervisor"}
+            StarCore::Central(_) => {"Central"}
+            StarCore::Server(_) => {"Server"}
+            StarCore::Mesh => {"Mesh"}
+            StarCore::Gateway => {"Gateway"}
+            StarCore::Client => {"Client"}
+            StarCore::Supervisor(_) => {"Supervisor"}
         };
         write!(f, "{}",r)
     }
