@@ -2,7 +2,7 @@ use std::alloc::System;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, RwLock, Weak, Mutex};
 
 use wasmer::{Cranelift, JIT, Module, Store};
 
@@ -20,8 +20,9 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind};
 use std::fmt;
+
 
 pub struct Node{
     pub id: RefCell<Option<Id>>,
@@ -30,6 +31,7 @@ pub struct Node{
     pub kind: NodeKind,
     pub cache: Arc<Cache>,
     pub router: Arc<NodeRouter>,
+    connection_transactions: Mutex<HashMap<Id,Arc<Connection>>>
 }
 
 
@@ -52,7 +54,8 @@ impl Node {
             seq: RefCell::new(Option::None),
             local: RefCell::new(Option::None),
             cache: cache.clone(),
-            router: Arc::new(NodeRouter::new())
+            router: Arc::new(NodeRouter::new()),
+            connection_transactions: Mutex::new(HashMap::new()),
         };
 
         if rtn.kind.is_central()
@@ -93,6 +96,7 @@ impl Node {
         let seq = Arc::new(IdSeq::with_seq_and_start_index(seq,1 ));
         self.seq.replace(Option::Some(seq.clone()));
         self.local.replace(Option::Some(Arc::new(Local::new(self.cache.clone(), seq.clone(), self.router.clone()))));
+        self.router.set_node_id(self.id());
         Ok(())
     }
 
@@ -109,6 +113,12 @@ impl Node {
         let id = self.local.borrow().as_ref().unwrap().sources.create_sim(config)?;
 
        Ok(id)
+    }
+
+    pub fn timestamp(&self)->u64
+    {
+        // implement later
+        0
     }
 
     pub fn send( &self, message: Message )
@@ -225,44 +235,179 @@ pub struct WasmStuff
 
 impl WireListener for Node
 {
+    fn describe(&self)->String
+    {
+        format!("NodeKind: {}",self.kind)
+    }
+
     fn on_wire(&self, wire: Wire, mut connection: Arc<Connection>) -> Result<(), Error> {
 
+println!("on_wire()  {} -> {}",wire,self.kind,);
         match wire{
             Wire::ReportVersion(_)=> {
                 // if we have a Node Id, return it
                 if self.id.borrow().is_some()
                 {
-                    connection.relay(Wire::ReportNodeId(self.id()));
+                    connection.to_remote(Wire::ReportNodeId(self.id()));
                 }
                 else
                 {
-                    connection.relay(Wire::RequestUniqueSeq);
+                    connection.to_remote(Wire::RequestUniqueSeq);
                 }
             },
             Wire::RequestUniqueSeq => {
 
                 if self.kind.is_central()
                 {
-                    connection.relay( Wire::ReportUniqueSeq(ReportUniqueSeqPayload{ seq: self.seq().next().id }));
+                    connection.to_remote( Wire::ReportUniqueSeq(ReportUniqueSeqPayload{ seq: self.seq().next().id }));
                 }
                 else {
+println!("don't know how to provide a unique sequence... relaying to central");
+                    let transaction = self.seq().next();
+                    let wire = Wire::Relay(
+                            RelayPayload {
+                                from: self.id(),
+                                to: Id::new(0, 0),
+                                wire: Box::new(Wire::RequestUniqueSeq),
+                                transaction: transaction.clone(),
+                                hops: 0
+                            }
+                    );
+                    {
+                        let mut connection_transactions = self.connection_transactions.lock()?;
+                        connection_transactions.insert(transaction, connection);
+                    }
 
+                    self.router.relay_wire(wire);
                 }
-
             }
             Wire::ReportUniqueSeq(payload) => {
                 self.init_with_sequence(payload.seq);
+                connection.to_remote( Wire::ReportNodeId(self.id()));
             }
             Wire::ReportNodeId(node_id) => {
-                self.router.add_external_connection( node_id, connection);
+                connection.add_found_node(node_id, NodeFind::new(1,u64::MAX));
+                self.router.add_external_connection( connection);
             }
             Wire::NodeSearch(search) => {
+                let mut search  = search.clone();
+                search.hops = search.hops+1;
 
+                // since the request came from this route we know that's where to find it
+                connection.add_found_node(search.from.clone(), NodeFind::new(search.hops, self.timestamp() ));
+                // we can also say the seeking node cannot be found in that direction
+                connection.add_unfound_node(search.seeking_id.clone() );
+
+
+println!("seeking: {:?} and this is: {:?}",search.seeking_id.clone(), self.id());
+                if search.seeking_id == self.id()
+                {
+println!("~~~~~ FOUND ~~~~~");
+                    connection.wire(Wire::Relay(
+                        RelayPayload{
+                            from: self.id(),
+                            to:  search.from.clone(),
+                            wire: Box::new(Wire::NodeFound(search)),
+                            transaction: self.seq.borrow().as_ref().unwrap().next(),
+                            hops: 0
+                        }
+                        ))?;
+                }
+                else if( search.hops > 255 )
+                {
+                    search.reverse(self.id());
+                    connection.wire(Wire::Relay(
+                        RelayPayload{
+                            from: self.id(),
+                            to:  search.from.clone(),
+                            wire: Box::new(Wire::NodeNotFound(search)),
+                            transaction: self.seq.borrow().as_ref().unwrap().next(),
+                            hops: 0
+                        }
+                    ))?;
+                }
+                else
+                {
+println!("~~~~~ RELAY NODE SEARCH ~~~~~");
+                    self.router.relay_wire( Wire::NodeSearch(search) )?;
+                }
             }
             Wire::NodeFound(search) => {
+                connection.add_found_node(search.seeking_id.clone(), NodeFind::new(search.hops, self.timestamp() ));
             }
             Wire::MessageTransport(transport) => {
             }
+            Wire::Relay(payload) => {
+               if payload.hops > 255
+               {
+                   panic!("Too many payload hops!");
+               }
+               match *payload.wire{
+                   Wire::Relay(_) => {
+                       return Err("CANNOT relay a relay".into())
+                   }
+                   _ => {
+                       if payload.to == self.id()
+                       {
+                           match *payload.wire
+                           {
+                               Wire::RequestUniqueSeq => {
+                                  if self.kind.is_central()
+                                  {
+                                      let relay = Wire::Relay(
+                                          RelayPayload {
+                                              to: payload.from.clone(),
+                                              from: self.id(),
+                                              wire: Box::new(Wire::ReportUniqueSeq(ReportUniqueSeqPayload { seq: self.seq().next().id })),
+                                              transaction: payload.transaction.clone(),
+                                              hops: payload.hops+1
+                                          }
+                                      );
+                                      self.router.relay_wire(relay)?;
+                                  }
+                                  else {
+                                      println!("RELAY PANIC! only central should be receiving ReportUniqueSeq from Relay")
+
+                                  }
+                               },
+                               Wire::ReportUniqueSeq(seq_id)=> {
+                                   let mut transaction= {let mut connection_transactions = self.connection_transactions.lock()?;
+                                   connection_transactions.remove(&payload.transaction)};
+                                   if transaction.is_some()
+                                   {
+                                       let connection = transaction.unwrap();
+                                       connection.to_remote(Wire::ReportUniqueSeq(seq_id));
+                                   }
+                                   else {
+                                       println!("cannot find connection transaction {:?}", payload.transaction );
+                                   }
+                               }
+                               Wire::NodeFound(search)=> {
+println!("RELAY: Node found");
+                                   connection.add_found_node(search.seeking_id.clone() , NodeFind::new(search.hops,self.timestamp()));
+                                   self.router.notify_found( &search.seeking_id );
+
+                               }
+                               Wire::NodeNotFound(search)=> {
+
+println!("RELAY: Node NOT found")
+                               }
+
+                               _ => {
+                                   println!("RELAY PANIC! Don't know how to handle {}",payload.wire)
+                               }
+                           }
+                       }
+                       else {
+                           // it's not meant for us, so let's pass it on...
+println!("RELAYING RELAY TO next...");
+                           self.router.relay_wire(Wire::Relay(payload));
+                       }
+                   }
+               }
+
+            }
+
             Wire::Panic(_) => {}
             _ => {
                 return Err("don't know how to hanle this Wire.".into());
