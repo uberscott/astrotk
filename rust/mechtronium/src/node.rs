@@ -313,9 +313,12 @@ println!("~~~~~ FOUND ~~~~~");
                         }
                         ))?;
                 }
-                else if( search.hops > 255 )
+                else if( search.hops < 0 )
                 {
-                    search.reverse(self.id());
+                    println!("Dumping illegal payload hops < 0")
+                }
+                else if( search.hops > 16 )
+                {
                     connection.wire(Wire::Relay(
                         RelayPayload{
                             from: self.id(),
@@ -329,6 +332,8 @@ println!("~~~~~ FOUND ~~~~~");
                 else
                 {
 println!("~~~~~ RELAY NODE SEARCH ~~~~~");
+                    let mut search = search.clone();
+println!("~~~~~ SEARCH hops {} ~~~~~",&search.hops);
                     self.router.relay_wire( Wire::NodeSearch(search) )?;
                 }
             }
@@ -338,7 +343,11 @@ println!("~~~~~ RELAY NODE SEARCH ~~~~~");
             Wire::MessageTransport(transport) => {
             }
             Wire::Relay(payload) => {
-               if payload.hops > 255
+                if payload.hops < 0
+                {
+                    panic!("Illegal payload hops!");
+                }
+               else if payload.hops > 16
                {
                    panic!("Too many payload hops!");
                }
@@ -367,7 +376,6 @@ println!("~~~~~ RELAY NODE SEARCH ~~~~~");
                                   }
                                   else {
                                       println!("RELAY PANIC! only central should be receiving ReportUniqueSeq from Relay")
-
                                   }
                                },
                                Wire::ReportUniqueSeq(seq_id)=> {
@@ -389,6 +397,7 @@ println!("RELAY: Node found");
 
                                }
                                Wire::NodeNotFound(search)=> {
+                                   connection.add_unfound_node(search.seeking_id.clone() );
 
 println!("RELAY: Node NOT found")
                                }

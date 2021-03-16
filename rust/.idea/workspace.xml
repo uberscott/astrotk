@@ -165,6 +165,21 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test network::test::test_circular_graph" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib network::test::test_circular_graph -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test network::test::test_connection" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package mechtronium --lib network::test::test_connection -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
@@ -182,21 +197,6 @@
     </configuration>
     <configuration name="Test network::test::test_long_relay" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package mechtronium --lib network::test::test_long_relay -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test network::test::test_relay_unique_seq" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package mechtronium --lib network::test::test_relay_unique_seq -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron_core" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
@@ -262,18 +262,18 @@
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_state" />
       <item itemvalue="Cargo.Test network::test::test_report_request_unique_seq_twice" />
-      <item itemvalue="Cargo.Test network::test::test_relay_unique_seq" />
       <item itemvalue="Cargo.Test network::test::test_connection" />
       <item itemvalue="Cargo.Test network::test" />
       <item itemvalue="Cargo.Test network::test::test_long_relay" />
+      <item itemvalue="Cargo.Test network::test::test_circular_graph" />
     </list>
     <recent_temporary>
       <list>
         <item itemvalue="Cargo.Test network::test" />
+        <item itemvalue="Cargo.Test network::test::test_circular_graph" />
         <item itemvalue="Cargo.Test network::test::test_long_relay" />
         <item itemvalue="Cargo.Test network::test::test_report_request_unique_seq_twice" />
         <item itemvalue="Cargo.Test network::test::test_connection" />
-        <item itemvalue="Cargo.Test network::test::test_relay_unique_seq" />
       </list>
     </recent_temporary>
   </component>
@@ -320,7 +320,7 @@
       <workItem from="1615824585639" duration="7380000" />
       <workItem from="1615836079756" duration="23000" />
       <workItem from="1615836195208" duration="128000" />
-      <workItem from="1615839672345" duration="23897000" />
+      <workItem from="1615839672345" duration="28690000" />
     </task>
     <servers />
   </component>

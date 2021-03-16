@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::network::RouteProblem::{NodeUnknown, NucleusNotKnown};
 use std::cell::{Cell, RefCell, RefMut};
 use crate::router::NetworkRouter;
-use std::fmt;
+use std::{fmt, thread};
 use std::hash::Hash;
 use std::borrow::Borrow;
 
@@ -412,7 +412,6 @@ println!("sending wire to route: {:?}",route.get_remote_node());
                             RouteProblem::NodeUnknown(node) => {
                                 self.add_to_hold(wire);
                                 self.relay_wire(Wire::NodeSearch(NodeSearchPayload{
-                                    to: None,
                                     from: self.node_id(),
                                     seeking_id: node.clone(),
                                     hops: 0,
@@ -676,7 +675,6 @@ pub struct RelayPayload
 #[derive(Clone,Debug)]
 pub struct NodeSearchPayload
 {
-    pub to: Option<Id>,
     pub from: Id,
     pub seeking_id: Id,
     pub hops: i32,
@@ -685,11 +683,7 @@ pub struct NodeSearchPayload
 
 impl NodeSearchPayload
 {
-   pub fn reverse(&mut self, from: Id)
-   {
-       self.to = Option::Some(self.from.clone());
-       self.from = from;
-   }
+
 }
 
 pub struct RecentNodeSearch
@@ -871,10 +865,12 @@ mod test
 {
     use crate::node::{Node, NodeKind};
     use crate::cluster::Cluster;
-    use crate::network::{connect, Wire, ReportUniqueSeqPayload};
+    use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload};
     use std::sync::Arc;
     use crate::cache::default_cache;
     use mechtron_common::id::Id;
+    use std::io;
+    use std::io::Write;
 
     #[test]
     pub fn test_connection()
@@ -1012,6 +1008,50 @@ mod test
         assert!( client.is_init() );
 
     }
+
+
+
+    #[test]
+    pub fn test_circular_graph()
+    {
+        let cache = Option::Some(default_cache());
+        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
+        let mesh1= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
+        connect(central.clone(),mesh1.clone() );
+
+        assert!( central.is_init() );
+        assert!( mesh1.is_init() );
+
+        let mesh2= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
+        connect(central.clone(),mesh2.clone() );
+        assert!( mesh2.is_init() );
+
+        let mesh3= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
+        connect(mesh1.clone(),mesh2.clone() );
+        let (_,connection)=connect(mesh1.clone(),mesh3.clone() );
+        assert!( mesh3.is_init() );
+
+        // issue a NodeFind for a bogus node
+        let result = connection.to_remote(Wire::NodeSearch(NodeSearchPayload {
+            from: mesh3.id(),
+            seeking_id: Id::new(57,35),
+            hops: 0,
+            timestamp: 0
+        }));
+
+        assert!( result.is_ok() );
+
+
+        // spoof the hops as negative to try and DOS the network
+        let result = connection.to_remote(Wire::NodeSearch(NodeSearchPayload {
+            from: mesh3.id(),
+            seeking_id: Id::new(57,37),
+            hops: -10909,
+            timestamp: 0
+        }));
+
+    }
+
 }
 
 
