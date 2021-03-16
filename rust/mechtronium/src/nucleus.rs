@@ -22,7 +22,7 @@ use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta}
 use crate::cache::Cache;
 use crate::error::Error;
 use crate::shell::{MechtronShell};
-use crate::node::{Local, Node, WasmStuff};
+use crate::star::{Local, Star, WasmStuff};
 use crate::nucleus::message::{CycleMessagingContext, CyclicMessagingStructure, OutboundMessaging, PhasicMessagingStructure};
 use crate::nucleus::state::{Lookup, MechtronKernels, StateHistory};
 use crate::router::{HasNucleus, InternalRouter};
@@ -1842,9 +1842,9 @@ mod test
 
     use std::io;
     use std::io::Write;
-    use crate::node::Node;
+    use crate::star::Star;
 
-    fn create_node() -> Node
+    fn create_node() -> Star
     {
 //        let node = Node::new(Central::new(), Option::None);
  //       node

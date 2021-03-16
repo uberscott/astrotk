@@ -5,7 +5,7 @@ extern crate lazy_static;
 extern crate mechtron_common;
 
 pub mod artifact;
-pub mod node;
+pub mod star;
 pub mod nucleus;
 pub mod simulation;
 pub mod mechtron;

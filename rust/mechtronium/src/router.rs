@@ -9,7 +9,7 @@ use mechtron_common::id::Id;
 use mechtron_common::message::{Message, MessageTransport};
 
 use crate::network::Connection;
-use crate::node::{Local, Node};
+use crate::star::{Local, Star};
 use crate::nucleus::{Nuclei, NucleiContainer};
 
 pub trait InternalRouter {

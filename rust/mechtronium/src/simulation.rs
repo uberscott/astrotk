@@ -1,4 +1,4 @@
-use crate::node::{Node, Local};
+use crate::star::{Star, Local};
 use crate::nucleus::Nucleus;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::SimConfig;

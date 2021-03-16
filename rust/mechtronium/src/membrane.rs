@@ -859,7 +859,7 @@ mod test
 
     use crate::error::Error;
     use crate::membrane::WasmMembrane;
-    use crate::node::Node;
+    use crate::star::Star;
     use crate::cache::default_cache;
 
     fn membrane() -> Result<Arc<WasmMembrane>, Error>

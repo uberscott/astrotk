@@ -20,25 +20,27 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation};
 use std::fmt;
+use crate::network::RelayPayload::ReportSupervisorAvailable;
 
 
-pub struct Node{
+pub struct Star {
     pub id: RefCell<Option<Id>>,
     pub seq: RefCell<Option<Arc<IdSeq>>>,
     pub local: RefCell<Option<Arc<Local>>>,
-    pub kind: NodeKind,
+    pub kind: StarKind,
     pub cache: Arc<Cache>,
     pub router: Arc<NodeRouter>,
-    connection_transactions: Mutex<HashMap<Id,Arc<Connection>>>
+    connection_transactions: Mutex<HashMap<Id,Arc<Connection>>>,
+    pub error_handler: RefCell<Box<dyn StarErrorHandler>>
 }
 
 
-impl Node {
+impl Star {
 
 
-    pub fn new(kind: NodeKind, cache: Option<Arc<Cache>>) -> Self {
+    pub fn new(kind: StarKind, cache: Option<Arc<Cache>>) -> Self {
 
         let cache = match cache{
             None => {
@@ -48,7 +50,7 @@ impl Node {
         };
 
 
-        let mut rtn = Node {
+        let mut rtn = Star {
             kind: kind,
             id: RefCell::new(Option::None),
             seq: RefCell::new(Option::None),
@@ -56,6 +58,7 @@ impl Node {
             cache: cache.clone(),
             router: Arc::new(NodeRouter::new()),
             connection_transactions: Mutex::new(HashMap::new()),
+            error_handler: RefCell::new( Box::new(LogErrorHandler{}) )
         };
 
         if rtn.kind.is_central()
@@ -69,6 +72,12 @@ impl Node {
     pub fn id(&self)->Id
     {
         self.id.borrow().as_ref().expect("this node has not been initialized.").clone()
+    }
+
+    pub fn error(&self, message: &str )
+    {
+        let handler = self.error_handler.borrow();
+        handler.on_error(message);
     }
 
     pub fn seq(&self)->Arc<IdSeq>
@@ -97,7 +106,25 @@ impl Node {
         self.seq.replace(Option::Some(seq.clone()));
         self.local.replace(Option::Some(Arc::new(Local::new(self.cache.clone(), seq.clone(), self.router.clone()))));
         self.router.set_node_id(self.id());
+
+
         Ok(())
+    }
+
+    fn start(&self)
+    {
+        match &self.kind
+        {
+            StarKind::Supervisor(supervisor) => {
+                println!("***");
+                println!("REPORTING SUPERVISTOR AVAILABLE!!!!") ;
+                println!("***");
+                self.router.relay_wire(Wire::Relay(Relay::to_central(self.id(),
+                                                                     ReportSupervisorAvailable)));
+            }
+            _ => {}
+        }
+
     }
 
 
@@ -127,6 +154,130 @@ impl Node {
      //   self.internal_router.send( Arc::new(message))
     }
 
+    fn on_relay( &self, relay: Relay, connection: Arc<Connection> )->Result<(),Error>
+    {
+
+        if relay.hops < 0
+        {
+            self.error("Illegal payload hops!");
+        }
+        else if relay.hops > 16
+        {
+            self.error("Too many payload hops!");
+        }
+
+        // handled the same no matter if this is the To node or not
+        match &relay.payload
+        {
+            RelayPayload::NodeFound(search)=> {
+                println!("RELAY: Node found");
+                connection.add_found_node(search.seeking_id.clone() , NodeFind::new(search.hops,self.timestamp()));
+                self.router.notify_found( &search.seeking_id );
+
+            }
+            RelayPayload::NodeNotFound(search)=> {
+                connection.add_unfound_node(search.seeking_id.clone() );
+                println!("RELAY: Node NOT found")
+            }
+            _ => {}
+        }
+
+
+        if relay.to != self.id()
+        {
+            let relay = relay.inc_hops();
+            self.router.relay_wire(Wire::Relay(relay) );
+        }
+        else
+        {
+            // here we HANDLE the relay as this node is the recipient
+            match &relay.payload
+            {
+                RelayPayload::Ping(id)=> {
+                    let id = id.clone();
+                    let reply = relay.reply(RelayPayload::Pong(id));
+                    self.router.relay_wire(Wire::Relay(reply))?;
+                }
+                RelayPayload::Pong(id)=> {
+println!("RECEIVED PONG: {:?}",id);
+                }
+                RelayPayload::RequestUniqueSeq => {
+                    if self.kind.is_central()
+                    {
+                        let reply = relay.reply(RelayPayload::ReportUniqueSeq(ReportUniqueSeqPayload{seq:self.seq().next().id}));
+                        self.router.relay_wire(Wire::Relay(reply))?;
+                    }
+                    else {
+                        self.error("RELAY PANIC! only central should be receiving ReportUniqueSeq from Relay")
+                    }
+                },
+                RelayPayload::ReportSupervisorAvailable=> {
+                    match &self.kind
+                    {
+
+                        StarKind::Central(cluster) => {
+println!("***");
+println!("~~~ RECEIVED: REPORT SUPERVISTOR AVAILABLE!!!!") ;
+println!("***");
+                            let mut cluster = cluster.write()?;
+                            cluster.available_supervisors.push(relay.from.clone());
+                        }
+                        _ => {
+                            self.error("RELAY PANIC! only central should be receiving ReportSupervisorAvailable from Relay")
+                        }
+                    }
+                }
+                RelayPayload::RequestCreateSimulation(request_create_simulation)=> {
+                    match &self.kind
+                    {
+                        StarKind::Central(cluster) => {
+                            let mut cluster = cluster.write()?;
+                            let index = (cluster.available_supervisors_round_robin_index % cluster.available_supervisors.len());
+                            let star = cluster.available_supervisors[index].clone();
+                            let forward = Wire::Relay(Relay {
+                                from: self.id(),
+                                to: star,
+                                payload: RelayPayload::ReportAssignSimulation(ReportAssignSimulation {
+                                    simulation: request_create_simulation.simulation.clone(),
+                                    simulation_config: request_create_simulation.simulation_config.clone(),
+                                    inform: relay.from
+                                }),
+
+                                transaction: None,
+                                hops: 0
+                            });
+                            self.router.relay_wire(forward);
+                        }
+                        _ => {
+                            self.error("RELAY PANIC! only central should be receiving RequestCreateSimulation from Relay")
+                        }
+                    }
+                }
+                RelayPayload::ReportUniqueSeq(seq_id)=> {
+                    if relay.transaction.is_some()
+                    {
+                        let mut transaction = {
+                            let mut connection_transactions = self.connection_transactions.lock()?;
+                            connection_transactions.remove(&relay.transaction.unwrap())
+                        };
+                        if transaction.is_some()
+                        {
+                            let connection = transaction.unwrap();
+                            connection.to_remote(Wire::ReportUniqueSeq(ReportUniqueSeqPayload { seq: seq_id.seq }));
+                        } else {
+                            self.error(format!("cannot find connection transaction {:?}", relay.transaction).as_str());
+                        }
+                    }
+                }
+                _ => { }
+            }
+
+        }
+
+
+        Ok(())
+
+    }
 }
 
 
@@ -233,7 +384,7 @@ pub struct WasmStuff
 
 
 
-impl WireListener for Node
+impl WireListener for Star
 {
     fn describe(&self)->String
     {
@@ -265,11 +416,11 @@ println!("on_wire()  {} -> {}",wire,self.kind,);
 println!("don't know how to provide a unique sequence... relaying to central");
                     let transaction = self.seq().next();
                     let wire = Wire::Relay(
-                            RelayPayload {
+                            Relay{
                                 from: self.id(),
                                 to: Id::new(0, 0),
-                                wire: Box::new(Wire::RequestUniqueSeq),
-                                transaction: transaction.clone(),
+                                payload: RelayPayload::RequestUniqueSeq,
+                                transaction: Option::Some(transaction.clone()),
                                 hops: 0
                             }
                     );
@@ -284,6 +435,7 @@ println!("don't know how to provide a unique sequence... relaying to central");
             Wire::ReportUniqueSeq(payload) => {
                 self.init_with_sequence(payload.seq);
                 connection.to_remote( Wire::ReportNodeId(self.id()));
+                self.start();
             }
             Wire::ReportNodeId(node_id) => {
                 connection.add_found_node(node_id, NodeFind::new(1,u64::MAX));
@@ -304,27 +456,27 @@ println!("seeking: {:?} and this is: {:?}",search.seeking_id.clone(), self.id())
                 {
 println!("~~~~~ FOUND ~~~~~");
                     connection.wire(Wire::Relay(
-                        RelayPayload{
+                        Relay{
                             from: self.id(),
                             to:  search.from.clone(),
-                            wire: Box::new(Wire::NodeFound(search)),
-                            transaction: self.seq.borrow().as_ref().unwrap().next(),
+                            payload: RelayPayload::NodeFound(search),
+                            transaction: Option::Some(self.seq.borrow().as_ref().unwrap().next()),
                             hops: 0
                         }
                         ))?;
                 }
                 else if( search.hops < 0 )
                 {
-                    println!("Dumping illegal payload hops < 0")
+                    self.error("Dumping illegal payload hops < 0")
                 }
                 else if( search.hops > 16 )
                 {
                     connection.wire(Wire::Relay(
-                        RelayPayload{
+                        Relay{
                             from: self.id(),
                             to:  search.from.clone(),
-                            wire: Box::new(Wire::NodeNotFound(search)),
-                            transaction: self.seq.borrow().as_ref().unwrap().next(),
+                            payload: RelayPayload::NodeNotFound(search),
+                            transaction: Option::Some(self.seq.borrow().as_ref().unwrap().next()),
                             hops: 0
                         }
                     ))?;
@@ -342,78 +494,8 @@ println!("~~~~~ SEARCH hops {} ~~~~~",&search.hops);
             }
             Wire::MessageTransport(transport) => {
             }
-            Wire::Relay(payload) => {
-                if payload.hops < 0
-                {
-                    panic!("Illegal payload hops!");
-                }
-               else if payload.hops > 16
-               {
-                   panic!("Too many payload hops!");
-               }
-               match *payload.wire{
-                   Wire::Relay(_) => {
-                       return Err("CANNOT relay a relay".into())
-                   }
-                   _ => {
-                       if payload.to == self.id()
-                       {
-                           match *payload.wire
-                           {
-                               Wire::RequestUniqueSeq => {
-                                  if self.kind.is_central()
-                                  {
-                                      let relay = Wire::Relay(
-                                          RelayPayload {
-                                              to: payload.from.clone(),
-                                              from: self.id(),
-                                              wire: Box::new(Wire::ReportUniqueSeq(ReportUniqueSeqPayload { seq: self.seq().next().id })),
-                                              transaction: payload.transaction.clone(),
-                                              hops: payload.hops+1
-                                          }
-                                      );
-                                      self.router.relay_wire(relay)?;
-                                  }
-                                  else {
-                                      println!("RELAY PANIC! only central should be receiving ReportUniqueSeq from Relay")
-                                  }
-                               },
-                               Wire::ReportUniqueSeq(seq_id)=> {
-                                   let mut transaction= {let mut connection_transactions = self.connection_transactions.lock()?;
-                                   connection_transactions.remove(&payload.transaction)};
-                                   if transaction.is_some()
-                                   {
-                                       let connection = transaction.unwrap();
-                                       connection.to_remote(Wire::ReportUniqueSeq(seq_id));
-                                   }
-                                   else {
-                                       println!("cannot find connection transaction {:?}", payload.transaction );
-                                   }
-                               }
-                               Wire::NodeFound(search)=> {
-println!("RELAY: Node found");
-                                   connection.add_found_node(search.seeking_id.clone() , NodeFind::new(search.hops,self.timestamp()));
-                                   self.router.notify_found( &search.seeking_id );
-
-                               }
-                               Wire::NodeNotFound(search)=> {
-                                   connection.add_unfound_node(search.seeking_id.clone() );
-
-println!("RELAY: Node NOT found")
-                               }
-
-                               _ => {
-                                   println!("RELAY PANIC! Don't know how to handle {}",payload.wire)
-                               }
-                           }
-                       }
-                       else {
-                           // it's not meant for us, so let's pass it on...
-println!("RELAYING RELAY TO next...");
-                           self.router.relay_wire(Wire::Relay(payload));
-                       }
-                   }
-               }
+            Wire::Relay(relay) => {
+                self.on_relay(relay,connection);
 
             }
 
@@ -439,21 +521,22 @@ pub struct Client
 {
 }
 
-pub enum NodeKind
+pub enum StarKind
 {
-    Central(Cluster),
+    Central(RwLock<Cluster>),
     Server,
     Mesh,
     Gateway,
-    Client
+    Client,
+    Supervisor(RwLock<Supervisor>)
 }
 
-impl NodeKind
+impl StarKind
 {
     fn create_id(&self)->Option<Id>
     {
        match self{
-           NodeKind::Central(cluster) => Option::Some(Id::new(0, 0)),
+           StarKind::Central(cluster) => Option::Some(Id::new(0, 0)),
            _ => Option::None
        }
     }
@@ -461,21 +544,69 @@ impl NodeKind
     fn is_central(&self)->bool
     {
         match self{
-            NodeKind::Central(_) => true,
+            StarKind::Central(_) => true,
             _ => false
         }
     }
 }
 
-impl fmt::Display for NodeKind{
+impl fmt::Display for StarKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let r = match self {
-            NodeKind::Central(_) => {"Central"}
-            NodeKind::Server => {"Server"}
-            NodeKind::Mesh => {"Mesh"}
-            NodeKind::Gateway => {"Gateway"}
-            NodeKind::Client => {"Client"}
+            StarKind::Central(_) => {"Central"}
+            StarKind::Server => {"Server"}
+            StarKind::Mesh => {"Mesh"}
+            StarKind::Gateway => {"Gateway"}
+            StarKind::Client => {"Client"}
+            StarKind::Supervisor(_) => {"Supervisor"}
         };
         write!(f, "{}",r)
     }
 }
+
+pub struct Supervisor
+{
+
+}
+
+impl Supervisor{
+    pub fn new()->Self{
+        Supervisor{}
+    }
+}
+
+pub trait StarErrorHandler
+{
+    fn on_error(&self, message:&str);
+}
+
+pub struct PanicErrorHandler
+{
+}
+
+impl PanicErrorHandler
+{
+    pub fn new()->Self
+    {
+        PanicErrorHandler{}
+    }
+}
+
+impl StarErrorHandler for PanicErrorHandler
+{
+    fn on_error(&self, message: &str) {
+        panic!("{}",message)
+    }
+}
+
+pub struct LogErrorHandler
+{
+}
+
+impl StarErrorHandler for LogErrorHandler
+{
+    fn on_error(&self, message: &str) {
+        println!("{}",message);
+    }
+}
+

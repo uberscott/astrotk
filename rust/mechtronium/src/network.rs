@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, Mutex, Weak};
 
 use mechtron_common::message::{Message, MessageTransport};
 
-use crate::node::Node;
+use crate::star::Star;
 use crate::error::Error;
 use mechtron_common::id::Id;
 use std::collections::{HashMap, HashSet};
@@ -12,6 +12,7 @@ use crate::router::NetworkRouter;
 use std::{fmt, thread};
 use std::hash::Hash;
 use std::borrow::Borrow;
+use mechtron_common::artifact::Artifact;
 
 static PROTOCOL_VERSION: i32 = 100_001;
 
@@ -233,7 +234,7 @@ println!("ADD FOUND {}",find.hops.clone());
                         },
 
                     _ => {
-                        self.error(format!("connection ERROR. expected Report NodeId. Got {} for {}", wire, self.local.describe()).as_str());
+                        self.error(format!("connection ERROR. expected ReportNodeId. Got {} for {}", wire, self.local.describe()).as_str());
                     }
                 },
 
@@ -638,7 +639,7 @@ pub enum Wire
    NodeFound(NodeSearchPayload),
    NodeNotFound(NodeSearchPayload),
    MessageTransport(MessageTransport),
-   Relay(RelayPayload),
+   Relay(Relay),
    Panic(String)
 }
 
@@ -661,15 +662,99 @@ impl fmt::Display for Wire {
     }
 }
 
-pub struct RelayPayload
+pub struct Relay
 {
    pub from: Id,
    pub to: Id,
-   pub wire: Box<Wire>,
-   pub transaction: Id,
+   pub payload: RelayPayload,
+   pub transaction: Option<Id>,
    pub hops: i32
 }
 
+impl Relay{
+
+    pub fn to_central( from: Id, payload: RelayPayload )->Self
+    {
+        Relay::new( from, Id::new(0,0), payload )
+    }
+    pub fn new( from: Id, to: Id, payload: RelayPayload )->Self
+    {
+        Relay{
+            from: from,
+            to: to,
+            payload: payload,
+            transaction: Option::None,
+            hops: 0
+        }
+    }
+
+    pub fn inc_hops(self)->Self
+    {
+        Relay{
+            from: self.from,
+            to: self.to,
+            payload: self.payload,
+            transaction: self.transaction,
+            hops: self.hops+1
+        }
+    }
+
+    pub fn reply(self, payload: RelayPayload)->Self
+    {
+        Relay{
+            from: self.to,
+            to: self.from,
+            payload: payload,
+            transaction: self.transaction,
+            hops: 0
+        }
+    }
+}
+
+pub enum RelayPayload
+{
+    Ping(Id),
+    Pong(Id),
+    RequestUniqueSeq,
+    ReportUniqueSeq(ReportUniqueSeqPayload),
+    NodeFound(NodeSearchPayload),
+    NodeNotFound(NodeSearchPayload),
+    ReportSupervisorAvailable,
+    RequestCreateSimulation(RequestCreateSimulation),
+    ReportAssignSimulation(ReportAssignSimulation),
+    RequestSupervisorForSim(Id),
+    ReportSupervisorForSim(ReportSupervisorForSim),
+    RequestNucleusNode(Id),
+    ReportNucleusNode(ReportNucleusNodePayload),
+}
+
+
+
+pub struct RequestCreateSimulation
+{
+    pub simulation: Id,
+    pub simulation_config: Artifact
+}
+
+pub struct ReportAssignSimulation
+{
+    pub simulation: Id,
+    pub simulation_config: Artifact,
+    pub inform: Id
+}
+
+
+pub struct ReportSupervisorForSim
+{
+    pub simulation: Id,
+    pub node: Id
+}
+
+pub struct ReportNucleusNodePayload
+{
+    pub simulation: Id,
+    pub node: Id
+}
 
 
 #[derive(Clone,Debug)]
@@ -863,10 +948,10 @@ pub struct NucleusRoute
 #[cfg(test)]
 mod test
 {
-    use crate::node::{Node, NodeKind};
+    use crate::star::{Star, StarKind, Supervisor, PanicErrorHandler};
     use crate::cluster::Cluster;
-    use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload};
-    use std::sync::Arc;
+    use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload, Relay, RelayPayload, RequestCreateSimulation};
+    use std::sync::{Arc, RwLock};
     use crate::cache::default_cache;
     use mechtron_common::id::Id;
     use std::io;
@@ -876,8 +961,8 @@ mod test
     pub fn test_connection()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache ));
 
         let (mut a,mut b) = connect(central.clone(),server.clone() );
 
@@ -896,8 +981,8 @@ mod test
     pub fn test_report_report_node_id_twice()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -913,8 +998,8 @@ mod test
     pub fn test_report_request_unique_seq_after_node_set()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -930,8 +1015,8 @@ mod test
     pub fn test_report_request_unique_seq_twice()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -945,8 +1030,8 @@ mod test
     pub fn test_report_report_node_id_not_from_seq()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache ));
 
         let (a,b) = connect(central.clone(),server.clone() );
 
@@ -961,9 +1046,9 @@ mod test
     pub fn test_relay_unique_seq()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let mesh= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache ));
 
         let (central_to_mesh,mesh_to_central) = connect(central.clone(),mesh.clone() );
 
@@ -983,11 +1068,11 @@ mod test
     pub fn test_long_relay()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let mesh= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
-        let server = Arc::new(Node::new(NodeKind::Server, cache.clone() ));
-        let gateway = Arc::new(Node::new(NodeKind::Gateway, cache.clone() ));
-        let client = Arc::new(Node::new(NodeKind::Client, cache.clone() ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache.clone() ));
+        let gateway = Arc::new(Star::new(StarKind::Gateway, cache.clone() ));
+        let client = Arc::new(Star::new(StarKind::Client, cache.clone() ));
 
         let (central_to_mesh,mesh_to_central) = connect(central.clone(),mesh.clone() );
 
@@ -1007,6 +1092,82 @@ mod test
 
         assert!( client.is_init() );
 
+        client.router.relay_wire(Wire::Relay(
+           Relay{
+               from: client.id(),
+               to: Id::new(0,0),
+               payload: RelayPayload::Ping(Id::new(1,2)),
+               transaction: Option::None,
+               hops: 0
+           }
+        ));
+
+    }
+
+
+    #[test]
+    pub fn test_supervisor()
+    {
+        let cache = Option::Some(default_cache());
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
+        let supervisor = Arc::new(Star::new(StarKind::Supervisor(RwLock::new(Supervisor::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarKind::Server, cache.clone() ));
+        let gateway = Arc::new(Star::new(StarKind::Gateway, cache.clone() ));
+        let client = Arc::new(Star::new(StarKind::Client, cache.clone() ));
+
+        central.error_handler.replace(Box::new(PanicErrorHandler::new()) );
+        mesh.error_handler.replace(Box::new(PanicErrorHandler::new()) );
+        supervisor.error_handler.replace(Box::new(PanicErrorHandler::new()) );
+        server.error_handler.replace(Box::new(PanicErrorHandler::new()) );
+        gateway.error_handler.replace(Box::new(PanicErrorHandler::new()) );
+        client.error_handler.replace(Box::new(PanicErrorHandler::new()) );
+
+        let (central_to_mesh,mesh_to_central) = connect(central.clone(),mesh.clone() );
+
+        assert!( central.is_init() );
+        assert!( mesh.is_init() );
+
+        let (mesh_to_server,server_to_mesh) = connect(mesh.clone(),server.clone() );
+
+        assert!( server.is_init() );
+
+        let (gateway_to_mesh,mesh_to_gateway) = connect(gateway.clone(),mesh.clone() );
+
+        assert!( gateway.is_init() );
+
+        println!("attaching CLIENT");
+        let (client_to_gateway,gateway_to_client) = connect(client.clone(),gateway.clone() );
+
+        assert!( client.is_init() );
+
+        connect(supervisor.clone(),mesh.clone() );
+
+        client.router.relay_wire(Wire::Relay(
+            Relay{
+                from: client.id(),
+                to: supervisor.id(),
+                payload: RelayPayload::Ping(Id::new(123,321)),
+                transaction: Option::None,
+                hops: 0
+            }
+        ));
+
+        match &central.kind
+        {
+            StarKind::Central(cluster) => {
+                let cluster = cluster.read().unwrap();
+                println!("CHECKING AVAILABLE SUPERVISTORS...");
+                assert_eq!(cluster.available_supervisors.len(),1);
+            },
+            _ => {assert!(false)}
+        }
+
+        client.router.relay_wire(Wire::Relay( Relay::to_central(client.id(), RelayPayload::RequestCreateSimulation(RequestCreateSimulation{
+            simulation: server.seq().next(),
+            simulation_config: Default::default()
+        }))));
+
     }
 
 
@@ -1015,18 +1176,18 @@ mod test
     pub fn test_circular_graph()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Node::new(NodeKind::Central(Cluster::new()), cache.clone() ));
-        let mesh1= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
+        let central = Arc::new(Star::new(StarKind::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh1= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
         connect(central.clone(),mesh1.clone() );
 
         assert!( central.is_init() );
         assert!( mesh1.is_init() );
 
-        let mesh2= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
+        let mesh2= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
         connect(central.clone(),mesh2.clone() );
         assert!( mesh2.is_init() );
 
-        let mesh3= Arc::new(Node::new(NodeKind::Mesh , cache.clone() ));
+        let mesh3= Arc::new(Star::new(StarKind::Mesh, cache.clone() ));
         connect(mesh1.clone(),mesh2.clone() );
         let (_,connection)=connect(mesh1.clone(),mesh3.clone() );
         assert!( mesh3.is_init() );
@@ -1049,6 +1210,7 @@ mod test
             hops: -10909,
             timestamp: 0
         }));
+
 
     }
 
