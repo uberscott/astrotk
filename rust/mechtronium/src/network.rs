@@ -1258,7 +1258,6 @@ mod test
         {
             StarCore::Central(cluster) => {
                 let cluster = cluster.read().unwrap();
-println!("CHECKING AVAILABLE SUPERS...");
                 assert_eq!(cluster.available_supervisors.len(),1);
             },
             _ => {assert!(false)}
@@ -1273,8 +1272,17 @@ println!("CHECKING AVAILABLE SUPERS...");
         {
             StarCore::Server(server) => {
                 let server = server.read().unwrap();
-println!("CHECKING NEAREST SUPERS...");
                 assert_eq!(server.nearest_supervisors.len(), 1);
+                assert!(server.supervisor.is_some());
+            }
+            _ => {}
+        }
+
+        match &supervisor.core
+        {
+            StarCore::Supervisor(supervisor) => {
+                let supervisor = supervisor.read().unwrap();
+                assert_eq!(supervisor.servers.len(),1);
             }
             _ => {}
         }

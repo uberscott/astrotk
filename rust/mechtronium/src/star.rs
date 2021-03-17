@@ -1,7 +1,7 @@
 use std::alloc::System;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Weak, Mutex};
 
 use wasmer::{Cranelift, JIT, Module, Store};
@@ -323,6 +323,16 @@ impl Star {
                         } else {
                             self.error(format!("cannot find connection transaction {:?}", relay.transaction).as_str());
                         }
+                    }
+                },
+                RelayPayload::PledgeServices =>
+                {
+                    match &self.core {
+                        StarCore::Supervisor(supervisor) => {
+                           let mut supervisor = supervisor.write()?;
+                           supervisor.servers.insert(relay.from.clone() );
+                        }
+                        _ => {}
                     }
                 }
                 _ => { }
@@ -680,12 +690,14 @@ impl fmt::Display for StarCore {
 
 pub struct Supervisor
 {
-
+   pub servers: HashSet<Id>
 }
 
 impl Supervisor{
     pub fn new()->Self{
-        Supervisor{}
+        Supervisor{
+            servers: HashSet::new()
+        }
     }
 }
 
