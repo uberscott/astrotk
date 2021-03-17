@@ -2,7 +2,7 @@ use std::alloc::System;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock, Weak, Mutex};
+use std::sync::{Arc, RwLock, Weak, Mutex, PoisonError, MutexGuard};
 
 use wasmer::{Cranelift, JIT, Module, Store};
 
@@ -20,9 +20,10 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation, Search, SearchResult, SearchKind};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation, Search, SearchResult, SearchKind, ReqCreateSim, ReportAssignSimulationToServer};
 use std::fmt;
-use crate::network::RelayPayload::ReportSupervisorAvailable;
+use crate::network::RelayPayload::{ReportSupervisorAvailable, RequestCreateSimulation};
+use std::collections::hash_map::RandomState;
 
 
 pub struct Star {
@@ -33,7 +34,9 @@ pub struct Star {
     pub cache: Arc<Cache>,
     pub router: Arc<NodeRouter>,
     connection_transactions: Mutex<HashMap<Id,Arc<Connection>>>,
-    pub error_handler: RefCell<Box<dyn StarErrorHandler>>
+    pub error_handler: RefCell<Box<dyn StarErrorHandler>>,
+    pub nearest_supervisors: Mutex<HashMap<Id,i32>>,
+    pub transaction_watchers: Mutex<HashMap<Id,Weak<dyn TransactionWatcher>>>
 }
 
 
@@ -58,7 +61,9 @@ impl Star {
             cache: cache.clone(),
             router: Arc::new(NodeRouter::new()),
             connection_transactions: Mutex::new(HashMap::new()),
-            error_handler: RefCell::new( Box::new(LogErrorHandler{}) )
+            error_handler: RefCell::new( Box::new(LogErrorHandler{}) ),
+            nearest_supervisors: Mutex::new(HashMap::new() ),
+            transaction_watchers: Mutex::new( HashMap::new() )
         };
 
         if rtn.core.is_central()
@@ -67,6 +72,41 @@ impl Star {
         }
 
         rtn
+    }
+
+    pub fn request_create_simulation(&self, simulation_config: Artifact, transaction_watcher: Arc<dyn TransactionWatcher> )->Result<(),Error>
+    {
+
+        let nearest_supervisors:HashSet<Id> =
+        {
+            let nearest_supervisors = self.nearest_supervisors.lock()?;
+            nearest_supervisors.keys().map(|id|id.clone()).collect()
+        };
+
+        let request = ReqCreateSim
+        {
+            simulation: self.seq().next(),
+            simulation_config: simulation_config,
+            nearby_supervisors: nearest_supervisors,
+        };
+
+        let relay = RelayPayload::RequestCreateSimulation(request);
+        let relay = Relay{
+            from: self.id(),
+            to: Id::new(0,0),
+            payload: relay,
+            transaction: Option::Some(self.seq().next()),
+            inform: Option::None,
+            hops: 0
+        };
+
+        {
+            self.transaction_watchers.lock()?.insert(relay.transaction.unwrap().clone(), Arc::downgrade(&transaction_watcher));
+        }
+
+        let wire = Wire::Relay(relay);
+        self.router.relay_wire(wire);
+        Ok(())
     }
 
     pub fn id(&self)->Id
@@ -121,6 +161,10 @@ impl Star {
             StarCore::Server(_) => {
                 self.router.relay_wire(Wire::Search(Search::new(self.id(),
                                                                      SearchKind::StarKind(StarKind::Supervisor) )));
+            },
+            StarCore::Client => {
+                self.router.relay_wire(Wire::Search(Search::new(self.id(),
+                                                                SearchKind::StarKind(StarKind::Supervisor) )));
             },
             _ => {}
         }
@@ -231,6 +275,10 @@ impl Star {
                 }
                 RelayPayload::SearchResult(result)=>
                 {
+                    {
+                        let mut nearest_supervisors = self.nearest_supervisors.lock()?;
+                        nearest_supervisors.insert(result.found.clone(), result.hops.clone());
+                    }
                     match &self.core
                     {
                         StarCore::Server(server) => {
@@ -241,7 +289,6 @@ impl Star {
                                     match kind{
                                         StarKind::Supervisor =>  {
                                             let mut server = server.write().unwrap();
-                                            server.nearest_supervisors.insert(result.found, result.hops);
                                             if( server.supervisor.is_none() )
                                             {
                                                 server.supervisor = Option::Some(result.found);
@@ -294,12 +341,11 @@ impl Star {
                                 from: self.id(),
                                 to: star,
                                 payload: RelayPayload::AssignSimulationToSupervisor(ReportAssignSimulation {
-                                    simulation: request_create_simulation.simulation.clone(),
                                     simulation_config: request_create_simulation.simulation_config.clone(),
-                                    inform: relay.from
                                 }),
 
-                                transaction: None,
+                                inform: relay.inform.clone(),
+                                transaction: relay.transaction.clone(),
                                 hops: 0
                             });
                             self.router.relay_wire(forward);
@@ -308,6 +354,93 @@ impl Star {
                             self.error("RELAY PANIC! only central should be receiving RequestCreateSimulation from Relay")
                         }
                     }
+                }
+                RelayPayload::AssignSimulationToSupervisor(assign_simulation)=>
+                {
+unimplemented!();
+                    match &self.core{
+                        StarCore::Supervisor(supervisor) => {
+                           let supervisor = supervisor.write()?;
+                           match supervisor.select_server()
+                           {
+                               Ok(server_id) => {
+                                   let wire = Wire::Relay(Relay{
+                                       from: self.id(),
+                                       to:  server_id,
+                                       payload: RelayPayload::AssignSimulationToServer(ReportAssignSimulationToServer{
+                                           simulation_config: assign_simulation.simulation_config.clone(),
+                                       }),
+                                       inform: relay.inform.clone(),
+                                       transaction: relay.transaction.clone(),
+                                       hops: 0
+                                   });
+                                   self.router.relay_wire(wire);
+                               }
+                               Err(err) => {
+                                   self.relay_error("supervisor has no available servers", relay.inform.clone(), relay.transaction.clone() );
+                               }
+                           }
+                        }
+                        _ => {
+                            self.error("RELAY PANIC! attempt to assign a simulation to a non Supervisor!");
+                        }
+                    }
+                }
+                RelayPayload::AssignSimulationToServer(report)=>
+                {
+                    match &self.core{
+                        StarCore::Server(_) => {
+                            match self.cache.configs.sims.cache( &report.simulation_config )
+                            {
+                                Ok(_) => {
+                                    match self.cache.configs.sims.get(&report.simulation_config )
+                                    {
+                                        Ok(sim_config) => {
+                                           match self.create_sim_from_scratch(sim_config)
+                                           {
+                                               Ok(simulation_id) => {
+unimplemented!();
+                                                   if( relay.inform.is_some() )
+                                                   {
+                                                       let wire = Wire::Relay(Relay {
+                                                           from: self.id().clone(),
+                                                           to: relay.inform.unwrap(),
+                                                           payload: RelayPayload::NotifySimulationReady(simulation_id),
+                                                           inform: None,
+                                                           transaction:  relay.transaction.clone(),
+                                                           hops: 0
+                                                       });
+                                                       self.router.relay_wire(wire);
+                                                   }
+                                                   else {
+                                                       self.error_handler.borrow().on_error("assign sim should have an INFORM");
+                                                   }
+
+
+                                               }
+                                               Err(err) => {
+                                                   self.error_handler.borrow().on_error("could not create sim");
+                                               }
+                                           }
+                                        }
+                                        Err(_) => {
+                                            self.error_handler.borrow().on_error("bad simulation config");
+                                        }
+                                    }
+                                }
+                                Err(_) => {
+                                    self.error_handler.borrow().on_error("bad simulation config");
+                                }
+                            }
+                        }
+                        _ => self.error("RELAY PANIC! attempt to assign a simulation to a non Server!")
+                    }
+
+                },
+                RelayPayload::NotifySimulationReady(simulation_id)=>
+                {
+                    self.process_transaction_notification_final( &relay );
+
                 }
                 RelayPayload::ReportUniqueSeq(seq_id)=> {
                     if relay.transaction.is_some()
@@ -330,11 +463,13 @@ impl Star {
                     match &self.core {
                         StarCore::Supervisor(supervisor) => {
                            let mut supervisor = supervisor.write()?;
-                           supervisor.servers.insert(relay.from.clone() );
+                           supervisor.servers.push(relay.from.clone() );
                         }
                         _ => {}
                     }
                 }
+
+
                 _ => { }
             }
 
@@ -344,6 +479,94 @@ impl Star {
         Ok(())
 
     }
+
+    fn relay_error( &self, message: &str, to: Option<Id>, transaction: Option<Id> )
+    {
+        // right now doesn't do anything
+
+    }
+
+    fn process_transaction_notification(&self, relay: &Relay )
+    {
+        if( relay.transaction.is_some() )
+        {
+            let watcher: Option<Arc<dyn TransactionWatcher>>= {
+                let mut transaction_watchers = self.transaction_watchers.lock();
+                match transaction_watchers{
+                    Ok(transaction_watchers) => {
+                        let watcher = transaction_watchers.get(&relay.transaction.unwrap()  );
+                        match watcher
+                        {
+                            None => {
+                                Option::None
+                            }
+                            Some(watcher) => {
+                                match watcher.upgrade(){
+                                    None => {Option::None}
+                                    Some(watcher) => {
+                                        Option::Some(watcher.clone())
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        Option::None
+                    }
+                }
+            };
+
+            match watcher{
+                None => {}
+                Some(watcher) => {
+                  watcher.on_transaction(&Wire::Relay(relay.clone()));
+                }
+            }
+        }
+    }
+
+    fn process_transaction_notification_final(&self, relay: &Relay )
+    {
+unimplemented!();
+        if( relay.transaction.is_some() )
+        {
+            let watcher: Option<Arc<dyn TransactionWatcher>>= {
+                let mut transaction_watchers = self.transaction_watchers.lock();
+                match transaction_watchers{
+                    Ok(mut transaction_watchers) => {
+                        let watcher = transaction_watchers.remove(&relay.transaction.unwrap()  );
+                        match watcher
+                        {
+                            None => {
+                                Option::None
+                            }
+                            Some(watcher) => {
+                                match watcher.upgrade(){
+                                    None => {Option::None}
+                                    Some(watcher) => {
+                                        Option::Some(watcher.clone())
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        Option::None
+                    }
+                }
+            };
+
+            match watcher{
+                None => {}
+                Some(watcher) => {
+                    watcher.on_transaction(&Wire::Relay(relay.clone()));
+                }
+            }
+        }
+    }
+
+
+
 }
 
 
@@ -486,6 +709,7 @@ println!("on_wire()  {} -> {}", wire, self.core,);
                                 to: Id::new(0, 0),
                                 payload: RelayPayload::RequestUniqueSeq,
                                 transaction: Option::Some(transaction.clone()),
+                                inform: Option::None,
                                 hops: 0
                             }
                     );
@@ -532,6 +756,7 @@ println!("on_wire()  {} -> {}", wire, self.core,);
                             to:  search.from.clone(),
                             payload: RelayPayload::NodeFound(search),
                             transaction: Option::Some(self.seq.borrow().as_ref().unwrap().next()),
+                            inform: Option::None,
                             hops: 0
                         }
                         ))?;
@@ -547,6 +772,7 @@ println!("on_wire()  {} -> {}", wire, self.core,);
                             from: self.id(),
                             to:  search.from.clone(),
                             payload: RelayPayload::NodeNotFound(search),
+                            inform: Option::None,
                             transaction: Option::Some(self.seq.borrow().as_ref().unwrap().next()),
                             hops: 0
                         }
@@ -690,14 +916,26 @@ impl fmt::Display for StarCore {
 
 pub struct Supervisor
 {
-   pub servers: HashSet<Id>
+   pub servers: Vec<Id>
 }
 
 impl Supervisor{
     pub fn new()->Self{
         Supervisor{
-            servers: HashSet::new()
+            servers: vec!()
         }
+    }
+
+    pub fn select_server(&self)->Result<Id,Error>
+    {
+        if self.servers.is_empty()
+        {
+            return Err("no servers available".into());
+        }
+
+        // right now we just grab the first because this algorithm isn't very sophisticated
+
+        Ok(self.servers[0].clone())
     }
 }
 
@@ -735,4 +973,11 @@ impl StarErrorHandler for LogErrorHandler
         println!("{}",message);
     }
 }
+
+
+pub trait TransactionWatcher
+{
+    fn on_transaction( &self, wire: &Wire );
+}
+
 

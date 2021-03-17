@@ -697,6 +697,7 @@ pub struct Search
     pub transaction: Option<Id>
 }
 
+#[derive(Clone)]
 pub struct SearchResult
 {
     pub found: Id,
@@ -751,11 +752,13 @@ impl SearchKind
 }
 
 
+#[derive(Clone)]
 pub struct Relay
 {
    pub from: Id,
    pub to: Id,
    pub payload: RelayPayload,
+   pub inform: Option<Id>,
    pub transaction: Option<Id>,
    pub hops: i32
 }
@@ -773,6 +776,7 @@ impl Relay{
             to: to,
             payload: payload,
             transaction: Option::None,
+            inform: Option::None,
             hops: 0
         }
     }
@@ -784,6 +788,7 @@ impl Relay{
             to: self.to,
             payload: self.payload,
             transaction: self.transaction,
+            inform: Option::None,
             hops: self.hops+1
         }
     }
@@ -795,11 +800,13 @@ impl Relay{
             to: self.from,
             payload: payload,
             transaction: self.transaction,
+            inform: self.inform,
             hops: 0
         }
     }
 }
 
+#[derive(Clone)]
 pub enum RelayPayload
 {
     Ping(Id),
@@ -809,38 +816,49 @@ pub enum RelayPayload
     NodeFound(NodeSearchPayload),
     NodeNotFound(NodeSearchPayload),
     ReportSupervisorAvailable,
-    RequestCreateSimulation(RequestCreateSimulation),
-    AssignSimulationToSupervisor(ReportAssignSimulation),
     PledgeServices,
-    AssignServerToSupervisor(Id),
+    RequestCreateSimulation(ReqCreateSim),
+    AssignSimulationToSupervisor(ReportAssignSimulation),
+    AssignSimulationToServer(ReportAssignSimulationToServer),
     RequestSupervisorForSim(Id),
     ReportSupervisorForSim(ReportSupervisorForSim),
+    NotifySimulationReady(Id),
     RequestNucleusNode(Id),
     ReportNucleusNode(ReportNucleusNodePayload),
     SearchResult(SearchResult)
 }
 
 
-pub struct RequestCreateSimulation
+
+#[derive(Clone)]
+pub struct ReportAssignSimulationToServer
 {
-    pub simulation: Id,
-    pub simulation_config: Artifact
+    pub simulation_config: Artifact,
 }
 
-pub struct ReportAssignSimulation
+#[derive(Clone)]
+pub struct ReqCreateSim
 {
     pub simulation: Id,
     pub simulation_config: Artifact,
-    pub inform: Id
+    pub nearby_supervisors: HashSet<Id>,
+}
+
+#[derive(Clone)]
+pub struct ReportAssignSimulation
+{
+    pub simulation_config: Artifact,
 }
 
 
+#[derive(Clone)]
 pub struct ReportSupervisorForSim
 {
     pub simulation: Id,
-    pub node: Id
+    pub star: Id
 }
 
+#[derive(Clone)]
 pub struct ReportNucleusNodePayload
 {
     pub simulation: Id,
@@ -874,6 +892,7 @@ pub struct RecentConnectionTransaction
     pub timestamp: u64
 }
 
+#[derive(Clone)]
 pub struct ReportUniqueSeqPayload
 {
     pub seq: i64
@@ -1061,7 +1080,7 @@ mod test
 {
     use crate::star::{Star, StarCore, Supervisor, PanicErrorHandler, Server};
     use crate::cluster::Cluster;
-    use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload, Relay, RelayPayload, RequestCreateSimulation};
+    use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload, Relay, RelayPayload, ReqCreateSim};
     use std::sync::{Arc, RwLock};
     use crate::cache::default_cache;
     use mechtron_common::id::Id;
@@ -1209,6 +1228,7 @@ mod test
                to: Id::new(0,0),
                payload: RelayPayload::Ping(Id::new(1,2)),
                transaction: Option::None,
+               inform: Option::None,
                hops: 0
            }
         ));
@@ -1263,16 +1283,11 @@ mod test
             _ => {assert!(false)}
         }
 
-        client.router.relay_wire(Wire::Relay( Relay::to_central(client.id(), RelayPayload::RequestCreateSimulation(RequestCreateSimulation{
-            simulation: server.seq().next(),
-            simulation_config: Default::default()
-        }))));
-
+        assert_eq!(server.nearest_supervisors.lock().unwrap().len(), 1);
         match &server.core
         {
             StarCore::Server(server) => {
                 let server = server.read().unwrap();
-                assert_eq!(server.nearest_supervisors.len(), 1);
                 assert!(server.supervisor.is_some());
             }
             _ => {}
