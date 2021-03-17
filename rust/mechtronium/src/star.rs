@@ -107,7 +107,6 @@ impl Star {
         self.local.replace(Option::Some(Arc::new(Local::new(self.cache.clone(), seq.clone(), self.router.clone()))));
         self.router.set_node_id(self.id());
 
-
         Ok(())
     }
 
@@ -125,7 +124,6 @@ impl Star {
             },
             _ => {}
         }
-
     }
 
 
@@ -236,8 +234,28 @@ impl Star {
                     match &self.core
                     {
                         StarCore::Server(server) => {
-                            let mut server = server.write().unwrap();
-                            server.nearest_supervisors.insert(result.found, result.hops );
+                            match &result.kind
+                            {
+                                SearchKind::StarKind(kind) => {
+
+                                    match kind{
+                                        StarKind::Supervisor =>  {
+                                            let mut server = server.write().unwrap();
+                                            server.nearest_supervisors.insert(result.found, result.hops);
+                                            if( server.supervisor.is_none() )
+                                            {
+                                                server.supervisor = Option::Some(result.found);
+                                                let relay = Relay::new(self.id(), server.supervisor.unwrap().clone(), RelayPayload::PledgeServices );
+                                                self.router.relay_wire(Wire::Relay(relay));
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            };
+
+
                         }
                         _ => {}
                     }
@@ -631,7 +649,8 @@ impl StarCore
 
 pub struct Server
 {
-    pub nearest_supervisors: HashMap<Id,i32>
+    pub nearest_supervisors: HashMap<Id,i32>,
+    pub supervisor: Option<Id>
 }
 
 impl Server
@@ -639,7 +658,8 @@ impl Server
     pub fn new()->Self
     {
         Server{
-            nearest_supervisors: HashMap::new()
+            nearest_supervisors: HashMap::new(),
+            supervisor: Option::None
         }
     }
 }

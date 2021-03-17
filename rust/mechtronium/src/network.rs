@@ -350,7 +350,7 @@ unimplemented!();
 pub struct ExternalRouter
 {
     inner: RwLock<ExternalRouterInner>,
-    hold: Mutex<Vec<Wire>>,
+    hold: Mutex<Vec<(Wire,Option<Id>)>>,
     node_id: RefCell<Option<Id>>
 }
 
@@ -376,19 +376,14 @@ impl ExternalRouter
 
     pub fn notify_found( &self, node_id: &Id)
     {
-        let releases = {
+        let releases:Vec<(Wire,Option<Id>)> = {
             let mut hold = self.hold.lock().expect("hold lock should not be poisoned");
-            let mut rtn = vec!();
-            for wire in hold.drain(..)
-            {
-                rtn.push(wire)
-            }
-            rtn
+            hold.drain(..).collect()
         };
 
-        for wire in releases
+        for (wire,exclude) in releases
         {
-            self.relay_wire(wire);
+            self.relay_wire_excluding(wire,exclude);
         }
     }
 
@@ -424,7 +419,7 @@ impl ExternalRouter
                     Err(error) => {
                         match error{
                             RouteProblem::NodeUnknown(node) => {
-                                self.add_to_hold(wire);
+                                self.add_to_hold((wire, exclude));
                                 self.relay_wire(Wire::NodeSearch(NodeSearchPayload{
                                     from: self.node_id(),
                                     seeking_id: node.clone(),
@@ -470,7 +465,7 @@ impl ExternalRouter
         Ok(())
     }
 
-    fn add_to_hold(&self, wire: Wire)
+    fn add_to_hold(&self, wire: (Wire,Option<Id>))
     {
         let mut hold = self.hold.lock().unwrap();
         hold.push(wire);
@@ -478,9 +473,14 @@ impl ExternalRouter
 
     pub fn add_route( &self, route: Arc<dyn ExternalRoute>)
     {
-        let mut inner = self.inner.write().expect("must get the inner lock");
-        inner.add_route(route)
+        {
+            let mut inner = self.inner.write().expect("must get the inner lock");
+            inner.add_route(route)
+        }
     }
+
+
+
 
     fn request_node_id_for_nucleus( &self, nucleus_id: Id)
     {
@@ -492,18 +492,22 @@ impl ExternalRouter
 
     }
 
+    /*
     fn flush_hold(&self)
     {
-        let wires : Vec<Wire> = {
+        let wires : Vec<(Wire,Option<Id>)> = {
             let mut hold = self.hold.lock().expect("cannot get hold lock");
             hold.drain(..).collect()
         };
 
-        for wire in wires
+println!("FLUSH HOLD {}", wires.len());
+        for (wire,exclude) in wires
         {
-            self.relay_wire(wire);
+            self.relay_wire_excluding(wire,exclude);
         }
     }
+
+     */
 
 
 }
@@ -807,7 +811,7 @@ pub enum RelayPayload
     ReportSupervisorAvailable,
     RequestCreateSimulation(RequestCreateSimulation),
     AssignSimulationToSupervisor(ReportAssignSimulation),
-    RequestServerForSupervisor(Id),
+    PledgeServices,
     AssignServerToSupervisor(Id),
     RequestSupervisorForSim(Id),
     ReportSupervisorForSim(ReportSupervisorForSim),
@@ -1269,6 +1273,7 @@ println!("CHECKING AVAILABLE SUPERS...");
         {
             StarCore::Server(server) => {
                 let server = server.read().unwrap();
+println!("CHECKING NEAREST SUPERS...");
                 assert_eq!(server.nearest_supervisors.len(), 1);
             }
             _ => {}
