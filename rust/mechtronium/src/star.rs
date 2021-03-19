@@ -20,11 +20,12 @@ use crate::simulation::Simulation;
 use crate::mechtron::CreatePayloadsBuilder;
 use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation, Search, SearchResult, SearchKind, ReqCreateSim, ReportAssignSimulationToServer};
+use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation, Search, SearchKind, ReqCreateSim, ReportAssignSimulationToServer, SearchResult, Unwind, UnwindPayload};
 use std::fmt;
 use crate::network::RelayPayload::{ReportSupervisorAvailable, RequestCreateSimulation};
 use std::collections::hash_map::RandomState;
 
+static MAX_HOPS : i32 = 256;
 
 pub struct Star {
     pub id: RefCell<Option<Id>>,
@@ -36,7 +37,9 @@ pub struct Star {
     connection_transactions: Mutex<HashMap<Id,Arc<Connection>>>,
     pub error_handler: RefCell<Box<dyn StarErrorHandler>>,
     pub nearest_supervisors: Mutex<HashMap<Id,i32>>,
-    pub transaction_watchers: Mutex<HashMap<Id,Weak<dyn TransactionWatcher>>>
+    pub transaction_watchers: Mutex<HashMap<Id,Weak<dyn TransactionWatcher>>>,
+    pub debug: bool,
+    pub searches: Mutex<HashMap<Id,Arc<dyn TransactionWatcher>>>
 }
 
 
@@ -63,7 +66,9 @@ impl Star {
             connection_transactions: Mutex::new(HashMap::new()),
             error_handler: RefCell::new( Box::new(LogErrorHandler{}) ),
             nearest_supervisors: Mutex::new(HashMap::new() ),
-            transaction_watchers: Mutex::new( HashMap::new() )
+            transaction_watchers: Mutex::new( HashMap::new() ),
+            debug: true,
+            searches: Mutex::new(HashMap::new() )
         };
 
         if rtn.core.is_central()
@@ -96,9 +101,10 @@ impl Star {
             to: Id::new(0,0),
             payload: relay,
             transaction: Option::Some(self.seq().next()),
-            inform: Option::None,
+            inform: Option::Some(self.id()),
             hops: 0
         };
+
 
         {
             self.transaction_watchers.lock()?.insert(relay.transaction.unwrap().clone(), Arc::downgrade(&transaction_watcher));
@@ -159,12 +165,12 @@ impl Star {
                                                                      ReportSupervisorAvailable)));
             },
             StarCore::Server(_) => {
-                self.router.relay_wire(Wire::Search(Search::new(self.id(),
-                                                                     SearchKind::StarKind(StarKind::Supervisor) )));
+                let search = Search::new(self.id(), SearchKind::StarKind(StarKind::Supervisor) );
+                self.router.relay_wire(Wire::Search(search));
             },
             StarCore::Client => {
-                self.router.relay_wire(Wire::Search(Search::new(self.id(),
-                                                                SearchKind::StarKind(StarKind::Supervisor) )));
+                let search = Search::new(self.id(), SearchKind::StarKind(StarKind::Supervisor) );
+                self.router.relay_wire(Wire::Search(search));
             },
             _ => {}
         }
@@ -199,32 +205,151 @@ impl Star {
 
     fn on_search( &self, search: Search, connection: Arc<Connection> )->Result<(),Error>
     {
-        if search.hops < 0
+
+        if search.hops.len() < 0
         {
             self.error("Illegal search hops!");
         }
-        if search.max_hops > 16
+        if search.max_hops > MAX_HOPS
         {
-            self.error("Illegal max search hops!");
+            self.error(format!("Illegal max search hops: {}",search.max_hops).as_str());
         }
-        else if search.hops > search.max_hops
+        else if search.hops.len() > search.max_hops as usize
         {
             self.error("Too many search hops!");
         }
 
-        let search = search.inc_hops();
 
         if search.kind.matches(self)
         {
-            let reply = Relay::new(self.id(),search.from.clone(), RelayPayload::SearchResult(SearchResult{
-                found: self.id().clone(),
+            let unwind = Unwind::new(self.id(), UnwindPayload::SearchFoundResult(SearchResult{
+                sought: Option::Some(self.id()),
                 kind: search.kind.clone(),
-                hops: search.hops.clone(),
-                transaction: Option::None
-            }));
-            self.router.relay_wire(Wire::Relay(reply) );
+                transactions: search.transactions.clone()
+            }), search.hops.clone(), search.hops.len() as _ );
+            match search.kind
+            {
+                SearchKind::StarKind(_) => {}
+                SearchKind::StarId(seeking) => {
+                   println!("SEARCH FOUND from {:?} seeking {:?} hops {}",search.from,seeking,search.hops.len());
+
+                }
+            }
+
+            self.router.relay_wire(Wire::Unwind(unwind) )?;
+            if search.kind.is_multiple_match()
+            {
+                self.branch_search(search, connection);
+            }
         }
-        self.router.relay_wire_excluding(Wire::Search(search), connection.get_remote_node_id());
+        else {
+            self.branch_search(search,connection);
+        }
+
+        Ok(())
+    }
+
+    fn branch_search( &self, search: Search, connection: Arc<Connection> )
+    {
+
+        // create a new search transaction
+        let transaction = self.seq().next();
+        let search = search.push(self.id(),transaction );
+        {
+            let mut searches = self.searches.lock().unwrap();
+            searches.insert(transaction, Arc::new(SearchTransactionWatcher { searches: Cell::new(0), connection: connection.clone() }));
+        };
+println!("Branch search... from {:?} core {} hops {}",search.from, self.core,search.hops.len());
+        self.router.relay_wire_excluding( Wire::Search(search), connection.get_remote_node_id() );
+    }
+
+
+    fn on_unwind( &self, unwind: Unwind, connection: Arc<Connection> )->Result<(),Error>
+    {
+
+println!("ON UNWIND~~!");
+        if unwind.path.len() > MAX_HOPS as usize
+        {
+            self.error("Too many payload hops!");
+        }
+
+        // handled the same no matter if this is the To node or not
+        match unwind.payload
+        {
+            UnwindPayload::SearchFoundResult(ref result) => {
+
+                match result.kind
+                {
+                    SearchKind::StarKind(ref kind) => {
+                        match kind
+                        {
+                            StarKind::Supervisor => {
+                                if result.sought.is_some()
+                                {
+                                    let mut nearest_supervisors = self.nearest_supervisors.lock()?;
+                                    nearest_supervisors.insert(result.sought.unwrap().clone(), unwind.hops.clone());
+                                }
+                                else {
+                                    println!("expected: search FOUND");
+                                 }
+                            }
+                            _=>{}
+                        }
+                    }
+                    SearchKind::StarId(id) => {
+                        connection.add_found_node(id, NodeFind::new(unwind.hops.clone(), self.timestamp()));
+                        self.router.notify_found( &unwind , connection.clone() );
+                    }
+                }
+
+                match &self.core
+                {
+                    StarCore::Server(server) => {
+                        match &result.kind
+                        {
+                            SearchKind::StarKind(ref kind) => {
+
+                                match kind{
+                                    StarKind::Supervisor =>  {
+                                        let mut server = server.write().unwrap();
+                                        if( server.supervisor.is_none() )
+                                        {
+                                            server.supervisor = Option::Some(result.sought.unwrap());
+                                            let relay = Relay::new(self.id(), server.supervisor.unwrap().clone(), RelayPayload::PledgeServices );
+                                            self.router.relay_wire(Wire::Relay(relay));
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        };
+
+
+                    }
+                    _ => {}
+                }
+            }
+            UnwindPayload::SearchNotFoundResult(ref search) => {
+                match search.kind{
+                    SearchKind::StarKind(_) => {}
+                    SearchKind::StarId(id) => {
+                        connection.add_unfound_node(id);
+                    }
+                }
+// CHECK HERE FOR UNFOUND TRANSACTION
+            }
+        }
+
+println!("before UNWIND ~>~>~>~>: {:?} AND {:?}",unwind.path.last().unwrap(), self.id());
+        let unwind = unwind.pop();
+println!("UNWIND REMAINING: {}",unwind.hops);
+        if !unwind.path.is_empty()
+        {
+            println!("after UNWIND ~>~>~>~>: {:?} AND {:?}",unwind.path.last().unwrap(), self.id());
+            self.router.relay_wire(Wire::Unwind(unwind));
+        }
+
 
         Ok(())
     }
@@ -236,25 +361,10 @@ impl Star {
         {
             self.error("Illegal payload hops!");
         }
-        else if relay.hops > 16
+        else if relay.hops > MAX_HOPS
         {
             self.error("Too many payload hops!");
         }
-
-        // handled the same no matter if this is the To node or not
-        match &relay.payload
-        {
-            RelayPayload::NodeFound(search)=> {
-                connection.add_found_node(search.seeking_id.clone() , NodeFind::new(search.hops,self.timestamp()));
-                self.router.notify_found( &search.seeking_id );
-
-            }
-            RelayPayload::NodeNotFound(search)=> {
-                connection.add_unfound_node(search.seeking_id.clone() );
-            }
-            _ => {}
-        }
-
 
         if relay.to != self.id()
         {
@@ -272,40 +382,6 @@ impl Star {
                     self.router.relay_wire(Wire::Relay(reply))?;
                 }
                 RelayPayload::Pong(id)=> {
-                }
-                RelayPayload::SearchResult(result)=>
-                {
-                    {
-                        let mut nearest_supervisors = self.nearest_supervisors.lock()?;
-                        nearest_supervisors.insert(result.found.clone(), result.hops.clone());
-                    }
-                    match &self.core
-                    {
-                        StarCore::Server(server) => {
-                            match &result.kind
-                            {
-                                SearchKind::StarKind(kind) => {
-
-                                    match kind{
-                                        StarKind::Supervisor =>  {
-                                            let mut server = server.write().unwrap();
-                                            if( server.supervisor.is_none() )
-                                            {
-                                                server.supervisor = Option::Some(result.found);
-                                                let relay = Relay::new(self.id(), server.supervisor.unwrap().clone(), RelayPayload::PledgeServices );
-                                                self.router.relay_wire(Wire::Relay(relay));
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                _ => {}
-                            };
-
-
-                        }
-                        _ => {}
-                    }
                 }
                 RelayPayload::RequestUniqueSeq => {
                     if self.core.is_central()
@@ -331,6 +407,15 @@ impl Star {
                     }
                 }
                 RelayPayload::RequestCreateSimulation(request_create_simulation)=> {
+
+                    if relay.transaction.is_none()
+                    {
+                        self.error("RequestCreateSimulation should have a transaction");
+                    }
+                    if relay.inform.is_none()
+                    {
+                        self.error("RequestCreateSimulation should have an inform");
+                    }
                     match &self.core
                     {
                         StarCore::Central(cluster) => {
@@ -357,7 +442,10 @@ impl Star {
                 }
                 RelayPayload::AssignSimulationToSupervisor(assign_simulation)=>
                 {
-unimplemented!();
+                    if relay.inform.is_none() || relay.transaction.is_none()
+                    {
+                        self.error("AssignSimulationToSupervistor should have an inform");
+                    }
                     match &self.core{
                         StarCore::Supervisor(supervisor) => {
                            let supervisor = supervisor.write()?;
@@ -399,7 +487,6 @@ unimplemented!();
                                            match self.create_sim_from_scratch(sim_config)
                                            {
                                                Ok(simulation_id) => {
-unimplemented!();
                                                    if( relay.inform.is_some() )
                                                    {
                                                        let wire = Wire::Relay(Relay {
@@ -410,6 +497,7 @@ unimplemented!();
                                                            transaction:  relay.transaction.clone(),
                                                            hops: 0
                                                        });
+println!("SENDING NOTIFY SIMULATION READY");
                                                        self.router.relay_wire(wire);
                                                    }
                                                    else {
@@ -419,7 +507,7 @@ unimplemented!();
 
                                                }
                                                Err(err) => {
-                                                   self.error_handler.borrow().on_error("could not create sim");
+                                                   self.error_handler.borrow().on_error(format!("{:?}",err).as_str());
                                                }
                                            }
                                         }
@@ -519,7 +607,7 @@ unimplemented!();
             match watcher{
                 None => {}
                 Some(watcher) => {
-                  watcher.on_transaction(&Wire::Relay(relay.clone()));
+                  watcher.on_transaction(&Wire::Relay(relay.clone()), self );
                 }
             }
         }
@@ -559,7 +647,7 @@ unimplemented!();
             match watcher{
                 None => {}
                 Some(watcher) => {
-                    watcher.on_transaction(&Wire::Relay(relay.clone()));
+                    watcher.on_transaction(&Wire::Relay(relay.clone()), self );
                 }
             }
         }
@@ -682,7 +770,15 @@ impl WireListener for Star
 
     fn on_wire(&self, wire: Wire, mut connection: Arc<Connection>) -> Result<(), Error> {
 
-println!("on_wire()  {} -> {}", wire, self.core,);
+println!("on_wire({})  {} -> {}", match &wire{
+
+    Wire::Relay(relay) => {
+
+        let rtn = format!("<{:?}->{:?}>{}",relay.from,relay.to,relay.payload);
+        rtn.clone()
+    }
+    _ => "".to_string()
+}, wire, self.core,);
         match wire{
             Wire::ReportVersion(_)=> {
                 // if we have a Node Id, return it
@@ -738,64 +834,16 @@ println!("on_wire()  {} -> {}", wire, self.core,);
                     self.start();
                 }
             }
-            Wire::NodeSearch(search) => {
-                let mut search  = search.clone();
-                search.hops = search.hops+1;
-
-                // since the request came from this route we know that's where to find it
-                connection.add_found_node(search.from.clone(), NodeFind::new(search.hops, self.timestamp() ));
-                // we can also say the seeking node cannot be found in that direction
-                connection.add_unfound_node(search.seeking_id.clone() );
-
-
-                if search.seeking_id == self.id()
-                {
-                    connection.wire(Wire::Relay(
-                        Relay{
-                            from: self.id(),
-                            to:  search.from.clone(),
-                            payload: RelayPayload::NodeFound(search),
-                            transaction: Option::Some(self.seq.borrow().as_ref().unwrap().next()),
-                            inform: Option::None,
-                            hops: 0
-                        }
-                        ))?;
-                }
-                else if( search.hops < 0 )
-                {
-                    self.error("Dumping illegal payload hops < 0")
-                }
-                else if( search.hops > 16 )
-                {
-                    connection.wire(Wire::Relay(
-                        Relay{
-                            from: self.id(),
-                            to:  search.from.clone(),
-                            payload: RelayPayload::NodeNotFound(search),
-                            inform: Option::None,
-                            transaction: Option::Some(self.seq.borrow().as_ref().unwrap().next()),
-                            hops: 0
-                        }
-                    ))?;
-                }
-                else
-                {
-                    let mut search = search.clone();
-                    self.router.relay_wire( Wire::NodeSearch(search) )?;
-                }
-            }
-            Wire::NodeFound(search) => {
-                connection.add_found_node(search.seeking_id.clone(), NodeFind::new(search.hops, self.timestamp() ));
-            }
             Wire::MessageTransport(transport) => {
             }
             Wire::Relay(relay) => {
                 self.on_relay(relay,connection);
-
             }
             Wire::Search(search) => {
                 self.on_search(search,connection);
-
+            }
+            Wire::Unwind(unwind) => {
+                self.on_unwind(unwind,connection);
             }
 
             Wire::Panic(_) => {}
@@ -977,7 +1025,57 @@ impl StarErrorHandler for LogErrorHandler
 
 pub trait TransactionWatcher
 {
-    fn on_transaction( &self, wire: &Wire );
+    fn on_transaction( &self, wire: &Wire, star: &Star) -> TransactionResult;
 }
 
 
+pub struct SearchTransactionWatcher{
+    pub searches: Cell<i32>,
+    pub connection: Arc<Connection>
+}
+
+pub enum TransactionResult
+{
+    Inconclusive,
+    Final
+}
+
+impl TransactionWatcher for SearchTransactionWatcher
+{
+    fn on_transaction(&self, wire: &Wire, star: &Star)-> TransactionResult{
+println!("----> SEARCH TRANSACTION <----- ");
+        self.searches.replace(self.searches.get()-1);
+
+        match wire{
+            Wire::Relay(relay ) => {
+
+                match &relay.payload {
+                    RelayPayload::SearchNotFound(search) => {
+                        let mut search = search.clone();
+                        search.pop();
+                        if self.searches.get() <= 0 && !search.transactions.is_empty()
+                        {
+println!("----> SENDING NOT FOUND <----- ");
+                            self.connection.to_remote( Wire::Relay( Relay{
+                                from: star.id(),
+                                to: self.connection.get_remote_node_id().unwrap(),
+                                payload: RelayPayload::SearchNotFound(search.clone()),
+                                inform: None,
+                                transaction: Option::Some(search.transactions.last().unwrap().clone()),
+                                hops: 0
+                            } ) );
+                        }
+                    }
+                    _ => {}
+               }
+            }
+            Wire::Unwind(unwind ) => {}
+            _ => {
+                println!("Expected wire to be one of SearchNotFound or Unwind")
+            }
+        }
+
+        TransactionResult::Final
+
+    }
+}

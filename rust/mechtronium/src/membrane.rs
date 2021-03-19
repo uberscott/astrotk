@@ -548,7 +548,8 @@ pub struct MechtronMembrane
 {
     wasm_membrane: Arc<WasmMembrane>,
     original_state: Arc<ReadOnlyState>,
-    status: MechtronMembraneStatus
+    status: MechtronMembraneStatus,
+    debug: bool
 }
 
 impl MechtronMembrane
@@ -558,9 +559,11 @@ impl MechtronMembrane
         MechtronMembrane {
             wasm_membrane: membrane,
             original_state: state,
-            status: MechtronMembraneStatus::None
+            status: MechtronMembraneStatus::None,
+            debug: true
         }
     }
+
 
     // things that must be done before state can be injected
     fn checklist(&self)
@@ -654,6 +657,10 @@ impl MechtronMembrane
 
     pub fn create(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
+        if self.debug
+        {
+            println!("Mechtron::create()");
+        }
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
 
@@ -672,6 +679,10 @@ impl MechtronMembrane
 
     pub fn update(&mut self, context: &Context) ->Result<Vec<MessageBuilder>,Error>
     {
+        if self.debug
+        {
+            println!("Mechtron::update()");
+        }
         let context_lock = self.write_context(context)?;
         let builders = self.wasm_membrane.instance.exports.get_native_function::<(i32,i32),i32>("mechtron_update").unwrap().call(context_lock.id(), self.state()?)?;
         if builders == -1
@@ -687,7 +698,12 @@ impl MechtronMembrane
 
     pub fn message(&mut self, context: &Context, message: &Message) ->Result<Vec<MessageBuilder>,Error>
     {
+
         let port = message.to.port.clone();
+        if self.debug
+        {
+            println!("Mechtron::port({})",port);
+        }
         let context_lock = self.write_context(context)?;
         let message_lock = self.write_message(message)?;
         let result = self.wasm_membrane.instance.exports.get_native_function::<(i32, i32, i32),i32>("mechtron_message").unwrap().call(context_lock.id(), self.state()?, message_lock.id());
@@ -985,3 +1001,4 @@ mod test
     }
 
 }
+

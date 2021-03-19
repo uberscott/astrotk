@@ -118,7 +118,7 @@ log("debug","Vlad");
         builder.to_port = Option::Some("api".to_string());
         builder.payloads.replace(Option::Some(NeutronApiCallCreateMechtron::payloads(call,&CONFIGS)?));
 
-        log("debug","OK NEUTRON CREATE FINISHED");
+log("debug","OK NEUTRON CREATE FINISHED");
         Ok(Response::Messages(vec!(builder)))
     }
 }

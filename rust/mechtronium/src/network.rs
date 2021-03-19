@@ -1,18 +1,18 @@
-use std::sync::{Arc, RwLock, Mutex, Weak};
+use std::{fmt, thread};
+use std::borrow::Borrow;
+use std::cell::{Cell, RefCell, RefMut};
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
+use std::sync::{Arc, Mutex, RwLock, Weak};
 
+use mechtron_common::artifact::Artifact;
+use mechtron_common::id::{Id, IdSeq};
 use mechtron_common::message::{Message, MessageTransport};
 
-use crate::star::{Star, StarCore, StarKind};
 use crate::error::Error;
-use mechtron_common::id::Id;
-use std::collections::{HashMap, HashSet};
-use crate::network::RouteProblem::{NodeUnknown, NucleusNotKnown};
-use std::cell::{Cell, RefCell, RefMut};
+use crate::network::RouteProblem::{NucleusNotKnown, StarUnknown};
 use crate::router::NetworkRouter;
-use std::{fmt, thread};
-use std::hash::Hash;
-use std::borrow::Borrow;
-use mechtron_common::artifact::Artifact;
+use crate::star::{Star, StarCore, StarKind};
 
 static PROTOCOL_VERSION: i32 = 100_001;
 
@@ -145,7 +145,8 @@ println!("to_remote() {} - {} -> {}", self.local.describe(), wire, remote.descri
 
     pub fn add_unfound_node( &self, node_id: Id )
     {
-        self.unfound_nodes.borrow_mut().insert(node_id);
+        println!("unfound: {:?} for {:?}", node_id, self.remote_node_id);
+//        self.unfound_nodes.borrow_mut().insert(node_id);
     }
 
     fn this(&self)->Arc<Connection>
@@ -350,42 +351,39 @@ unimplemented!();
 pub struct ExternalRouter
 {
     inner: RwLock<ExternalRouterInner>,
-    hold: Mutex<Vec<(Wire,Option<Id>)>>,
-    node_id: RefCell<Option<Id>>
+    hold: Mutex<Vec<(Wire, Option<Id>)>>,
+    star: RefCell<Option<Id>>,
+    seq: IdSeq,
 }
 
 impl ExternalRouter
 {
-    pub fn new()->Self
+    pub fn new() -> Self
     {
-        ExternalRouter{
+        ExternalRouter {
             inner: RwLock::new(ExternalRouterInner::new()),
-            node_id: RefCell::new(Option::None),
-        hold: Mutex::new( vec ! () )
+            star: RefCell::new(Option::None),
+            hold: Mutex::new(vec!()),
+            seq: IdSeq::new(0),
         }
     }
-    pub fn set_node_id( &self, node_id: Id)
+
+    pub fn routes(&self) -> usize
     {
-        self.node_id.replace(Option::Some(node_id));
+        let inner = self.inner.read().unwrap();
+        inner.routes.len()
     }
 
-    fn node_id(&self)->Id
+    pub fn set_star_id(&self, node_id: Id)
     {
-        self.node_id.borrow().unwrap().clone()
+        self.star.replace(Option::Some(node_id));
     }
 
-    pub fn notify_found( &self, node_id: &Id)
+    fn star(&self) -> Id
     {
-        let releases:Vec<(Wire,Option<Id>)> = {
-            let mut hold = self.hold.lock().expect("hold lock should not be poisoned");
-            hold.drain(..).collect()
-        };
-
-        for (wire,exclude) in releases
-        {
-            self.relay_wire_excluding(wire,exclude);
-        }
+        self.star.borrow().unwrap().clone()
     }
+
 
     pub fn relay_wire(&self, wire: Wire ) ->Result<(),Error>
     {
@@ -394,6 +392,8 @@ impl ExternalRouter
 
     pub fn relay_wire_excluding(&self, wire: Wire, exclude:Option<Id> ) ->Result<(),Error>
     {
+        println!("routing Wire {}", wire);
+
         match &wire
         {
             Wire::Search(search) => {
@@ -404,6 +404,33 @@ impl ExternalRouter
                 for route in routes
                 {
                     route.wire(Wire::Search(search.clone()));
+                }
+            }
+            Wire::Unwind(unwind) => {
+                println!("unwrapped UNWIND.... Forwarding UNWIND {} ", unwind.hops);
+                let route = {
+                    let inner = self.inner.read()?;
+                    match unwind.path.is_empty()
+                    {
+                        true => {
+                            println!("unwind path is empty");
+                            return Err("unwind path is empty".into());
+                        }
+                        false => {
+                            inner.get_route_for_node(unwind.path.last().as_ref().unwrap())
+                        }
+                    }
+                };
+                match route
+                {
+                    Ok(route) => {
+                        println!("Forwarding UNWIND");
+                        route.wire(wire)?;
+                    }
+                    Err(error) => {
+                        println!("Handle UNWIND ROUTE error");
+                        self.handle_route_error(wire, &error, exclude);
+                    }
                 }
             }
             Wire::Relay(payload) => {
@@ -417,47 +444,11 @@ impl ExternalRouter
                         route.wire(wire)?;
                     }
                     Err(error) => {
-                        match error{
-                            RouteProblem::NodeUnknown(node) => {
-                                self.add_to_hold((wire, exclude));
-                                self.relay_wire(Wire::NodeSearch(NodeSearchPayload{
-                                    from: self.node_id(),
-                                    seeking_id: node.clone(),
-                                    hops: 0,
-                                    timestamp: 0
-                                }));
-                            }
-                            RouteProblem::NodeDoesNotExist(node) => {
-                                println!("NODE DOES NOT EXIST")
-                            }
-                            NucleusNotKnown => {
-                                panic!("NUCLEUS UNKNOWN")
-                            }
-                        }
+                        self.handle_route_error(wire, &error, exclude);
                         return Err("could not find node when attempting to relay wire TO".into());
                     }
                 }
             },
-            Wire::NodeSearch(payload)=>
-            {
-                let routes = {
-                    let inner = self.inner.read()?;
-                    inner.get_all_posible_routes_for_node(&payload.seeking_id )
-                };
-                match routes
-                {
-                    Ok(routes)=> {
-                        for route in routes
-                        {
-                            route.wire(Wire::NodeSearch(payload.clone()));
-                        }
-                    }
-                    Err(error)=>{
-                        println!("{}",error);
-                    }
-                }
-            }
-
             _ => {
                 return Err("can only relay Wire::Relay type wires".into());
             }
@@ -465,13 +456,168 @@ impl ExternalRouter
         Ok(())
     }
 
-    fn add_to_hold(&self, wire: (Wire,Option<Id>))
+    pub fn may_have_route_excluding(&self, star_id: &Id, exclude: Option<Id>) -> bool
     {
-        let mut hold = self.hold.lock().unwrap();
-        hold.push(wire);
+        let routes = {
+            let inner = self.inner.read().unwrap();
+            inner.get_all_routes_excluding(&exclude).unwrap()
+        };
+
+        for route in routes
+        {
+            match route.has_node(star_id)
+            {
+                HasNode::Yes(_) => {
+                    return true;
+                }
+                HasNode::No => {
+                    // do nothing
+                }
+                HasNode::Unknown => {
+                    return true;
+                }
+            };
+        }
+        false
     }
 
-    pub fn add_route( &self, route: Arc<dyn ExternalRoute>)
+
+    fn release_hold(&self)
+    {
+        println!("RELEASING HOLD");
+        let releases: Vec<(Wire, Option<Id>)> = {
+            let mut hold = self.hold.lock().expect("hold lock should not be poisoned");
+            println!("holds: {}", hold.len());
+            hold.drain(..).collect()
+        };
+        println!("releases : {}", releases.len());
+
+        for (wire, exclude) in releases
+        {
+            println!("...Relaying HELD...");
+            self.relay_wire_excluding(wire, exclude);
+        }
+    }
+
+    pub fn notify_search_result(&self, unwind: &Unwind, connection: Arc<Connection>)
+    {
+        match self.notify_search_result_unwind(unwind, connection.clone())
+        {
+            None => {}
+            Some(unwind) => {
+                self.relay_wire_excluding(Wire::Unwind(unwind), connection.get_remote_node());
+                // technically should only do this if the transaction is complete...
+                // otherwise we are recreating searches... but need to move on for now.
+                self.release_hold();
+            }
+        }
+    }
+
+    fn notify_search_result_unwind(&self, unwind: &Unwind, connection: Arc<Connection>) -> Option<Unwind>
+    {
+        let  mut inner = self.inner.write().expect("must have access to inner write lock");
+
+        let unwind = unwind.pop();
+
+        match &unwind.payload {
+            UnwindPayload::SearchFoundResult(search) => {
+                match search.kind
+                {
+                    SearchKind::StarId(seek) => {
+                        if search.transactions.last().is_some()
+                        {
+                            let transaction = search.transactions.last().unwrap();
+                            // since this is a find, we remove the search watch
+                            // there may be more finds, but the search watch is only used to
+                            // report unfounds once all routes have been searched
+                            inner.searches.remove(transaction);
+                            connection.add_found_node(search.sought.unwrap().clone(), NodeFind::new(unwind.hops, 0));
+                            return Option::Some(unwind);
+                        } else {
+                            println!("ERROR! Expected transaction at top of stack!");
+                        }
+                    }
+                    _ => {
+                        return Option::Some(unwind);
+                    }
+                }
+            }
+            UnwindPayload::SearchNotFoundResult(search) => {
+                match search.kind
+                {
+                    SearchKind::StarId(seek) => {
+                        connection.add_unfound_node(search.sought.unwrap().clone());
+                        if search.transactions.last().is_some()
+                        {
+                            let transaction = search.transactions.last().unwrap();
+
+                            let mut search_watcher = inner.searches.get_mut(transaction);
+                            if search_watcher.is_some()
+                            {
+                                let mut search_watcher= search_watcher.unwrap();
+                                search_watcher.dec();
+                                if search_watcher.count == 0
+                                {
+                                    return Option::Some(unwind);
+                                }
+                            }
+                        } else {
+                            println!("ERROR! Expected transaction at top of stack!");
+                        }
+                    }
+                    _ => {
+                        return Option::Some(unwind);
+                    }
+                }
+            }
+        }
+        return Option::None;
+    }
+
+
+    fn handle_route_error(&self, wire: Wire, route_problem: &RouteProblem, exclude: Option<Id>)
+    {
+        match route_problem {
+            RouteProblem::StarUnknown(star) => {
+                self.add_to_hold((wire, exclude));
+                let transaction = {
+                    let inner = self.inner.write().expect("must be able to get inner lock");
+                    let transaction = self.seq.next();
+                    let search = Search::new(self.star(), SearchKind::StarId(star.clone()));
+                    let count = inner.routes.len().clone();
+                    let mut inner = inner;
+                    inner.searches.insert(transaction, SearchWatcher{
+                        search: search,
+                        count: count
+                    });
+                    transaction
+                };
+                self.relay_wire(Wire::Search(Search {
+                    from: self.star(),
+                    kind: SearchKind::StarId(star.clone()),
+                    max_hops: 32,
+                    transactions: vec![transaction],
+                    hops: vec![self.star()],
+                }));
+            }
+            RouteProblem::StarDoesNotExist(star) => {
+                panic!("NODE DOES NOT EXIST {:?}", star)
+            }
+            NucleusNotKnown => {
+                panic!("NUCLEUS UNKNOWN")
+            }
+        }
+    }
+
+    fn add_to_hold(&self, wire: (Wire, Option<Id>))
+    {
+        println!("ADD TO HOLD...");
+        let mut hold = self.hold.lock().unwrap();
+        hold.push(wire);
+        println!("HOLD SIZE {}...", hold.len());
+    }
+
+    pub fn add_route(&self, route: Arc<dyn ExternalRoute>)
     {
         {
             let mut inner = self.inner.write().expect("must get the inner lock");
@@ -508,8 +654,20 @@ println!("FLUSH HOLD {}", wires.len());
     }
 
      */
+}
 
+struct SearchWatcher
+{
+    search: Search,
+    count: usize,
+}
 
+impl SearchWatcher
+{
+    fn dec(&mut self)
+    {
+        self.count = self.count - 1;
+    }
 }
 
 /*
@@ -552,30 +710,39 @@ pub struct NodeRouter
 
 impl NodeRouter
 {
-    pub fn relay_wire(&self, wire: Wire )->Result<(),Error>
+    pub fn external_routes(&self) -> usize
+    {
+        self.external.routes()
+    }
+
+    pub fn relay_wire(&self, wire: Wire) -> Result<(), Error>
     {
         self.external.relay_wire(wire)
     }
 
-    pub fn relay_wire_excluding(&self, wire: Wire, excluding: Option<Id> )->Result<(),Error>
+    pub fn relay_wire_excluding(&self, wire: Wire, excluding: Option<Id>) -> Result<(), Error>
     {
-        self.external.relay_wire_excluding(wire, excluding )
+        self.external.relay_wire_excluding(wire, excluding)
     }
 
+    pub fn may_have_route_excluding(&self, star: &Id, excluding: Option<Id>) -> bool
+    {
+        self.external.may_have_route_excluding(star, excluding)
+    }
 
-    pub fn add_route( &self, route: Arc<dyn ExternalRoute>)
+    pub fn add_route(&self, route: Arc<dyn ExternalRoute>)
     {
         self.external.add_route(route);
     }
 
-    pub fn set_node_id( &self, node_id: Id)
+    pub fn set_node_id(&self, node_id: Id)
     {
-        self.external.set_node_id(node_id);
+        self.external.set_star_id(node_id);
     }
 
-    pub fn notify_found( &self, node_id: &Id)
+    pub fn notify_found(&self, unwind: &Unwind, connection: Arc<Connection>)
     {
-        self.external.notify_found(node_id);
+        self.external.notify_search_result(unwind, connection);
     }
 }
 
@@ -654,17 +821,18 @@ impl ExternalRoute for Connection
 
 pub enum Wire
 {
-   ReportVersion(i32),
-   ReportNodeId(Id),
-   RequestUniqueSeq,
-   ReportUniqueSeq(ReportUniqueSeqPayload),
-   NodeSearch(NodeSearchPayload),
-   NodeFound(NodeSearchPayload),
-   NodeNotFound(NodeSearchPayload),
-   MessageTransport(MessageTransport),
-   Search(Search),
-   Relay(Relay),
-   Panic(String)
+    ReportVersion(i32),
+    ReportNodeId(Id),
+    RequestUniqueSeq,
+    ReportUniqueSeq(ReportUniqueSeqPayload),
+    //   NodeSearch(NodeSearchPayload),
+//   NodeFound(NodeSearchPayload),
+//   NodeNotFound(NodeSearchPayload),
+    MessageTransport(MessageTransport),
+    Search(Search),
+    Relay(Relay),
+    Unwind(Unwind),
+    Panic(String)
 }
 
 
@@ -675,13 +843,11 @@ impl fmt::Display for Wire {
             Wire::ReportNodeId(_) => { "ReportNodeId" }
             Wire::RequestUniqueSeq => { "RequestUniqueSeq" }
             Wire::ReportUniqueSeq(_) => { "ReportUniqueSeq" }
-            Wire::NodeSearch(_) => { "NodeSearch" }
-            Wire::NodeNotFound(_) => { "NodeNotFound" }
-            Wire::NodeFound(_) => { "NodeFound" }
             Wire::MessageTransport(_) => { "MessageTransport" }
             Wire::Relay(relay) => { "Relay<>"}
             Wire::Search(_) => { "Search<>"}
             Wire::Panic(_) => { "Panic" }
+            Wire::Unwind(_) => { "Unwind" }
         };
         write!(f, "{}",r)
     }
@@ -692,41 +858,61 @@ pub struct Search
 {
     pub from: Id,
     pub kind: SearchKind,
-    pub hops: i32,
     pub max_hops: i32,
-    pub transaction: Option<Id>
+    pub transactions: Vec<Id>,
+    pub hops: Vec<Id>,
 }
+
+impl Search
+{}
 
 #[derive(Clone)]
 pub struct SearchResult
 {
-    pub found: Id,
+    pub sought: Option<Id>,
     pub kind: SearchKind,
-    pub hops: i32,
-    pub transaction: Option<Id>
+    pub transactions: Vec<Id>,
 }
 
-impl Search{
-    pub fn new(from:Id,kind:SearchKind)->Self
+#[derive(Clone)]
+pub struct SearchNotResultFound
+{
+    pub sought: Id,
+    pub hops: i32,
+    pub transaction: Vec<Id>,
+}
+
+impl Search {
+    pub fn new(from: Id, kind: SearchKind) -> Self
     {
-        Search{
+        Search {
             from: from,
             kind: kind,
-            hops: 0,
-            max_hops: 16,
-            transaction: Option::None
+            hops: vec!(),
+            max_hops: 32,
+            transactions: vec!(),
         }
     }
 
-    pub fn inc_hops(self)->Self
+    pub fn push(self, star: Id, transaction: Id) -> Self
     {
-        Search{
-            from:self.from,
+        let mut hops = self.hops.clone();
+        let mut transactions = self.transactions.clone();
+        hops.push(star);
+        transactions.push(transaction);
+        Search {
+            from: self.from,
             kind: self.kind,
-            hops: self.hops+1,
             max_hops: self.max_hops,
-            transaction: None
+            hops: hops,
+            transactions: transactions,
         }
+    }
+
+    pub fn pop(&mut self)
+    {
+        self.hops.pop();
+        self.transactions.pop();
     }
 }
 
@@ -735,7 +921,8 @@ impl Search{
 #[derive(Clone,Eq,PartialEq)]
 pub enum SearchKind
 {
-    StarKind(StarKind)
+    StarKind(StarKind),
+    StarId(Id),
 }
 
 impl SearchKind
@@ -745,22 +932,67 @@ impl SearchKind
         match self
         {
             SearchKind::StarKind(star_kind) => {
-               star.core.kind() == *star_kind
+                star.core.kind() == *star_kind
             }
+            SearchKind::StarId(star_id) => {
+                star.id() == star_id.clone()
+            }
+        }
+    }
+
+    pub fn is_multiple_match(&self) -> bool
+    {
+        match self
+        {
+            SearchKind::StarKind(_) => true,
+            SearchKind::StarId(_) => false
         }
     }
 }
 
 
 #[derive(Clone)]
+pub struct Unwind
+{
+    pub from: Id,
+    pub payload: UnwindPayload,
+    pub path: Vec<Id>,
+    pub hops: i32,
+}
+
+impl Unwind {
+    pub fn new(from: Id, payload: UnwindPayload, path: Vec<Id>, hops: i32) -> Self
+    {
+        Unwind {
+            from: from,
+            payload: payload,
+            hops: hops,
+            path: path,
+        }
+    }
+
+    pub fn pop(&self) -> Self
+    {
+        let mut path = self.path.clone();
+        path.pop();
+        Unwind {
+            from: self.from.clone(),
+            payload: self.payload.clone(),
+            hops: self.hops.clone(),
+            path: path,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Relay
 {
-   pub from: Id,
-   pub to: Id,
-   pub payload: RelayPayload,
-   pub inform: Option<Id>,
-   pub transaction: Option<Id>,
-   pub hops: i32
+    pub from: Id,
+    pub to: Id,
+    pub payload: RelayPayload,
+    pub inform: Option<Id>,
+    pub transaction: Option<Id>,
+    pub hops: i32
 }
 
 impl Relay{
@@ -783,13 +1015,13 @@ impl Relay{
 
     pub fn inc_hops(self)->Self
     {
-        Relay{
+        Relay {
             from: self.from,
             to: self.to,
             payload: self.payload,
             transaction: self.transaction,
-            inform: Option::None,
-            hops: self.hops+1
+            inform: self.inform,
+            hops: self.hops + 1,
         }
     }
 
@@ -815,6 +1047,7 @@ pub enum RelayPayload
     ReportUniqueSeq(ReportUniqueSeqPayload),
     NodeFound(NodeSearchPayload),
     NodeNotFound(NodeSearchPayload),
+    SearchNotFound(Search),
     ReportSupervisorAvailable,
     PledgeServices,
     RequestCreateSimulation(ReqCreateSim),
@@ -825,9 +1058,40 @@ pub enum RelayPayload
     NotifySimulationReady(Id),
     RequestNucleusNode(Id),
     ReportNucleusNode(ReportNucleusNodePayload),
-    SearchResult(SearchResult)
 }
 
+
+#[derive(Clone)]
+pub enum UnwindPayload
+{
+    SearchFoundResult(SearchResult),
+    SearchNotFoundResult(SearchResult),
+}
+
+impl fmt::Display for RelayPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let r = match self {
+            RelayPayload::Ping(_) => "Ping",
+            RelayPayload::Pong(_) => "Pong",
+            RelayPayload::RequestUniqueSeq => "RequestUniqueSeq",
+            RelayPayload::ReportUniqueSeq(_) => "ReportUniqueSeq",
+            RelayPayload::NodeFound(_) => "NodeFound",
+            RelayPayload::NodeNotFound(_) => "NodeNotFound",
+            RelayPayload::ReportSupervisorAvailable => "ReportSupervisorAvailable",
+            RelayPayload::PledgeServices => "PledgeServices",
+            RelayPayload::RequestCreateSimulation(_) => "RequestCreateSimulation",
+            RelayPayload::AssignSimulationToSupervisor(_) => "AssignSimulationToSupervisor",
+            RelayPayload::AssignSimulationToServer(_) => "AssignSimulationToServer",
+            RelayPayload::RequestSupervisorForSim(_) => "RequestSupervisorForSim",
+            RelayPayload::ReportSupervisorForSim(_) => "ReportSupervisorForSim",
+            RelayPayload::NotifySimulationReady(_) => "NotifySimulationReady",
+            RelayPayload::RequestNucleusNode(_) => "RequestNucleusNode",
+            RelayPayload::ReportNucleusNode(_) => "ReportNucleusNode",
+            RelayPayload::SearchNotFound(_) => "SearchNotFound",
+        };
+        write!(f, "{}", r)
+    }
+}
 
 
 #[derive(Clone)]
@@ -911,16 +1175,17 @@ impl ReportUniqueSeqPayload
 
 pub enum RouteProblem
 {
-    NodeUnknown(Id),
-    NodeDoesNotExist(Id),
-    NucleusNotKnown
+    StarUnknown(Id),
+    StarDoesNotExist(Id),
+    NucleusNotKnown,
 }
 
 
 struct ExternalRouterInner
 {
-  pub nucleus_to_node_table: HashMap<Id,NucleusRoute>,
-  pub routes: Vec<Arc<dyn ExternalRoute>>
+    pub nucleus_to_node_table: HashMap<Id, NucleusRoute>,
+    pub routes: Vec<Arc<dyn ExternalRoute>>,
+    pub searches: HashMap<Id, SearchWatcher>,
 }
 
 impl ExternalRouterInner
@@ -929,7 +1194,8 @@ impl ExternalRouterInner
     {
         ExternalRouterInner {
             nucleus_to_node_table: HashMap::new(),
-            routes: vec!()
+            routes: vec!(),
+            searches: HashMap::new(),
         }
     }
 
@@ -988,17 +1254,19 @@ impl ExternalRouterInner
                         {
                             existing_hops = hops;
                             Option::Some(route.clone())
-                        }
-                        else {
+                        } else {
                             best_route.clone()
                         }
                     },
-                    None=>{
+                    None => {
                         existing_hops = hops;
                         Option::Some(route.clone())
                     }
                 }
-                HasNode::No => best_route,
+                HasNode::No => {
+                    println!("FOUND HasNode::No");
+                    best_route
+                },
                 HasNode::Unknown => {
                     unknown = true;
                     best_route
@@ -1011,8 +1279,8 @@ impl ExternalRouterInner
             None => {
                 match unknown
                 {
-                    true => Err(RouteProblem::NodeUnknown(node.clone())),
-                    false => Err(RouteProblem::NodeDoesNotExist(node.clone()))
+                    true => Err(RouteProblem::StarUnknown(node.clone())),
+                    false => Err(RouteProblem::StarDoesNotExist(node.clone()))
                 }
             }
             Some(route) => {
@@ -1078,23 +1346,59 @@ pub struct NucleusRoute
 #[cfg(test)]
 mod test
 {
-    use crate::star::{Star, StarCore, Supervisor, PanicErrorHandler, Server};
-    use crate::cluster::Cluster;
-    use crate::network::{connect, Wire, ReportUniqueSeqPayload, NodeSearchPayload, Relay, RelayPayload, ReqCreateSim};
-    use std::sync::{Arc, RwLock};
-    use crate::cache::default_cache;
-    use mechtron_common::id::Id;
+    use std::cell::Cell;
     use std::io;
     use std::io::Write;
+    use std::sync::{Arc, RwLock};
+
+    use mechtron_common::artifact::Artifact;
+    use mechtron_common::id::Id;
+
+    use crate::cache::default_cache;
+    use crate::cluster::Cluster;
+    use crate::network::{connect, Connection, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire};
+    use crate::star::{PanicErrorHandler, Server, Star, StarCore, Supervisor, TransactionResult, TransactionWatcher};
+
+    pub struct TestTransactionWatcher
+    {
+        pub ready: Cell<bool>
+    }
+
+    impl TestTransactionWatcher {
+        pub fn new() -> Self
+        {
+            TestTransactionWatcher
+            {
+                ready: Cell::new(false)
+            }
+        }
+    }
+
+    impl TransactionWatcher for TestTransactionWatcher
+    {
+        fn on_transaction(&self, wire: &Wire, star: &Star) -> TransactionResult {
+            match wire {
+                _ => {},
+                Wire::Relay(relay) => match relay.payload {
+                    _ => {},
+                    RelayPayload::NotifySimulationReady(_) => {
+                        self.ready.replace(true);
+                        return TransactionResult::Final;
+                    }
+                }
+            }
+            unimplemented!()
+        }
+    }
 
     #[test]
     pub fn test_connection()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone()));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache));
 
-        let (mut a,mut b) = connect(central.clone(),server.clone() );
+        let (mut a, mut b) = connect(central.clone(), server.clone());
 
         a.set_block(false);
         b.set_block(false);
@@ -1239,6 +1543,7 @@ mod test
     #[test]
     pub fn test_supervisor()
     {
+
         let cache = Option::Some(default_cache());
         let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
         let mesh= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
@@ -1297,11 +1602,19 @@ mod test
         {
             StarCore::Supervisor(supervisor) => {
                 let supervisor = supervisor.read().unwrap();
-                assert_eq!(supervisor.servers.len(),1);
+                assert_eq!(supervisor.servers.len(), 1);
             }
             _ => {}
         }
 
+        println!("CLIENT ID {:?}", client.id());
+
+        let sim_artifact = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
+        cache.unwrap().configs.cache(&sim_artifact).unwrap();
+        let watcher = Arc::new(TestTransactionWatcher::new());
+        client.request_create_simulation(sim_artifact, watcher.clone());
+
+        assert!(watcher.ready.get())
     }
 
 
@@ -1327,25 +1640,25 @@ mod test
         assert!( mesh3.is_init() );
 
         // issue a NodeFind for a bogus node
-        let result = connection.to_remote(Wire::NodeSearch(NodeSearchPayload {
+        let result = connection.to_remote(Wire::Search(Search {
             from: mesh3.id(),
-            seeking_id: Id::new(57,35),
-            hops: 0,
-            timestamp: 0
+            kind: SearchKind::StarId(Id::new(335, 552)),
+            max_hops: 32,
+            transactions: vec![],
+            hops: vec!(),
         }));
 
-        assert!( result.is_ok() );
+        assert!(result.is_ok());
 
 
-        // spoof the hops as negative to try and DOS the network
-        let result = connection.to_remote(Wire::NodeSearch(NodeSearchPayload {
+        // issue have a GIANT hop size
+        let result = connection.to_remote(Wire::Search(Search {
             from: mesh3.id(),
-            seeking_id: Id::new(57,37),
-            hops: -10909,
-            timestamp: 0
+            kind: SearchKind::StarId(Id::new(335, 552)),
+            max_hops: 102_324,
+            transactions: vec![],
+            hops: vec!(),
         }));
-
-
     }
 
 }

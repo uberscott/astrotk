@@ -14,7 +14,7 @@ pub struct Error{
 
 impl fmt::Display for Error{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "nucleus error: {:?}",self)
+        write!(f, "{:?}",self)
     }
 }
 
