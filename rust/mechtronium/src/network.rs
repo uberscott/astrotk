@@ -484,7 +484,7 @@ impl ExternalRouter
     }
 
 
-    fn release_hold(&self)
+    fn release_hold(&self, star: Id)
     {
         //println!("RELEASING HOLD");
         let releases: Vec<(Wire, Option<Id>)> = {
@@ -496,8 +496,25 @@ impl ExternalRouter
 
         for (wire, exclude) in releases
         {
- //           println!("...Relaying HELD...");
-            self.relay_wire_excluding(wire, exclude);
+            match &wire
+            {
+                Wire::Relay(relay) => {
+
+                    if relay.to == star
+                    {
+                        self.relay_wire_excluding(wire, exclude);
+                    }
+                }
+                Wire::Unwind(unwind) => {
+                    if unwind.path.contains(&star )
+                    {
+                        self.relay_wire_excluding(wire, exclude);
+                    }
+                }
+                _ => {}
+            }
+            // we should really only release the ones that are KNOWN to have good paths
+            // otherwise we create unneeded traffic
         }
     }
 
@@ -507,10 +524,20 @@ impl ExternalRouter
         {
             None => {}
             Some(unwind) => {
-                self.relay_wire_excluding(Wire::Unwind(unwind), connection.get_remote_node());
-                // technically should only do this if the transaction is complete...
-                // otherwise we are recreating searches... but need to move on for now.
-                self.release_hold();
+
+
+
+                self.relay_wire_excluding(Wire::Unwind(unwind.clone()), connection.get_remote_node());
+
+                match &unwind.payload{
+                    UnwindPayload::SearchFoundResult(result) => {
+                        if result.sought.is_some()
+                        {
+                            self.release_hold(result.sought.unwrap());
+                        }
+                    }
+                    UnwindPayload::SearchNotFoundResult(_) => {}
+                }
             }
         }
     }
