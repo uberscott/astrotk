@@ -25,7 +25,7 @@ use std::fmt;
 use crate::network::RelayPayload::{ReportSupervisorAvailable, RequestCreateSimulation};
 use std::collections::hash_map::RandomState;
 
-static MAX_HOPS : i32 = 256;
+static MAX_HOPS : i32 = 16;
 
 pub struct Star {
     pub id: RefCell<Option<Id>>,
@@ -206,17 +206,15 @@ impl Star {
     fn on_search( &self, search: Search, connection: Arc<Connection> )->Result<(),Error>
     {
 
-        if search.hops.len() < 0
-        {
-            self.error("Illegal search hops!");
-        }
         if search.max_hops > MAX_HOPS
         {
             self.error(format!("Illegal max search hops: {}",search.max_hops).as_str());
+            return Err(format!("max hops cannot be more than {}",MAX_HOPS).into());
         }
         else if search.hops.len() > search.max_hops as usize
         {
             self.error("Too many search hops!");
+            return Err(format!("too many search hops {}",search.hops.len()).into());
         }
 
         if search.kind.matches(self)

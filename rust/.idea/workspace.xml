@@ -93,7 +93,7 @@
       <recent name="$PROJECT_DIR$/mechtron/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test network::test::test_connection">
+  <component name="RunManager" selected="Cargo.Test network::test">
     <configuration default="true" type="ArquillianTestNG" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -271,10 +271,10 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test network::test::test_connection" />
         <item itemvalue="Cargo.Test network::test" />
-        <item itemvalue="Cargo.Test network::test::test_supervisor" />
         <item itemvalue="Cargo.Test network::test::test_circular_graph" />
+        <item itemvalue="Cargo.Test network::test::test_supervisor" />
+        <item itemvalue="Cargo.Test network::test::test_connection" />
         <item itemvalue="Cargo.Test network::test::test_long_relay" />
       </list>
     </recent_temporary>
@@ -323,7 +323,7 @@
       <workItem from="1615836079756" duration="23000" />
       <workItem from="1615836195208" duration="128000" />
       <workItem from="1615839672345" duration="29545000" />
-      <workItem from="1616012657072" duration="71799000" />
+      <workItem from="1616012657072" duration="73378000" />
     </task>
     <servers />
   </component>

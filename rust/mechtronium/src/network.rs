@@ -146,7 +146,7 @@ println!("to_remote() {} - {} -> {}", self.local.describe(), wire, remote.descri
     pub fn add_unfound_node( &self, node_id: Id )
     {
         println!("unfound: {:?} for {:?}", node_id, self.remote_node_id);
-//        self.unfound_nodes.borrow_mut().insert(node_id);
+        self.unfound_nodes.borrow_mut().insert(node_id);
     }
 
     fn this(&self)->Arc<Connection>
@@ -599,7 +599,7 @@ impl ExternalRouter
                 self.relay_wire(Wire::Search(Search {
                     from: self.star(),
                     kind: SearchKind::StarId(star.clone()),
-                    max_hops: 32,
+                    max_hops: 16,
                     transactions: vec![transaction],
                     hops: vec![self.star()],
                 }));
@@ -896,7 +896,7 @@ impl Search {
             from: from,
             kind: kind,
             hops: hops,
-            max_hops: 32,
+            max_hops: 16,
             transactions: transactions,
         }
     }
@@ -1809,13 +1809,12 @@ mod test
         let result = connection.to_remote(Wire::Search(Search {
             from: mesh3.id(),
             kind: SearchKind::StarId(Id::new(335, 552)),
-            max_hops: 32,
+            max_hops: 16,
             transactions: vec![],
             hops: vec!(),
         }));
 
         assert!(result.is_ok());
-
 
         // issue have a GIANT hop size
         let result = connection.to_remote(Wire::Search(Search {
@@ -1826,6 +1825,7 @@ mod test
             hops: vec!(),
         }));
     }
+
 
 }
 
