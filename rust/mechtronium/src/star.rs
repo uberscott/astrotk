@@ -165,11 +165,11 @@ impl Star {
                                                                      ReportSupervisorAvailable)));
             },
             StarCore::Server(_) => {
-                let search = Search::new(self.id(), SearchKind::StarKind(StarKind::Supervisor) );
+                let search = Search::new(self.id(), SearchKind::StarKind(StarKind::Supervisor), self.seq().next() );
                 self.router.relay_wire(Wire::Search(search));
             },
             StarCore::Client => {
-                let search = Search::new(self.id(), SearchKind::StarKind(StarKind::Supervisor) );
+                let search = Search::new(self.id(), SearchKind::StarKind(StarKind::Supervisor),self.seq().next() );
                 self.router.relay_wire(Wire::Search(search));
             },
             _ => {}
@@ -219,7 +219,6 @@ impl Star {
             self.error("Too many search hops!");
         }
 
-
         if search.kind.matches(self)
         {
             let unwind = Unwind::new(self.id(), UnwindPayload::SearchFoundResult(SearchResult{
@@ -227,14 +226,6 @@ impl Star {
                 kind: search.kind.clone(),
                 transactions: search.transactions.clone()
             }), search.hops.clone(), search.hops.len() as _ );
-            match search.kind
-            {
-                SearchKind::StarKind(_) => {}
-                SearchKind::StarId(seeking) => {
-                   println!("SEARCH FOUND from {:?} seeking {:?} hops {}",search.from,seeking,search.hops.len());
-
-                }
-            }
 
             self.router.relay_wire(Wire::Unwind(unwind) )?;
             if search.kind.is_multiple_match()
@@ -615,7 +606,6 @@ println!("SENDING NOTIFY SIMULATION READY");
 
     fn process_transaction_notification_final(&self, relay: &Relay )
     {
-unimplemented!();
         if( relay.transaction.is_some() )
         {
             let watcher: Option<Arc<dyn TransactionWatcher>>= {

@@ -384,13 +384,17 @@ impl ExternalRouter
         self.star.borrow().unwrap().clone()
     }
 
-
-    pub fn relay_wire(&self, wire: Wire ) ->Result<(),Error>
-    {
-        self.relay_wire_excluding(wire,Option::None)
+    fn has_route_to_star(&self, star: &Id) -> HasStar {
+        let inner = self.inner.read().unwrap();
+        inner.has_route_to_star(star)
     }
 
-    pub fn relay_wire_excluding(&self, wire: Wire, exclude:Option<Id> ) ->Result<(),Error>
+    pub fn relay_wire(&self, wire: Wire) -> Result<(), Error>
+    {
+        self.relay_wire_excluding(wire, Option::None)
+    }
+
+    pub fn relay_wire_excluding(&self, wire: Wire, exclude: Option<Id>) -> Result<(), Error>
     {
         println!("routing Wire {}", wire);
 
@@ -465,15 +469,15 @@ impl ExternalRouter
 
         for route in routes
         {
-            match route.has_node(star_id)
+            match route.has_route_to_star(star_id)
             {
-                HasNode::Yes(_) => {
+                HasStar::Yes(_) => {
                     return true;
                 }
-                HasNode::No => {
+                HasStar::No => {
                     // do nothing
                 }
-                HasNode::Unknown => {
+                HasStar::Unknown => {
                     return true;
                 }
             };
@@ -583,7 +587,7 @@ impl ExternalRouter
                 let transaction = {
                     let inner = self.inner.write().expect("must be able to get inner lock");
                     let transaction = self.seq.next();
-                    let search = Search::new(self.star(), SearchKind::StarId(star.clone()));
+                    let search = Search::new(self.star(), SearchKind::StarId(star.clone()), self.seq.next());
                     let count = inner.routes.len().clone();
                     let mut inner = inner;
                     inner.searches.insert(transaction, SearchWatcher{
@@ -770,17 +774,21 @@ impl NodeRouter
 {
     pub fn new( )->Self
     {
-        NodeRouter{
+        NodeRouter {
             internal: InternalRouter::new(),
             external: ExternalRouter::new(),
         }
     }
 
-    pub fn add_external_connection( &self, connection: Arc<Connection>)
+    pub fn add_external_connection(&self, connection: Arc<Connection>)
     {
-        self.external.add_route(connection );
+        self.external.add_route(connection);
     }
 
+
+    fn has_route_to_star(&self, star: &Id) -> HasStar {
+        self.external.has_route_to_star(star)
+    }
 }
 
 
@@ -800,17 +808,14 @@ impl ExternalRoute for Connection
         Ok(())
     }
 
-    fn has_node(&self, node_id: &Id) -> HasNode {
+    fn has_route_to_star(&self, node_id: &Id) -> HasStar {
         if self.found_nodes.borrow().contains_key(node_id)
         {
-            HasNode::Yes(self.found_nodes.borrow().get(node_id).unwrap().hops.clone())
-        }
-        else if self.unfound_nodes.borrow().contains(node_id){
-            HasNode::No
-        }
-        else
-        {
-            HasNode::Unknown
+            HasStar::Yes(self.found_nodes.borrow().get(node_id).unwrap().hops.clone())
+        } else if self.unfound_nodes.borrow().contains(node_id) {
+            HasStar::No
+        } else {
+            HasStar::Unknown
         }
     }
 }
@@ -883,14 +888,16 @@ pub struct SearchNotResultFound
 }
 
 impl Search {
-    pub fn new(from: Id, kind: SearchKind) -> Self
+    pub fn new(from: Id, kind: SearchKind, transaction: Id) -> Self
     {
+        let hops = vec![from];
+        let transactions = vec![transaction];
         Search {
             from: from,
             kind: kind,
-            hops: vec!(),
+            hops: hops,
             max_hops: 32,
-            transactions: vec!(),
+            transactions: transactions,
         }
     }
 
@@ -1190,7 +1197,7 @@ struct ExternalRouterInner
 
 impl ExternalRouterInner
 {
-    pub fn new()->Self
+    pub fn new() -> Self
     {
         ExternalRouterInner {
             nucleus_to_node_table: HashMap::new(),
@@ -1199,12 +1206,36 @@ impl ExternalRouterInner
         }
     }
 
-    pub fn add_route( &mut self, route: Arc<dyn ExternalRoute> )
-    {
-        self.routes.push(route );
+    fn has_route_to_star(&self, star: &Id) -> HasStar {
+        let mut unknown = false;
+        for route in &self.routes
+        {
+            match route.has_route_to_star(star)
+            {
+                HasStar::Yes(hops) => {
+                    return HasStar::Yes(hops);
+                }
+                HasStar::No => {}
+                HasStar::Unknown => {
+                    unknown = true;
+                }
+            }
+        }
+        if unknown
+        {
+            return HasStar::Unknown;
+        } else {
+            return HasStar::No;
+        }
     }
 
-    pub fn remove_route( &mut self, route: Arc<ExternalRouterInner> )
+
+    pub fn add_route(&mut self, route: Arc<dyn ExternalRoute>)
+    {
+        self.routes.push(route);
+    }
+
+    pub fn remove_route(&mut self, route: Arc<ExternalRouterInner>)
     {
         self.remove_route(route);
     }
@@ -1231,11 +1262,11 @@ impl ExternalRouterInner
 
     pub fn get_all_posible_routes_for_node(&self, node: &Id ) ->Result<Vec<Arc<dyn ExternalRoute>>,Error>
     {
-        Ok(self.routes.iter().map(|route|route.clone()).filter(|route|match route.has_node(node){
-            HasNode::Yes(_) => {true}
-            HasNode::No => {false}
-            HasNode::Unknown => {true}
-        } ).collect())
+        Ok(self.routes.iter().map(|route| route.clone()).filter(|route| match route.has_route_to_star(node) {
+            HasStar::Yes(_) => { true }
+            HasStar::No => { false }
+            HasStar::Unknown => { true }
+        }).collect())
     }
 
     pub fn get_route_for_node( &self, node: &Id )->Result<Arc<dyn ExternalRoute>,RouteProblem>
@@ -1245,11 +1276,11 @@ impl ExternalRouterInner
         let mut existing_hops: i32 = 100_000;
         for route in &self.routes
         {
-            best_route = match route.has_node( node )
+            best_route = match route.has_route_to_star(node)
             {
-                HasNode::Yes(hops) => match &best_route
+                HasStar::Yes(hops) => match &best_route
                 {
-                    Some(existing_route)=>{
+                    Some(existing_route) => {
                         if hops < existing_hops
                         {
                             existing_hops = hops;
@@ -1263,11 +1294,11 @@ impl ExternalRouterInner
                         Option::Some(route.clone())
                     }
                 }
-                HasNode::No => {
+                HasStar::No => {
                     println!("FOUND HasNode::No");
                     best_route
                 },
-                HasNode::Unknown => {
+                HasStar::Unknown => {
                     unknown = true;
                     best_route
                 }
@@ -1312,19 +1343,19 @@ pub trait InternalRoute: Route
     fn has_nucleus(&self, nucleus_id: &Id)->bool;
 }
 
-pub enum HasNode
+pub enum HasStar
 {
     Yes(i32),
     No,
-    Unknown
+    Unknown,
 }
 
 pub trait ExternalRoute
 {
     fn wire(&self, wire: Wire ) ->Result<(),Error>;
-    fn relay(&self, message_transport: MessageTransport ) ->Result<(),Error>;
-    fn has_node(&self, node_id:&Id)->HasNode;
-    fn get_remote_node(&self)->Option<Id>;
+    fn relay(&self, message_transport: MessageTransport) -> Result<(), Error>;
+    fn has_route_to_star(&self, node_id: &Id) -> HasStar;
+    fn get_remote_node(&self) -> Option<Id>;
 }
 
 
@@ -1356,7 +1387,7 @@ mod test
 
     use crate::cache::default_cache;
     use crate::cluster::Cluster;
-    use crate::network::{connect, Connection, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire};
+    use crate::network::{connect, Connection, HasStar, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire};
     use crate::star::{PanicErrorHandler, Server, Star, StarCore, Supervisor, TransactionResult, TransactionWatcher};
 
     pub struct TestTransactionWatcher
@@ -1377,17 +1408,25 @@ mod test
     impl TransactionWatcher for TestTransactionWatcher
     {
         fn on_transaction(&self, wire: &Wire, star: &Star) -> TransactionResult {
+            println!("TEST TRANSACTION WATCHER WIRE {}", wire);
+
             match wire {
-                _ => {},
-                Wire::Relay(relay) => match relay.payload {
-                    _ => {},
-                    RelayPayload::NotifySimulationReady(_) => {
-                        self.ready.replace(true);
-                        return TransactionResult::Final;
+                Wire::Relay(relay) => {
+                    println!("TEST TRANSACTION WATCHER WIRE relay.payloaad {}", relay.payload);
+                    match &relay.payload {
+                        RelayPayload::NotifySimulationReady(_) => {
+                            println!("NOTIFY SIMULATION READY !!!!!  ");
+                            self.ready.replace(true);
+                        }
+                        _ => {}
                     }
                 }
+                _ => {
+                    println!("SOMETHING ELSE")
+                }
             }
-            unimplemented!()
+
+            TransactionResult::Inconclusive
         }
     }
 
@@ -1418,24 +1457,148 @@ mod test
         let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
         let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
 
-        let (a,b) = connect(central.clone(),server.clone() );
+        let (a, b) = connect(central.clone(), server.clone());
 
-        assert!( central.is_init() );
-        assert!( server.is_init() );
+        assert!(central.is_init());
+        assert!(server.is_init());
 
-        a.to_remote(Wire::ReportNodeId(Id::new(0, 0)) ).unwrap();
+        a.to_remote(Wire::ReportNodeId(Id::new(0, 0))).unwrap();
 
-        assert!( b.is_error() );
+        assert!(b.is_error());
     }
+
+    #[test]
+    pub fn test_node_search()
+    {
+        let cache = Option::Some(default_cache());
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone()));
+        let mesh = Arc::new(Star::new(StarCore::Mesh, cache.clone()));
+        let a = Arc::new(Star::new(StarCore::Mesh, cache.clone()));
+        let b = Arc::new(Star::new(StarCore::Mesh, cache.clone()));
+        let c = Arc::new(Star::new(StarCore::Mesh, cache.clone()));
+        let c2 = Arc::new(Star::new(StarCore::Mesh, cache.clone()));
+        let c3 = Arc::new(Star::new(StarCore::Mesh, cache.clone()));
+
+        connect(central.clone(), mesh.clone());
+        connect(mesh.clone(), a.clone());
+        connect(mesh.clone(), b.clone());
+        connect(mesh.clone(), c.clone());
+        connect(c.clone(), c2.clone());
+        connect(c2.clone(), c3.clone());
+
+        assert!(central.is_init());
+        assert!(mesh.is_init());
+        assert!(a.is_init());
+        assert!(b.is_init());
+        assert!(c.is_init());
+        assert!(c2.is_init());
+        assert!(c3.is_init());
+
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+        println!("********************** NODE SEARCH TEST **********************");
+
+
+        match c3.router.has_route_to_star(&a.id())
+        {
+            HasStar::Yes(_) => {
+                assert!(false)
+            }
+            HasStar::No => {
+                assert!(false)
+            }
+            HasStar::Unknown => {
+                assert!(true)
+            }
+        }
+
+
+        match c2.router.has_route_to_star(&a.id())
+        {
+            HasStar::Yes(_) => {
+                assert!(false)
+            }
+            HasStar::No => {
+                assert!(false)
+            }
+            HasStar::Unknown => {
+                assert!(true)
+            }
+        }
+
+        match c.router.has_route_to_star(&a.id())
+        {
+            HasStar::Yes(_) => {
+                assert!(false)
+            }
+            HasStar::No => {
+                assert!(false)
+            }
+            HasStar::Unknown => {
+                assert!(true)
+            }
+        }
+
+
+        c3.router.relay_wire(Wire::Relay(Relay::new(c3.id(), a.id(), RelayPayload::Ping(a.id()))));
+
+
+        match c.router.has_route_to_star(&a.id())
+        {
+            HasStar::Yes(_) => {
+                assert!(true)
+            }
+            HasStar::No => {
+                assert!(false)
+            }
+            HasStar::Unknown => {
+                assert!(false)
+            }
+        }
+
+
+        match c2.router.has_route_to_star(&a.id())
+        {
+            HasStar::Yes(_) => {
+                assert!(true)
+            }
+            HasStar::No => {
+                assert!(false)
+            }
+            HasStar::Unknown => {
+                assert!(false)
+            }
+        }
+
+        match c3.router.has_route_to_star(&a.id())
+        {
+            HasStar::Yes(_) => {
+                assert!(true)
+            }
+            HasStar::No => {
+                assert!(false)
+            }
+            HasStar::Unknown => {
+                assert!(false)
+            }
+        }
+    }
+
 
     #[test]
     pub fn test_report_request_unique_seq_after_node_set()
     {
         let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache ));
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone()));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache));
 
-        let (a,b) = connect(central.clone(),server.clone() );
+        let (a, b) = connect(central.clone(), server.clone());
 
         assert!( central.is_init() );
         assert!( server.is_init() );
@@ -1579,15 +1742,17 @@ mod test
         assert!( client.is_init() );
 
 
-       match &central.core
+        println!("CENTRAL AVAIL SUPERVISORS...");
+        match &central.core
         {
             StarCore::Central(cluster) => {
                 let cluster = cluster.read().unwrap();
-                assert_eq!(cluster.available_supervisors.len(),1);
+                assert_eq!(cluster.available_supervisors.len(), 1);
             },
-            _ => {assert!(false)}
+            _ => { assert!(false) }
         }
 
+        println!("SERVER NEAREST SUPERVISOR...");
         assert_eq!(server.nearest_supervisors.lock().unwrap().len(), 1);
         match &server.core
         {
@@ -1598,6 +1763,7 @@ mod test
             _ => {}
         }
 
+        println!("SUPERVISORS ...");
         match &supervisor.core
         {
             StarCore::Supervisor(supervisor) => {
