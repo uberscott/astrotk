@@ -102,7 +102,7 @@ impl Connection
     pub fn to_remote(&self, wire: Wire) ->Result<(),Error>
     {
 let remote = self.remote.borrow().as_ref().unwrap().local.clone();
-println!("to_remote() {} - {} -> {}", self.local.describe(), wire, remote.describe());
+//println!("to_remote() {} - {} -> {}", self.local.describe(), wire, remote.describe());
         match &wire{
             Wire::ReportUniqueSeq(seq) => {
                 self.remote_seq_id.replace( Option::Some(seq.seq.clone()) );
@@ -145,7 +145,7 @@ println!("to_remote() {} - {} -> {}", self.local.describe(), wire, remote.descri
 
     pub fn add_unfound_node( &self, node_id: Id )
     {
-        println!("unfound: {:?} for {:?}", node_id, self.remote_node_id);
+        //println!("unfound: {:?} for {:?}", node_id, self.remote_node_id);
         self.unfound_nodes.borrow_mut().insert(node_id);
     }
 
@@ -396,7 +396,7 @@ impl ExternalRouter
 
     pub fn relay_wire_excluding(&self, wire: Wire, exclude: Option<Id>) -> Result<(), Error>
     {
-        println!("routing Wire {}", wire);
+        //println!("routing Wire {}", wire);
 
         match &wire
         {
@@ -411,13 +411,13 @@ impl ExternalRouter
                 }
             }
             Wire::Unwind(unwind) => {
-                println!("unwrapped UNWIND.... Forwarding UNWIND {} ", unwind.hops);
+                //println!("unwrapped UNWIND.... Forwarding UNWIND {} ", unwind.hops);
                 let route = {
                     let inner = self.inner.read()?;
                     match unwind.path.is_empty()
                     {
                         true => {
-                            println!("unwind path is empty");
+                            //println!("unwind path is empty");
                             return Err("unwind path is empty".into());
                         }
                         false => {
@@ -428,11 +428,9 @@ impl ExternalRouter
                 match route
                 {
                     Ok(route) => {
-                        println!("Forwarding UNWIND");
                         route.wire(wire)?;
                     }
                     Err(error) => {
-                        println!("Handle UNWIND ROUTE error");
                         self.handle_route_error(wire, &error, exclude);
                     }
                 }
@@ -488,17 +486,17 @@ impl ExternalRouter
 
     fn release_hold(&self)
     {
-        println!("RELEASING HOLD");
+        //println!("RELEASING HOLD");
         let releases: Vec<(Wire, Option<Id>)> = {
             let mut hold = self.hold.lock().expect("hold lock should not be poisoned");
-            println!("holds: {}", hold.len());
+         //   println!("holds: {}", hold.len());
             hold.drain(..).collect()
         };
-        println!("releases : {}", releases.len());
+//        println!("releases : {}", releases.len());
 
         for (wire, exclude) in releases
         {
-            println!("...Relaying HELD...");
+ //           println!("...Relaying HELD...");
             self.relay_wire_excluding(wire, exclude);
         }
     }
@@ -615,10 +613,8 @@ impl ExternalRouter
 
     fn add_to_hold(&self, wire: (Wire, Option<Id>))
     {
-        println!("ADD TO HOLD...");
         let mut hold = self.hold.lock().unwrap();
         hold.push(wire);
-        println!("HOLD SIZE {}...", hold.len());
     }
 
     pub fn add_route(&self, route: Arc<dyn ExternalRoute>)
@@ -1067,6 +1063,19 @@ pub enum RelayPayload
     ReportNucleusNode(ReportNucleusNodePayload),
 }
 
+impl RelayPayload
+{
+    pub fn is_final_transaction(&self)->bool
+    {
+        match self
+        {
+            RelayPayload::Pong(_) => true,
+            RelayPayload::NodeFound(_) => true,
+            RelayPayload::ReportSupervisorForSim(_) => true,
+            _ => false
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum UnwindPayload
@@ -1104,6 +1113,7 @@ impl fmt::Display for RelayPayload {
 #[derive(Clone)]
 pub struct ReportAssignSimulationToServer
 {
+    pub simulation_id: Id,
     pub simulation_config: Artifact,
 }
 
@@ -1118,6 +1128,7 @@ pub struct ReqCreateSim
 #[derive(Clone)]
 pub struct ReportAssignSimulation
 {
+    pub simulation_id: Id,
     pub simulation_config: Artifact,
 }
 
@@ -1377,7 +1388,7 @@ pub struct NucleusRoute
 #[cfg(test)]
 mod test
 {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
     use std::io;
     use std::io::Write;
     use std::sync::{Arc, RwLock};
@@ -1387,12 +1398,13 @@ mod test
 
     use crate::cache::default_cache;
     use crate::cluster::Cluster;
-    use crate::network::{connect, Connection, HasStar, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire};
+    use crate::network::{connect, Connection, HasStar, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire, ReportSupervisorForSim};
     use crate::star::{PanicErrorHandler, Server, Star, StarCore, Supervisor, TransactionResult, TransactionWatcher};
 
     pub struct TestTransactionWatcher
     {
-        pub ready: Cell<bool>
+        pub ready: Cell<Id>,
+        pub report_supervisor_for_sim: RefCell<Option<ReportSupervisorForSim>>
     }
 
     impl TestTransactionWatcher {
@@ -1400,7 +1412,8 @@ mod test
         {
             TestTransactionWatcher
             {
-                ready: Cell::new(false)
+                ready: Cell::new(Id::new(0,0)),
+                report_supervisor_for_sim: RefCell::new(Option::None)
             }
         }
     }
@@ -1414,9 +1427,12 @@ mod test
                 Wire::Relay(relay) => {
                     println!("TEST TRANSACTION WATCHER WIRE relay.payloaad {}", relay.payload);
                     match &relay.payload {
-                        RelayPayload::NotifySimulationReady(_) => {
+                        RelayPayload::NotifySimulationReady(sim_id) => {
                             println!("NOTIFY SIMULATION READY !!!!!  ");
-                            self.ready.replace(true);
+                            self.ready.replace(sim_id.clone() );
+                        }
+                        RelayPayload::ReportSupervisorForSim(report) => {
+                            self.report_supervisor_for_sim.replace(Option::Some(report.clone()));
                         }
                         _ => {}
                     }
@@ -1773,14 +1789,20 @@ mod test
             _ => {}
         }
 
-        println!("CLIENT ID {:?}", client.id());
+println!("CLIENT ID {:?}", client.id());
 
         let sim_artifact = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
         cache.unwrap().configs.cache(&sim_artifact).unwrap();
         let watcher = Arc::new(TestTransactionWatcher::new());
         client.request_create_simulation(sim_artifact, watcher.clone());
 
-        assert!(watcher.ready.get())
+println!("SIMULATILN ID IS: {:?}",watcher.ready.get());
+        let sim_id = watcher.ready.get().clone();
+        let watcher = Arc::new(TestTransactionWatcher::new());
+
+        client.request_simulation_supervisor(sim_id, watcher.clone());
+
+        assert!( watcher.report_supervisor_for_sim.borrow().is_some());
     }
 
 

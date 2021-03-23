@@ -79,6 +79,21 @@ impl Star {
         rtn
     }
 
+    pub fn request_simulation_supervisor(&self, sim_id: Id, transaction_watcher: Arc<dyn TransactionWatcher> )->Result<(),Error>
+    {
+        let payload = RelayPayload::RequestSupervisorForSim(sim_id);
+        let mut relay = Relay::to_central(self.id(), payload );
+        relay.transaction =  Option::Some(self.seq().next());
+
+        {
+            self.transaction_watchers.lock()?.insert(relay.transaction.unwrap().clone(), Arc::downgrade(&transaction_watcher));
+        }
+
+        let wire = Wire::Relay(relay);
+        self.router.relay_wire(wire);
+        Ok(())
+    }
+
     pub fn request_create_simulation(&self, simulation_config: Artifact, transaction_watcher: Arc<dyn TransactionWatcher> )->Result<(),Error>
     {
 
@@ -179,14 +194,14 @@ impl Star {
 
     pub fn shutdown(&self) {}
 
-    pub fn create_sim_from_scratch(&self, config: Arc<SimConfig>) -> Result<Id, Error> {
+    pub fn create_sim_from_scratch(&self, config: Arc<SimConfig>, sim_id: Id) -> Result<Id, Error> {
 
         if self.local.borrow().is_none()
         {
             return Err("local is none".into())
         }
 
-        let id = self.local.borrow().as_ref().unwrap().sources.create_sim(config)?;
+        let id = self.local.borrow().as_ref().unwrap().sources.create_sim(config, sim_id )?;
 
        Ok(id)
     }
@@ -248,7 +263,6 @@ impl Star {
             let mut searches = self.searches.lock().unwrap();
             searches.insert(transaction, Arc::new(SearchTransactionWatcher { searches: Cell::new(0), connection: connection.clone() }));
         };
-println!("Branch search... from {:?} core {} hops {}",search.from, self.core,search.hops.len());
         self.router.relay_wire_excluding( Wire::Search(search), connection.get_remote_node_id() );
     }
 
@@ -256,10 +270,10 @@ println!("Branch search... from {:?} core {} hops {}",search.from, self.core,sea
     fn on_unwind( &self, unwind: Unwind, connection: Arc<Connection> )->Result<(),Error>
     {
 
-println!("ON UNWIND~~!");
         if unwind.path.len() > MAX_HOPS as usize
         {
             self.error("Too many payload hops!");
+            return Err("Too many payload Hops!".into());
         }
 
         // handled the same no matter if this is the To node or not
@@ -330,15 +344,11 @@ println!("ON UNWIND~~!");
             }
         }
 
-println!("before UNWIND ~>~>~>~>: {:?} AND {:?}",unwind.path.last().unwrap(), self.id());
         let unwind = unwind.pop();
-println!("UNWIND REMAINING: {}",unwind.hops);
         if !unwind.path.is_empty()
         {
-            println!("after UNWIND ~>~>~>~>: {:?} AND {:?}",unwind.path.last().unwrap(), self.id());
             self.router.relay_wire(Wire::Unwind(unwind));
         }
-
 
         Ok(())
     }
@@ -349,10 +359,12 @@ println!("UNWIND REMAINING: {}",unwind.hops);
         if relay.hops < 0
         {
             self.error("Illegal payload hops!");
+            return Err("Illegal payload hops!".into());
         }
         else if relay.hops > MAX_HOPS
         {
             self.error("Too many payload hops!");
+            return Err("Too many payload hops!".into());
         }
 
         if relay.to != self.id()
@@ -408,13 +420,22 @@ println!("UNWIND REMAINING: {}",unwind.hops);
                     match &self.core
                     {
                         StarCore::Central(cluster) => {
-                            let mut cluster = cluster.write()?;
-                            let index = (cluster.available_supervisors_round_robin_index % cluster.available_supervisors.len());
-                            let star = cluster.available_supervisors[index].clone();
+
+                            let (sim_id, star) =
+                            {
+                                let sim_id = self.seq().next();
+                                let mut cluster = cluster.write()?;
+                                let index = (cluster.available_supervisors_round_robin_index % cluster.available_supervisors.len());
+                                let star = cluster.available_supervisors[index].clone();
+                                cluster.simulation_supervisor_to_star.insert( sim_id.clone(), star.clone() );
+                                (sim_id,star)
+                            };
+
                             let forward = Wire::Relay(Relay {
                                 from: self.id(),
                                 to: star,
                                 payload: RelayPayload::AssignSimulationToSupervisor(ReportAssignSimulation {
+                                    simulation_id: sim_id.clone(),
                                     simulation_config: request_create_simulation.simulation_config.clone(),
                                 }),
 
@@ -427,6 +448,29 @@ println!("UNWIND REMAINING: {}",unwind.hops);
                         _ => {
                             self.error("RELAY PANIC! only central should be receiving RequestCreateSimulation from Relay")
                         }
+                    }
+                }
+                RelayPayload::RequestSupervisorForSim(sim_id) if self.core.is_central() =>{
+println!("RECEIVED REQUEST SUPERVISOR FOR SIM");
+                    match &self.core{
+                        StarCore::Central(cluster) => {
+                            let cluster = cluster.read()?;
+                            let supervisor = cluster.simulation_supervisor_to_star.get(sim_id );
+
+                            if supervisor.is_some()
+                            {
+                                let report = ReportSupervisorForSim {
+                                    simulation: sim_id.clone(),
+                                    star: supervisor.unwrap().clone()
+                                };
+println!("RECEIVED REQUEST SUPERVISOR FOR SIM.... RELAY");
+                                self.router.relay_wire( Wire::Relay(relay.reply(RelayPayload::ReportSupervisorForSim(report))));
+                            }
+                            else {
+                                self.error(format!("RELAY PANIC! cannot find sim id: {:?}",sim_id).as_str())
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 RelayPayload::AssignSimulationToSupervisor(assign_simulation)=>
@@ -445,6 +489,7 @@ println!("UNWIND REMAINING: {}",unwind.hops);
                                        from: self.id(),
                                        to:  server_id,
                                        payload: RelayPayload::AssignSimulationToServer(ReportAssignSimulationToServer{
+                                           simulation_id: assign_simulation.simulation_id.clone(),
                                            simulation_config: assign_simulation.simulation_config.clone(),
                                        }),
                                        inform: relay.inform.clone(),
@@ -473,7 +518,7 @@ println!("UNWIND REMAINING: {}",unwind.hops);
                                     match self.cache.configs.sims.get(&report.simulation_config )
                                     {
                                         Ok(sim_config) => {
-                                           match self.create_sim_from_scratch(sim_config)
+                                           match self.create_sim_from_scratch(sim_config, report.simulation_id)
                                            {
                                                Ok(simulation_id) => {
                                                    if( relay.inform.is_some() )
@@ -486,7 +531,6 @@ println!("UNWIND REMAINING: {}",unwind.hops);
                                                            transaction:  relay.transaction.clone(),
                                                            hops: 0
                                                        });
-println!("SENDING NOTIFY SIMULATION READY");
                                                        self.router.relay_wire(wire);
                                                    }
                                                    else {
@@ -517,8 +561,11 @@ println!("SENDING NOTIFY SIMULATION READY");
                 RelayPayload::NotifySimulationReady(simulation_id)=>
                 {
                     self.process_transaction_notification_final( &relay );
-
                 }
+                RelayPayload::ReportSupervisorForSim(report)=>
+                 {
+                        self.process_transaction_notification_final( &relay );
+                 }
                 RelayPayload::ReportUniqueSeq(seq_id)=> {
                     if relay.transaction.is_some()
                     {
@@ -575,9 +622,12 @@ println!("SENDING NOTIFY SIMULATION READY");
                         match watcher
                         {
                             None => {
+
+println!("NO WATCHERS");
                                 Option::None
                             }
                             Some(watcher) => {
+println!("sOME WATCHERS");
                                 match watcher.upgrade(){
                                     None => {Option::None}
                                     Some(watcher) => {
@@ -611,12 +661,15 @@ println!("SENDING NOTIFY SIMULATION READY");
                 match transaction_watchers{
                     Ok(mut transaction_watchers) => {
                         let watcher = transaction_watchers.remove(&relay.transaction.unwrap()  );
+
                         match watcher
                         {
                             None => {
+println!("REMOVED NONE");
                                 Option::None
                             }
                             Some(watcher) => {
+println!("REMOVED SOME");
                                 match watcher.upgrade(){
                                     None => {Option::None}
                                     Some(watcher) => {
@@ -758,6 +811,7 @@ impl WireListener for Star
 
     fn on_wire(&self, wire: Wire, mut connection: Arc<Connection>) -> Result<(), Error> {
 
+/*
 println!("on_wire({})  {} -> {}", match &wire{
 
     Wire::Relay(relay) => {
@@ -767,6 +821,8 @@ println!("on_wire({})  {} -> {}", match &wire{
     }
     _ => "".to_string()
 }, wire, self.core,);
+
+ */
         match wire{
             Wire::ReportVersion(_)=> {
                 // if we have a Node Id, return it
@@ -1031,7 +1087,6 @@ pub enum TransactionResult
 impl TransactionWatcher for SearchTransactionWatcher
 {
     fn on_transaction(&self, wire: &Wire, star: &Star)-> TransactionResult{
-println!("----> SEARCH TRANSACTION <----- ");
         self.searches.replace(self.searches.get()-1);
 
         match wire{
@@ -1043,7 +1098,6 @@ println!("----> SEARCH TRANSACTION <----- ");
                         search.pop();
                         if self.searches.get() <= 0 && !search.transactions.is_empty()
                         {
-println!("----> SENDING NOT FOUND <----- ");
                             self.connection.to_remote( Wire::Relay( Relay{
                                 from: star.id(),
                                 to: self.connection.get_remote_node_id().unwrap(),
@@ -1059,7 +1113,6 @@ println!("----> SENDING NOT FOUND <----- ");
             }
             Wire::Unwind(unwind ) => {}
             _ => {
-                println!("Expected wire to be one of SearchNotFound or Unwind")
             }
         }
 

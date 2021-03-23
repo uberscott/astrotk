@@ -20,6 +20,7 @@
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/network.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/network.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/star.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/star.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -93,16 +94,14 @@
       <recent name="$PROJECT_DIR$/mechtron/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test network::test">
-    <configuration default="true" type="ArquillianTestNG" factoryName="" nameIsGenerated="true">
+  <component name="RunManager" selected="Cargo.Test network::test::test_supervisor">
+    <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
           <option name="containerStateName" value="" />
         </value>
       </option>
-      <option name="TEST_OBJECT" value="CLASS" />
-      <properties />
-      <listeners />
+      <option name="TEST_OBJECT" value="class" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
@@ -271,9 +270,9 @@
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test network::test::test_supervisor" />
         <item itemvalue="Cargo.Test network::test" />
         <item itemvalue="Cargo.Test network::test::test_circular_graph" />
-        <item itemvalue="Cargo.Test network::test::test_supervisor" />
         <item itemvalue="Cargo.Test network::test::test_connection" />
         <item itemvalue="Cargo.Test network::test::test_long_relay" />
       </list>
@@ -323,7 +322,8 @@
       <workItem from="1615836079756" duration="23000" />
       <workItem from="1615836195208" duration="128000" />
       <workItem from="1615839672345" duration="29545000" />
-      <workItem from="1616012657072" duration="73378000" />
+      <workItem from="1616012657072" duration="79167000" />
+      <workItem from="1616498714989" duration="6610000" />
     </task>
     <servers />
   </component>

@@ -88,8 +88,8 @@ impl Nuclei {
         return Ok(nucleus.clone());
     }
 
-    pub fn create_sim(&self, sim_config: Arc<SimConfig>) -> Result<Id, Error> {
-        let nucleus = Nucleus::create_sim(sim_config, self.context.clone())?;
+    pub fn create_sim(&self, sim_config: Arc<SimConfig>, sim_id: Id) -> Result<Id, Error> {
+        let nucleus = Nucleus::create_sim(sim_config, self.context.clone(), sim_id )?;
 
         if nucleus.is_panic()
         {
@@ -223,8 +223,9 @@ impl Nucleus {
     fn create_sim(
         sim_config: Arc<SimConfig>,
         context: NucleusContext,
+        sim_id : Id
     ) -> Result<Self, Error> {
-        let sim_id = context.seq.next();
+//        let sim_id = context.seq.next();
         let id = sim_id.clone();
 
         let config = context.cache.configs.nucleus.get(&CORE_NUCLEUS_SIMULATION)?;
