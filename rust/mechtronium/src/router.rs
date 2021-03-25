@@ -8,7 +8,7 @@ use std::sync::Weak;
 use mechtron_common::id::Id;
 use mechtron_common::message::{Message, MessageTransport};
 
-use crate::network::Connection;
+use crate::transport::Connection;
 use crate::star::{Local, Star};
 use crate::nucleus::{Nuclei, NucleiContainer};
 

@@ -10,7 +10,7 @@ use mechtron_common::id::{Id, IdSeq};
 use mechtron_common::message::{Message, MessageTransport};
 
 use crate::error::Error;
-use crate::network::RouteProblem::{NucleusNotKnown, StarUnknown};
+use crate::transport::RouteProblem::{NucleusNotKnown, StarUnknown};
 use crate::router::NetworkRouter;
 use crate::star::{Star, StarCore, StarKind};
 
@@ -513,8 +513,6 @@ impl ExternalRouter
                 }
                 _ => {}
             }
-            // we should really only release the ones that are KNOWN to have good paths
-            // otherwise we create unneeded traffic
         }
     }
 
@@ -1086,8 +1084,14 @@ pub enum RelayPayload
     RequestSupervisorForSim(Id),
     ReportSupervisorForSim(ReportSupervisorForSim),
     NotifySimulationReady(Id),
+    RequestNucleus(RequestNucleus),
+    AssignNucleus(AssignNucleus),
     RequestNucleusNode(Id),
     ReportNucleusNode(ReportNucleusNodePayload),
+    ReportNucleusReady(ReportNucleusReady),
+    ReportNucleusDetached(Id),
+    Watch(Id),
+    UnWatch(Id)
 }
 
 impl RelayPayload
@@ -1102,6 +1106,38 @@ impl RelayPayload
             _ => false
         }
     }
+}
+
+#[derive(Clone)]
+pub struct ReportNucleusReady
+{
+    pub sim: Id,
+    pub nucleus: Id,
+    pub star: Id
+}
+
+#[derive(Clone)]
+pub struct RequestNucleus
+{
+    pub sim: Id,
+    pub config: Artifact,
+    pub listeners: Vec<NucleusReadyListener>
+}
+
+
+#[derive(Clone)]
+pub struct AssignNucleus
+{
+    pub sim: Id,
+    pub config: Artifact,
+    pub listeners: Vec<NucleusReadyListener>
+}
+
+#[derive(Clone)]
+pub struct NucleusReadyListener
+{
+    pub star: Id,
+    pub transaction: Id
 }
 
 #[derive(Clone)]
@@ -1127,10 +1163,17 @@ impl fmt::Display for RelayPayload {
             RelayPayload::AssignSimulationToServer(_) => "AssignSimulationToServer",
             RelayPayload::RequestSupervisorForSim(_) => "RequestSupervisorForSim",
             RelayPayload::ReportSupervisorForSim(_) => "ReportSupervisorForSim",
+
             RelayPayload::NotifySimulationReady(_) => "NotifySimulationReady",
+            RelayPayload::RequestNucleus(_) => "RequestNucleus",
+            RelayPayload::AssignNucleus(_) => "AssignNucleus",
+            RelayPayload::ReportNucleusReady(_) => "ReportNucleusReady",
             RelayPayload::RequestNucleusNode(_) => "RequestNucleusNode",
             RelayPayload::ReportNucleusNode(_) => "ReportNucleusNode",
             RelayPayload::SearchNotFound(_) => "SearchNotFound",
+
+            RelayPayload::Watch(_) => "Watch",
+            RelayPayload::UnWatch(_) => "UnWatch",
         };
         write!(f, "{}", r)
     }
@@ -1170,7 +1213,7 @@ pub struct ReportSupervisorForSim
 #[derive(Clone)]
 pub struct ReportNucleusNodePayload
 {
-    pub simulation: Id,
+    pub sim: Id,
     pub node: Id
 }
 
@@ -1425,13 +1468,14 @@ mod test
 
     use crate::cache::default_cache;
     use crate::cluster::Cluster;
-    use crate::network::{connect, Connection, HasStar, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire, ReportSupervisorForSim};
+    use crate::transport::{connect, Connection, HasStar, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire, ReportSupervisorForSim, ReportNucleusNodePayload};
     use crate::star::{PanicErrorHandler, Server, Star, StarCore, Supervisor, TransactionResult, TransactionWatcher};
 
     pub struct TestTransactionWatcher
     {
         pub ready: Cell<Id>,
-        pub report_supervisor_for_sim: RefCell<Option<ReportSupervisorForSim>>
+        pub report_supervisor_for_sim: RefCell<Option<ReportSupervisorForSim>>,
+        pub nucleus_node: RefCell<Option<ReportNucleusNodePayload>>
     }
 
     impl TestTransactionWatcher {
@@ -1440,7 +1484,8 @@ mod test
             TestTransactionWatcher
             {
                 ready: Cell::new(Id::new(0,0)),
-                report_supervisor_for_sim: RefCell::new(Option::None)
+                report_supervisor_for_sim: RefCell::new(Option::None),
+                nucleus_node: RefCell::new(Option::None)
             }
         }
     }
@@ -1460,6 +1505,9 @@ mod test
                         }
                         RelayPayload::ReportSupervisorForSim(report) => {
                             self.report_supervisor_for_sim.replace(Option::Some(report.clone()));
+                        }
+                        RelayPayload::ReportNucleusNode(report) => {
+                            self.nucleus_node.replace(Option::Some(report.clone()));
                         }
                         _ => {}
                     }
@@ -1536,17 +1584,6 @@ mod test
         assert!(c.is_init());
         assert!(c2.is_init());
         assert!(c3.is_init());
-
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-        println!("********************** NODE SEARCH TEST **********************");
-
 
         match c3.router.has_route_to_star(&a.id())
         {
@@ -1746,6 +1783,51 @@ mod test
     }
 
 
+
+
+
+
+    #[test]
+    pub fn test_circular_graph()
+    {
+        let cache = Option::Some(default_cache());
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh1= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        connect(central.clone(),mesh1.clone() );
+
+        assert!( central.is_init() );
+        assert!( mesh1.is_init() );
+
+        let mesh2= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        connect(central.clone(),mesh2.clone() );
+        assert!( mesh2.is_init() );
+
+        let mesh3= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        connect(mesh1.clone(),mesh2.clone() );
+        let (_,connection)=connect(mesh1.clone(),mesh3.clone() );
+        assert!( mesh3.is_init() );
+
+        // issue a NodeFind for a bogus node
+        let result = connection.to_remote(Wire::Search(Search {
+            from: mesh3.id(),
+            kind: SearchKind::StarId(Id::new(335, 552)),
+            max_hops: 16,
+            transactions: vec![],
+            hops: vec!(),
+        }));
+
+        assert!(result.is_ok());
+
+        // issue have a GIANT hop size
+        let result = connection.to_remote(Wire::Search(Search {
+            from: mesh3.id(),
+            kind: SearchKind::StarId(Id::new(335, 552)),
+            max_hops: 102_324,
+            transactions: vec![],
+            hops: vec!(),
+        }));
+    }
+
     #[test]
     pub fn test_supervisor()
     {
@@ -1816,66 +1898,24 @@ mod test
             _ => {}
         }
 
-println!("CLIENT ID {:?}", client.id());
+        println!("CLIENT ID {:?}", client.id());
 
         let sim_artifact = Artifact::from("mechtron.io:examples:0.0.1:/hello-world/simulation.yaml:sim").unwrap();
         cache.unwrap().configs.cache(&sim_artifact).unwrap();
         let watcher = Arc::new(TestTransactionWatcher::new());
         client.request_create_simulation(sim_artifact, watcher.clone());
 
-println!("SIMULATILN ID IS: {:?}",watcher.ready.get());
+        println!("SIMULATILN ID IS: {:?}",watcher.ready.get());
         let sim_id = watcher.ready.get().clone();
+
         let watcher = Arc::new(TestTransactionWatcher::new());
-
         client.request_simulation_supervisor(sim_id, watcher.clone());
-
         assert!( watcher.report_supervisor_for_sim.borrow().is_some());
+
+        let watcher = Arc::new(TestTransactionWatcher::new());
+        client.request_nucleus_node(sim_id, watcher.clone());
+
     }
-
-
-
-    #[test]
-    pub fn test_circular_graph()
-    {
-        let cache = Option::Some(default_cache());
-        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
-        let mesh1= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
-        connect(central.clone(),mesh1.clone() );
-
-        assert!( central.is_init() );
-        assert!( mesh1.is_init() );
-
-        let mesh2= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
-        connect(central.clone(),mesh2.clone() );
-        assert!( mesh2.is_init() );
-
-        let mesh3= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
-        connect(mesh1.clone(),mesh2.clone() );
-        let (_,connection)=connect(mesh1.clone(),mesh3.clone() );
-        assert!( mesh3.is_init() );
-
-        // issue a NodeFind for a bogus node
-        let result = connection.to_remote(Wire::Search(Search {
-            from: mesh3.id(),
-            kind: SearchKind::StarId(Id::new(335, 552)),
-            max_hops: 16,
-            transactions: vec![],
-            hops: vec!(),
-        }));
-
-        assert!(result.is_ok());
-
-        // issue have a GIANT hop size
-        let result = connection.to_remote(Wire::Search(Search {
-            from: mesh3.id(),
-            kind: SearchKind::StarId(Id::new(335, 552)),
-            max_hops: 102_324,
-            transactions: vec![],
-            hops: vec!(),
-        }));
-    }
-
-
 }
 
 

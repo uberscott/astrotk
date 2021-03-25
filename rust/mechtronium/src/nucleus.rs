@@ -29,7 +29,7 @@ use crate::router::{HasNucleus, InternalRouter};
 use crate::mechtron::CreatePayloadsBuilder;
 use crate::membrane::{WasmMembrane, MechtronMembrane};
 use mechtron_common::logger::log;
-use crate::network::Route;
+use crate::transport::Route;
 
 pub trait NucleiContainer
 {
@@ -225,7 +225,6 @@ impl Nucleus {
         context: NucleusContext,
         sim_id : Id
     ) -> Result<Self, Error> {
-//        let sim_id = context.seq.next();
         let id = sim_id.clone();
 
         let config = context.cache.configs.nucleus.get(&CORE_NUCLEUS_SIMULATION)?;

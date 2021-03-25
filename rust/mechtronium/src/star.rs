@@ -2,28 +2,28 @@ use std::alloc::System;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock, Weak, Mutex, PoisonError, MutexGuard};
+use std::collections::hash_map::RandomState;
+use std::fmt;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock, Weak};
 
 use wasmer::{Cranelift, JIT, Module, Store};
 
 use mechtron_common::artifact::Artifact;
+use mechtron_common::configs::{Configs, Keeper, NucleusConfig, Parser, SimConfig};
 use mechtron_common::core::*;
 use mechtron_common::id::{Id, IdSeq, MechtronKey};
-use mechtron_common::message::{Message, MessageKind, MechtronLayer, To, Cycle, DeliveryMoment, MessageTransport};
+use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageKind, MessageTransport, To};
 
 use crate::artifact::MechtroniumArtifactRepository;
 use crate::cache::{Cache, default_cache};
-use crate::error::Error;
-use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
-use crate::router::{HasNucleus, LocalRouter, NetworkRouter, InternalRouter, SharedRouter};
-use crate::simulation::Simulation;
-use crate::mechtron::CreatePayloadsBuilder;
-use mechtron_common::configs::{SimConfig, Configs, Keeper, NucleusConfig, Parser};
 use crate::cluster::Cluster;
-use crate::network::{NodeRouter, Wire, Connection, Route, WireListener, ExternalRoute, ReportUniqueSeqPayload, RelayPayload, NodeFind, Relay, ReportSupervisorForSim, ReportAssignSimulation, Search, SearchKind, ReqCreateSim, ReportAssignSimulationToServer, SearchResult, Unwind, UnwindPayload};
-use std::fmt;
-use crate::network::RelayPayload::{ReportSupervisorAvailable, RequestCreateSimulation};
-use std::collections::hash_map::RandomState;
+use crate::error::Error;
+use crate::mechtron::CreatePayloadsBuilder;
+use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
+use crate::router::{HasNucleus, InternalRouter, LocalRouter, NetworkRouter, SharedRouter};
+use crate::simulation::Simulation;
+use crate::transport::{AssignNucleus, Connection, ExternalRoute, NodeFind, NodeRouter, Relay, RelayPayload, ReportAssignSimulation, ReportAssignSimulationToServer, ReportSupervisorForSim, ReportUniqueSeqPayload, ReqCreateSim, Route, Search, SearchKind, SearchResult, Unwind, UnwindPayload, Wire, WireListener, ReportNucleusReady, ReportNucleusNodePayload, NucleusReadyListener};
+use crate::transport::RelayPayload::{ReportSupervisorAvailable, RequestCreateSimulation, ReportNucleusNode};
 
 static MAX_HOPS : i32 = 16;
 
@@ -83,7 +83,7 @@ impl Star {
     {
         let payload = RelayPayload::RequestSupervisorForSim(sim_id);
         let mut relay = Relay::to_central(self.id(), payload );
-        relay.transaction =  Option::Some(self.seq().next());
+        relay.transaction = Option::Some(self.seq().next());
 
         {
             self.transaction_watchers.lock()?.insert(relay.transaction.unwrap().clone(), Arc::downgrade(&transaction_watcher));
@@ -94,14 +94,29 @@ impl Star {
         Ok(())
     }
 
-    pub fn request_create_simulation(&self, simulation_config: Artifact, transaction_watcher: Arc<dyn TransactionWatcher> )->Result<(),Error>
+    pub fn request_nucleus_star(&self, supervisor: Id, nucleus: Id, transaction_watcher: Arc<dyn TransactionWatcher>) -> Result<(), Error>
     {
+        let payload = RelayPayload::RequestNucleusNode(nucleus);
+        let mut relay = Relay::new(self.id(), supervisor, payload);
+        relay.transaction = Option::Some(self.seq().next());
 
-        let nearest_supervisors:HashSet<Id> =
         {
-            let nearest_supervisors = self.nearest_supervisors.lock()?;
-            nearest_supervisors.keys().map(|id|id.clone()).collect()
-        };
+            self.transaction_watchers.lock()?.insert(relay.transaction.unwrap().clone(), Arc::downgrade(&transaction_watcher));
+        }
+
+        let wire = Wire::Relay(relay);
+        self.router.relay_wire(wire);
+        Ok(())
+    }
+
+
+    pub fn request_create_simulation(&self, simulation_config: Artifact, transaction_watcher: Arc<dyn TransactionWatcher>) -> Result<(), Error>
+    {
+        let nearest_supervisors: HashSet<Id> =
+            {
+                let nearest_supervisors = self.nearest_supervisors.lock()?;
+                nearest_supervisors.keys().map(|id| id.clone()).collect()
+            };
 
         let request = ReqCreateSim
         {
@@ -205,6 +220,20 @@ impl Star {
 
        Ok(id)
     }
+
+
+    pub fn create_nucleus(&self, config: Arc<NucleusConfig>, sim: Id) -> Result<Id, Error> {
+
+        if self.local.borrow().is_none()
+        {
+            return Err("local is none".into())
+        }
+
+        let id = self.local.borrow().as_ref().unwrap().sources.create( sim, Option::None, config )?;
+
+        Ok(id)
+    }
+
 
     pub fn timestamp(&self)->u64
     {
@@ -463,26 +492,28 @@ println!("RECEIVED REQUEST SUPERVISOR FOR SIM");
                                     simulation: sim_id.clone(),
                                     star: supervisor.unwrap().clone()
                                 };
-println!("RECEIVED REQUEST SUPERVISOR FOR SIM.... RELAY");
-                                self.router.relay_wire( Wire::Relay(relay.reply(RelayPayload::ReportSupervisorForSim(report))));
-                            }
-                            else {
-                                self.error(format!("RELAY PANIC! cannot find sim id: {:?}",sim_id).as_str())
+                                println!("RECEIVED REQUEST SUPERVISOR FOR SIM.... RELAY");
+                                self.router.relay_wire(Wire::Relay(relay.reply(RelayPayload::ReportSupervisorForSim(report))));
+                            } else {
+                                self.error(format!("RELAY PANIC! cannot find sim id: {:?}", sim_id).as_str())
                             }
                         }
                         _ => {}
                     }
                 }
-                RelayPayload::AssignSimulationToSupervisor(assign_simulation)=>
-                {
-                    if relay.inform.is_none() || relay.transaction.is_none()
+                RelayPayload::RequestNucleusNode(nucleus) if self.core.is_supervisor() => {
+                    unimplemented!()
+                }
+                RelayPayload::AssignSimulationToSupervisor(assign_simulation) =>
                     {
-                        self.error("AssignSimulationToSupervistor should have an inform");
-                    }
-                    match &self.core{
-                        StarCore::Supervisor(supervisor) => {
-                           let supervisor = supervisor.write()?;
-                           match supervisor.select_server()
+                        if relay.inform.is_none() || relay.transaction.is_none()
+                        {
+                            self.error("AssignSimulationToSupervistor should have an inform");
+                        }
+                        match &self.core {
+                            StarCore::Supervisor(supervisor) => {
+                                let supervisor = supervisor.write()?;
+                                match supervisor.select_server()
                            {
                                Ok(server_id) => {
                                    let wire = Wire::Relay(Relay{
@@ -499,24 +530,119 @@ println!("RECEIVED REQUEST SUPERVISOR FOR SIM.... RELAY");
                                    self.router.relay_wire(wire);
                                }
                                Err(err) => {
-                                   self.relay_error("supervisor has no available servers", relay.inform.clone(), relay.transaction.clone() );
+                                   self.relay_error("supervisor has no available servers", relay.inform.clone(), relay.transaction.clone());
                                }
                            }
-                        }
-                        _ => {
-                            self.error("RELAY PANIC! attempt to assign a simulation to a non Supervisor!");
+                            }
+                            _ => {
+                                self.error("RELAY PANIC! attempt to assign a simulation to a non Supervisor!");
+                            }
                         }
                     }
-                }
-                RelayPayload::AssignSimulationToServer(report)=>
-                {
-                    match &self.core{
-                        StarCore::Server(_) => {
-                            match self.cache.configs.sims.cache( &report.simulation_config )
+                RelayPayload::RequestNucleus(request) =>
+                    {
+                        if let StarCore::Supervisor(supervisor) = &self.core {
+                            let supervisor = supervisor.write()?;
+                            if let Ok(server_id) = supervisor.select_server()
                             {
-                                Ok(_) => {
-                                    match self.cache.configs.sims.get(&report.simulation_config )
-                                    {
+                                let mut listeners = request.listeners.clone();
+                                listeners.push( NucleusReadyListener{
+                                    star: self.id(),
+                                    transaction: self.seq().next() // transaction doesn't matter in this case
+                                });
+                                let wire = Wire::Relay(Relay {
+                                    from: self.id(),
+                                    to: server_id,
+                                    payload: RelayPayload::AssignNucleus(AssignNucleus {
+                                        sim: request.sim.clone(),
+                                        config: request.config.clone(),
+                                        listeners: listeners
+                                    }),
+                                    inform: relay.inform.clone(),
+                                    transaction: relay.transaction.clone(),
+                                    hops: 0,
+                                });
+                                self.router.relay_wire(wire);
+                            } else {
+                                self.relay_error("supervisor has no available servers", relay.inform.clone(), relay.transaction.clone());
+                            }
+                        }
+                    }
+                RelayPayload::AssignNucleus(assign) =>
+                    {
+                        if let StarCore::Server(server) = &self.core {
+                            //let server = server.write()?;
+                            let config = self.cache.configs.nucleus.get( &assign.config )?;
+                            let nucleus = self.create_nucleus(config,assign.sim.clone())?;
+                            for listener in assign.listeners
+                            {
+                                let wire = Wire::Relay(Relay {
+                                    from: self.id(),
+                                    to: listener.star.clone(),
+                                    payload: RelayPayload::ReportNucleusReady(ReportNucleusReady{
+                                        sim: assign.sim.clone(),
+                                        nucleus: nucleus,
+                                        star: self.id()
+                                    }),
+                                    inform: relay.inform.clone(),
+                                    transaction: Option::Some(listener.transaction.clone()),
+                                    hops: 0,
+                                });
+                                self.router.relay_wire(wire);
+                            }
+                        }
+                        else{
+                            self.relay_error("can only AssignNucleus to a server", relay.inform.clone(), relay.transaction.clone());
+                        }
+                    }
+                RelayPayload::ReportNucleusReady(ready) =>
+                {
+                   if let StarCore::Supervisor(supervisor) = &self.core
+                   {
+                       let mut supervisor = supervisor.write()?;
+                       supervisor.nucleus_to_star.insert(ready.nucleus.clone(), ready.star );
+                       supervisor.nucleus_to_sim.insert(ready.nucleus, ready.sim );
+                   }
+                   self.process_transaction_notification_final(&relay);
+                }
+                RelayPayload::RequestNucleusNode(nucleus) =>
+                    {
+                        if let StarCore::Supervisor(supervisor) = &self.core
+                        {
+                            let mut supervisor = supervisor.read()?;
+                            let node = supervisor.nucleus_to_star.get(nucleus);
+                            let sim = supervisor.nucleus_to_sim.get(nucleus);
+                            if node.is_some() && sim.is_some()
+                            {
+                                let relay = relay.reply(ReportNucleusNode(ReportNucleusNodePayload { sim: sim.unwrap().clone(), node: node.unwrap().clone() }));
+                                self.router.relay_wire(Wire::Relay(relay));
+                            }
+                            else {
+
+                                self.relay_error(format!("could not find nucleus {:?}",nucleus).as_str(), relay.inform.clone(), relay.transaction.clone());
+                            }
+                        }
+
+                    }
+
+                RelayPayload::ReportNucleusDetached(nucleus) =>
+                    {
+                        if let StarCore::Supervisor(supervisor) = &self.core
+                        {
+                            let mut supervisor = supervisor.write()?;
+                            supervisor.nucleus_to_star.remove(&nucleus );
+                        }
+                    }
+                RelayPayload::AssignSimulationToServer(report) =>
+
+                    {
+                        match &self.core {
+                            StarCore::Server(_) => {
+                                match self.cache.configs.sims.cache(&report.simulation_config)
+                                {
+                                    Ok(_) => {
+                                        match self.cache.configs.sims.get(&report.simulation_config)
+                                        {
                                         Ok(sim_config) => {
                                            match self.create_sim_from_scratch(sim_config, report.simulation_id)
                                            {
@@ -536,8 +662,6 @@ println!("RECEIVED REQUEST SUPERVISOR FOR SIM.... RELAY");
                                                    else {
                                                        self.error_handler.borrow().on_error("assign sim should have an INFORM");
                                                    }
-
-
                                                }
                                                Err(err) => {
                                                    self.error_handler.borrow().on_error(format!("{:?}",err).as_str());
@@ -566,6 +690,10 @@ println!("RECEIVED REQUEST SUPERVISOR FOR SIM.... RELAY");
                  {
                         self.process_transaction_notification_final( &relay );
                  }
+                RelayPayload::ReportNucleusNode(report)=>
+                {
+                       self.process_transaction_notification_final( &relay );
+                }
                 RelayPayload::ReportUniqueSeq(seq_id)=> {
                     if relay.transaction.is_some()
                     {
@@ -951,16 +1079,24 @@ impl StarCore
         }
     }
 
-    fn is_server(&self)->bool
+    fn is_server(&self) -> bool
     {
-        match self{
+        match self {
             StarCore::Server(_) => true,
             _ => false
         }
     }
 
+    fn is_supervisor(&self) -> bool
+    {
+        match self {
+            StarCore::Supervisor(_) => true,
+            _ => false
+        }
+    }
 
-    pub fn kind(&self)->StarKind
+
+    pub fn kind(&self) -> StarKind
     {
         match self
         {
@@ -1008,13 +1144,17 @@ impl fmt::Display for StarCore {
 
 pub struct Supervisor
 {
-   pub servers: Vec<Id>
+    pub servers: Vec<Id>,
+    pub nucleus_to_star: HashMap<Id, Id>,
+    pub nucleus_to_sim: HashMap<Id, Id>,
 }
 
 impl Supervisor{
     pub fn new()->Self{
-        Supervisor{
-            servers: vec!()
+        Supervisor {
+            servers: vec!(),
+            nucleus_to_star: HashMap::new(),
+            nucleus_to_sim: HashMap::new()
         }
     }
 
