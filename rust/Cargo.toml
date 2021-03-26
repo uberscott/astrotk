@@ -7,6 +7,7 @@ members = [
 
   "mechtronium",
   "mechtronium_system",
+  "mechtronium_server",
   "mechtronium_ext_web",
   "mechtronium_ext_local_filesystem",
   ]

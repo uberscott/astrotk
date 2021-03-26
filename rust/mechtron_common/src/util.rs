@@ -15,7 +15,7 @@ impl PingPayloadBuilder
         buffer.set(&path!(), "PING");
 
         Ok(Payload {
-            buffer: buffer.read_only(),
+            buffer: buffer.read_only().to_bytes(),
             schema: CORE_SCHEMA_PING.clone()
         })
     }
@@ -31,7 +31,7 @@ impl PongPayloadBuilder
         buffer.set(&path!(),"PONG");
 
         Ok(Payload {
-            buffer: buffer.read_only(),
+            buffer: buffer.read_only().to_bytes(),
             schema: CORE_SCHEMA_PONG.clone()
         })
     }
@@ -47,7 +47,7 @@ impl TextPayloadBuilder
         let mut buffer = Buffer::new(buffer);
         buffer.set(&path!(),text.to_string() )?;
         Ok(Payload {
-            buffer: buffer.read_only(),
+            buffer: buffer.read_only().to_bytes(),
             schema: CORE_SCHEMA_TEXT.clone()
         })
     }
@@ -65,7 +65,7 @@ impl OkPayloadBuilder
         buffer.set(&path!(), ok)?;
 
         Ok(Payload {
-            buffer: buffer.read_only(),
+            buffer: buffer.read_only().to_bytes(),
             schema: CORE_SCHEMA_PING.clone()
         })
     }

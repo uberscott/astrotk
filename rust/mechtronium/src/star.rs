@@ -14,6 +14,8 @@ use mechtron_common::core::*;
 use mechtron_common::id::{Id, IdSeq, MechtronKey};
 use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageKind, MessageTransport, To};
 
+use serde::{Serialize,Deserialize};
+
 use crate::artifact::MechtroniumArtifactRepository;
 use crate::cache::{Cache, default_cache};
 use crate::cluster::Cluster;
@@ -1093,7 +1095,7 @@ pub struct Client
 {
 }
 
-#[derive(Clone,Eq,PartialEq)]
+#[derive(Clone,Eq,PartialEq,Debug,Serialize,Deserialize)]
 pub enum StarKind
 {
     Central,

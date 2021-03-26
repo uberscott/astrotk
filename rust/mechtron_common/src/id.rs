@@ -1,8 +1,9 @@
 use crate::buffers::{Buffer, Path, ReadOnlyBuffer};
 use std::sync::atomic::{AtomicI64, Ordering};
 use crate::error::Error;
+use serde::{Serialize,Deserialize};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Id {
     pub seq_id: i64,
     pub id: i64,
@@ -67,19 +68,19 @@ impl IdSeq {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone,Serialize,Deserialize)]
 pub enum NucleusKind {
     Source,
     Replica(Id),
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone,Serialize,Deserialize)]
 pub struct NucleusKey {
     id: Id,
     kind: NucleusKind,
 }
 
-#[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone,Serialize,Deserialize)]
 pub struct MechtronKey {
     pub nucleus: Id,
     pub mechtron: Id,
@@ -108,17 +109,18 @@ impl MechtronKey {
 
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone,Serialize,Deserialize)]
 pub struct StateKey {
     pub tron: MechtronKey,
     pub revision: Revision,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone,Serialize,Deserialize)]
 pub struct Revision {
     pub cycle: i64,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone,Serialize,Deserialize)]
 pub struct DeliveryMomentKey {
     pub cycle: i64,
     pub phase: u8,

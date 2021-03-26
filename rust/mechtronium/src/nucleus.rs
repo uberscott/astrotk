@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak, MutexGuard};
 use std::time::{Instant, SystemTime};
 
 use no_proto::error::NP_Error;
-use no_proto::memory::NP_Memory_Owned;
 
 use mechtron_common::artifact::Artifact;
 use mechtron_common::configs::{BindConfig, Configs, Keeper, MechtronConfig, NucleusConfig, SimConfig, SimSpark};
@@ -18,6 +17,8 @@ use mechtron_common::id::MechtronKey;
 use mechtron_common::id::Revision;
 use mechtron_common::message::{Cycle, DeliveryMoment, MechtronLayer, Message, MessageBuilder, MessageKind, Payload, To};
 use mechtron_common::state::{ReadOnlyState, ReadOnlyStateMeta, State, StateMeta};
+
+use serde::{Serialize,Deserialize};
 
 use crate::cache::Cache;
 use crate::error::Error;
@@ -287,7 +288,7 @@ impl Nucleus {
        {
           for (key, state) in states
           {
-              bomb.states.push(state);
+              bomb.states.push(state.as_bytes(&self.configs())?);
           }
        }
        Ok(bomb)
@@ -1265,7 +1266,7 @@ mod message
             let buffer = Buffer::new(buffer);
             let buffer = buffer.read_only();
             let payload = Payload {
-                buffer: buffer,
+                buffer: buffer.to_bytes(),
                 schema: CORE_SCHEMA_META_CREATE.clone(),
             };
 
@@ -1308,7 +1309,7 @@ mod message
             let buffer = Buffer::new(buffer);
 
             builder.payloads.replace(Option::Some(vec![Payload{
-                buffer: buffer.read_only(),
+                buffer: buffer.read_only().to_bytes(),
                 schema: CORE_SCHEMA_EMPTY.clone(),
             }]));
 
@@ -1319,7 +1320,7 @@ mod message
             let buffer = factory.new_buffer(Option::None);
             let buffer = Buffer::new(buffer);
             let payload = Payload{
-                buffer: buffer.read_only(),
+                buffer: buffer.read_only().to_bytes(),
                 schema: CORE_SCHEMA_META_CREATE.clone(),
             };
 
@@ -1960,7 +1961,7 @@ mod test
 
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct TronInfo
 {
     pub key: MechtronKey,
@@ -1968,12 +1969,12 @@ pub struct TronInfo
     pub bind: Arc<BindConfig>
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct NucleusBomb
 {
     pub nucleus: Id,
     pub revision: Revision,
-    pub states: Vec<Arc<ReadOnlyState>>
+    pub states: Vec<Vec<u8>>
 }
 
 impl NucleusBomb

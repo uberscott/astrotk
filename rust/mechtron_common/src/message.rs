@@ -2,15 +2,17 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+
 use bytes::Bytes;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::collection::map::NP_Map;
 use no_proto::collection::struc::NP_Struct;
 use no_proto::error::NP_Error;
-use no_proto::memory::NP_Memory_Owned;
 use no_proto::NP_Factory;
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use no_proto::pointer::option::NP_Enum;
+
+use serde::{Serialize,Deserialize};
 
 use crate::artifact::Artifact;
 use crate::buffers::{Buffer, BufferFactories, Path, ReadOnlyBuffer};
@@ -21,7 +23,7 @@ use crate::id::{DeliveryMomentKey, Id, IdSeq, MechtronKey, Revision};
 use crate::logger::log;
 use crate::util::{OkPayloadBuilder, TextPayloadBuilder};
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub struct To {
     pub tron: MechtronKey,
     pub port: String,
@@ -31,7 +33,7 @@ pub struct To {
     pub layer: MechtronLayer
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub struct From {
     pub tron: MechtronKey,
     pub cycle: i64,
@@ -221,7 +223,7 @@ impl To {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub enum Phase {
     Primordial,
     Pre,
@@ -230,21 +232,21 @@ pub enum Phase {
     Post,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub enum Cycle {
     Exact(i64),
     Present,
     Next,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub enum NucleusKind
 {
     Source,
     Replica
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub enum MessageKind {
     Create,
     Update,
@@ -315,14 +317,14 @@ fn string_to_message_kind(str: &str) -> Result<MessageKind, Error> {
 }
 
 // meaning the "between" delivery which can either be between cycles or phases
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub enum DeliveryMoment {
     Cyclic,
     Phasic,
     ExtraCyclic
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug,Serialize,Deserialize)]
 pub enum MechtronLayer {
     Kernel,
     Shell
@@ -681,22 +683,43 @@ impl PayloadBuilder {
 
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct Payload {
-    pub buffer: ReadOnlyBuffer,
+    pub buffer: Vec<u8>,
     pub schema: Artifact,
 }
 
 impl Payload {
+
+    pub fn read_only<'buffer>(&'buffer self, configs: &Configs )->Result<ReadOnlyBuffer,Error>
+    {
+         let factory = configs.schemas.get(&self.schema)?;
+         let buffer = factory.open_buffer_ref::<'buffer>(self.buffer.as_slice() );
+
+         let buffer = ReadOnlyBuffer::new(buffer);
+         Ok(buffer)
+    }
+
+    pub fn copy_to_buffer(&self, configs: &Configs )->Result<Buffer,Error>
+    {
+        let factory = configs.schemas.get(&self.schema)?;
+        let buffer = factory.open_buffer(self.buffer.clone() );
+
+        let buffer = Buffer::new(buffer);
+        Ok(buffer)
+    }
+
     pub fn append(&self, path: &Path, buffer: &mut Buffer) -> Result<(), Error> {
         buffer.set(&path.with(path!["artifact"]), self.schema.to())?;
         buffer.set::<Vec<u8>>(
             &path.with(path!["bytes"]),
-            ReadOnlyBuffer::bytes(self.buffer.clone()),
+            self.buffer.clone(),
         )?;
 
         Ok(())
     }
+
+
 
     pub fn from(
         path: &Path,
@@ -705,17 +728,15 @@ impl Payload {
     ) -> Result<Payload, Error> {
         let artifact = Artifact::from(buffer.get(&path.with(path!["artifact"]))?)?;
         let bytes = buffer.get::<Vec<u8>>(&path.with(path!["bytes"]))?;
-        let factory = configs.schemas.get(&artifact)?;
-        let buffer = factory.open_buffer(bytes);
-        let buffer = ReadOnlyBuffer::new(buffer);
+
         Ok(Payload {
-            buffer: buffer,
+            buffer: bytes,
             schema: artifact,
         })
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug,Clone,Serialize,Deserialize)]
 pub struct Message {
     pub id: Id,
     pub kind: MessageKind,
@@ -773,7 +794,7 @@ impl Message {
     pub fn calc_bytes(&self) -> usize {
         let mut size = 0;
         for payload in &self.payloads {
-            size = size + payload.buffer.size();
+            size = size + payload.buffer.len();
         }
         return size;
     }
@@ -784,9 +805,10 @@ impl Message {
     }
 
     pub fn to_payload(message:&Message, configs: &Configs) -> Result<Payload, Error> {
+        let bytes = message.to_bytes(configs)?;
         Ok(Payload{
             schema: CORE_SCHEMA_MESSAGE.clone(),
-            buffer: Message::to_buffer(message,configs)?
+            buffer: bytes
         })
     }
 
@@ -1048,7 +1070,7 @@ pub mod tests {
             let mut buffer = factory.new_buffer(Option::None);
             let mut buffer = Buffer::new(buffer);
             buffer.set( &path!["text"], "Some TExt");
-            let buffer = buffer.read_only();
+            let buffer = buffer.copy_bytes();
             Payload{
                 buffer: buffer,
                 schema: CORE_SCHEMA_TEXT.clone()
@@ -1355,6 +1377,7 @@ pub mod tests {
 }
 
 
+#[derive(Debug,Serialize,Deserialize)]
 pub struct MessageTransport
 {
     pub message: Message

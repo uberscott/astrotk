@@ -5,7 +5,6 @@ use no_proto::NP_Factory;
 
 use crate::artifact::Artifact;
 use no_proto::error::NP_Error;
-use no_proto::memory::{NP_Mem_New, NP_Memory, NP_Memory_Owned, NP_Memory_Ref};
 use no_proto::pointer::{NP_Scalar, NP_Value};
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -18,8 +17,8 @@ macro_rules! path{
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
 }
 
-pub trait BufferFactories<'factories> {
-    fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory<'factories>>, Error>;
+pub trait BufferFactories {
+    fn get(&self, artifact: &Artifact) -> Result<Arc<NP_Factory>, Error>;
 }
 
 fn cat(path: &[&str]) -> String {
@@ -33,14 +32,19 @@ fn cat(path: &[&str]) -> String {
 
 #[derive(Clone)]
 pub struct Buffer {
-    np_buffer: NP_Buffer<NP_Memory_Owned>,
+    np_buffer: NP_Buffer
 }
 
 impl Buffer {
-    pub fn new(np_buffer: NP_Buffer<NP_Memory_Owned>) -> Self {
+    pub fn new(np_buffer: NP_Buffer) -> Self {
         Buffer {
             np_buffer: np_buffer,
         }
+    }
+
+    pub fn to_bytes(self)->Vec<u8>
+    {
+        self.np_buffer.finish().bytes()
     }
 
     pub fn get_length(&self, path: &Vec<String>) -> Result<usize, Error> {
@@ -155,11 +159,11 @@ impl Buffer {
 
 #[derive(Clone)]
 pub struct ReadOnlyBuffer {
-    np_buffer: NP_Buffer<NP_Memory_Owned>,
+    np_buffer: NP_Buffer,
 }
 
 impl ReadOnlyBuffer {
-    pub fn new(np_buffer: NP_Buffer<NP_Memory_Owned>) -> Self {
+    pub fn new(np_buffer: NP_Buffer) -> Self {
         ReadOnlyBuffer {
             np_buffer: np_buffer,
         }
@@ -167,6 +171,10 @@ impl ReadOnlyBuffer {
 
     pub fn bytes(buffer: ReadOnlyBuffer) -> Vec<u8> {
         buffer.np_buffer.finish().bytes()
+    }
+
+    pub fn to_bytes(self) -> Vec<u8> {
+        self.np_buffer.finish().bytes()
     }
 
 
@@ -249,6 +257,9 @@ impl ReadOnlyBuffer {
         self.np_buffer.data_length()
     }
 }
+
+
+
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Path {

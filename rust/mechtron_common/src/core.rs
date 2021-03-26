@@ -5,13 +5,13 @@ lazy_static! {
     pub static ref CORE: ArtifactBundle = ArtifactBundle {
         group: "mechtron.io".to_string(),
         id: "core".to_string(),
-        version: Version::new(1, 0, 0)
+        version: "1.0.0".to_string()
     };
 
     pub static ref STD: ArtifactBundle = ArtifactBundle {
         group: "mechtron.io".to_string(),
         id: "std".to_string(),
-        version: Version::new(1, 0, 0)
+        version: "1.0.0".to_string()
     };
 
     pub static ref CORE_SCHEMA_MESSAGE: Artifact = CORE.path_and_kind(&"schema/message/message.schema", "schema");

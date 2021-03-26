@@ -15,7 +15,7 @@ use crate::logger::log;
 
 pub struct Configs {
     pub artifacts: Arc<dyn ArtifactCache + Sync + Send>,
-    pub schemas: Keeper<NP_Factory<'static>>,
+    pub schemas: Keeper<NP_Factory>,
     pub sims: Keeper<SimConfig>,
     pub binds: Keeper<BindConfig>,
     pub nucleus: Keeper<NucleusConfig>,
@@ -219,8 +219,8 @@ pub trait Parser<V> {
 
 struct NP_Buffer_Factory_Parser;
 
-impl<'fact> Parser<NP_Factory<'fact>> for NP_Buffer_Factory_Parser {
-    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<NP_Factory<'fact>, Error> {
+impl Parser<NP_Factory> for NP_Buffer_Factory_Parser {
+    fn parse(&self, artifact: &Artifact, data: Vec<u8>) -> Result<NP_Factory, Error> {
 
         let str = String::from_utf8(data )?;
         let result = NP_Factory::new(str.as_str());
@@ -291,7 +291,7 @@ impl Parser<NucleusConfig> for NucleusConfigParser {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct MechtronConfig {
     pub source: Artifact,
     pub name: Option<String>,
@@ -300,17 +300,17 @@ pub struct MechtronConfig {
     pub bind: BindRef,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct BindRef {
     pub artifact: Artifact,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct WasmRef{
     pub artifact: Artifact,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct BindConfig {
     pub kind: String,
     pub name: String,
@@ -418,7 +418,7 @@ impl Cacher<MechtronConfig> for MechtronConfigCacher
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct MessageConfig {
     pub create: CreateMessageConfig,
     pub extra: HashMap<String,ExtraMessageConfig>,
@@ -439,7 +439,7 @@ impl Default for MessageConfig
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct NucleusConfig
 {
    pub name: Option<String>,
@@ -448,14 +448,14 @@ pub struct NucleusConfig
    pub mectrons: Vec<MechtronConfigRef>,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct PhaseConfig
 {
     pub name: String
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct StateConfig {
     pub buffers: Vec<BufferConfig>,
 }
@@ -475,7 +475,7 @@ impl StateConfig
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct BufferConfig{
     pub name: String,
     pub artifact: Artifact,
@@ -490,7 +490,7 @@ impl Default for StateConfig {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct CreateMessageConfig {
     pub artifact: Artifact,
 }
@@ -504,32 +504,32 @@ impl Default for CreateMessageConfig
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ExtraMessageConfig {
     pub name: String,
     pub payloads: Vec<PayloadConfig>,
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct InboundMessageConfig {
     pub name: String,
     pub payloads: Vec<PayloadConfig>,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct OutboundMessageConfig {
     pub name: String,
     pub payloads: Vec<PayloadConfig>,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct PayloadConfig{
     pub kind: PayloadKind,
     pub artifact: Option<Artifact>
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub enum PayloadKind {
     Any,
     Schema
@@ -770,7 +770,7 @@ impl BindYaml {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct SimConfig {
     pub source: Artifact,
     pub name: String,
@@ -778,24 +778,24 @@ pub struct SimConfig {
     pub nucleus: Vec<NucleusConfigRef>
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct NucleusConfigRef{
     pub name: Option<String>,
     pub artifact: Artifact,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct MechtronConfigRef {
     pub name: Option<String>,
     pub artifact: Artifact,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct SimCreateTronConfig {
     data: DataRef,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct DataRef {
     artifact: Artifact,
 }

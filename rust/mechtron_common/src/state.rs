@@ -6,7 +6,6 @@ use crate::id::{StateKey, Id, MechtronKey};
 use crate::message::Payload;
 use no_proto::buffer::{NP_Buffer, NP_Finished_Buffer};
 use no_proto::error::NP_Error;
-use no_proto::memory::{NP_Memory_Owned, NP_Memory_Ref};
 use no_proto::NP_Factory;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -290,7 +289,7 @@ impl ReadOnlyState {
         let bind = configs.binds.get(&state.config.bind.artifact)?;
         let rtn: Vec<Payload> = vec![
             Payload {
-                buffer: state.meta,
+                buffer: state.meta.to_bytes(),
                 schema: CORE_SCHEMA_META_STATE.clone(),
             }
             // need Payloads::convert ...
@@ -299,7 +298,30 @@ impl ReadOnlyState {
         return Ok(rtn);
     }
 
-    pub fn to_bytes(&self, configs: &Configs ) ->Result<Vec<u8>,Error>
+    pub fn to_bytes(self, configs: &Configs ) ->Result<Vec<u8>,Error>
+    {
+        let mut buffer = {
+            let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;
+            let buffer = factory.new_buffer(Option::None );
+            let mut buffer = Buffer::new(buffer);
+            buffer
+        };
+
+        buffer.set( &path!["config"], self.config.source.to() );
+
+        buffer.set( &path!["meta"], self.meta.read_bytes() )?;
+
+        let path = Path::new( path!["buffers"]);
+        for key in self.buffers.keys()
+        {
+            buffer.set(&path.with(path![key]), self.buffers.get(key).unwrap().read_bytes())?;
+        }
+
+        Ok(Buffer::bytes(buffer))
+    }
+
+
+    pub fn as_bytes(&self, configs: &Configs ) ->Result<Vec<u8>,Error>
     {
         let mut buffer = {
             let factory = configs.schemas.get(&CORE_SCHEMA_STATE)?;

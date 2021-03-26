@@ -1,17 +1,17 @@
 
 use semver::Version;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 use crate::configs::Configs;
 use std::cell::Cell;
 use std::sync::Arc;
 use crate::error::Error;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone,Serialize,Deserialize)]
 pub struct ArtifactBundle {
     pub group: String,
     pub id: String,
-    pub version: Version,
+    pub version: String,
 }
 
 impl ArtifactBundle {
@@ -21,8 +21,14 @@ impl ArtifactBundle {
         return Ok(ArtifactBundle {
             group: parts.next().unwrap().to_string(),
             id: parts.next().unwrap().to_string(),
-            version: Version::parse(parts.next().unwrap())?,
+            //version: Version::parse(parts.next().unwrap())?,
+            version: parts.next().unwrap().to_string(),
         });
+    }
+
+    pub fn version(&self)->Result<Version,Error>
+    {
+        Ok(Version::parse(self.version.as_str() )?)
     }
 
     pub fn to(&self) -> String {
@@ -54,7 +60,7 @@ impl ArtifactBundle {
 
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone,Serialize,Deserialize)]
 pub struct Artifact {
     pub bundle: ArtifactBundle,
     pub path: String,
@@ -69,7 +75,7 @@ impl Artifact {
             bundle: ArtifactBundle {
                 group: parts.next().unwrap().to_string(),
                 id: parts.next().unwrap().to_string(),
-                version: Version::parse(parts.next().unwrap())?,
+                version: parts.next().unwrap().to_string(),
             },
             path: parts.next().unwrap().to_string(),
             kind: match parts.next(){

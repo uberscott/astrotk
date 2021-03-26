@@ -59,11 +59,11 @@ impl CreatePayloadsBuilder {
         vec![
             Payload {
                 schema: meta_artifact,
-                buffer: builder.meta.read_only(),
+                buffer: builder.meta.to_bytes(),
             },
             Payload {
                 schema: builder.constructor_artifact,
-                buffer: builder.constructor.read_only(),
+                buffer: builder.constructor.to_bytes(),
             },
         ]
     }
@@ -73,11 +73,11 @@ impl CreatePayloadsBuilder {
         vec![
             Payload{
                 schema: meta_artifact,
-                buffer: builder.meta.read_only(),
+                buffer: builder.meta.to_bytes(),
             },
             Payload{
                 schema: builder.constructor_artifact,
-                buffer: builder.constructor.read_only(),
+                buffer: builder.constructor.to_bytes(),
             },
         ]
     }

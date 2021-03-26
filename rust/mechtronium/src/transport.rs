@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, RwLock, Weak};
 use mechtron_common::artifact::Artifact;
 use mechtron_common::id::{Id, IdSeq};
 use mechtron_common::message::{Message, MessageTransport};
+use serde::{Serialize,Deserialize};
 
 use crate::error::Error;
 use crate::transport::RouteProblem::{NucleusNotKnown, StarUnknown};
@@ -880,6 +881,7 @@ impl ExternalRoute for Connection
 
 
 
+#[derive(Debug,Serialize,Deserialize)]
 pub enum Wire
 {
     ReportVersion(i32),
@@ -916,7 +918,7 @@ impl fmt::Display for Wire {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub enum Broadcast
 {
     Nucleus(NucleusBomb)
@@ -935,7 +937,7 @@ impl Broadcast
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct Search
 {
     pub from: Id,
@@ -948,7 +950,7 @@ pub struct Search
 impl Search
 {}
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct SearchResult
 {
     pub sought: Option<Id>,
@@ -957,14 +959,14 @@ pub struct SearchResult
 }
 
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone,Serialize,Deserialize)]
 pub enum Watch
 {
     Nucleus(Id)
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct SearchNotResultFound
 {
     pub sought: Id,
@@ -1010,7 +1012,7 @@ impl Search {
 
 
 
-#[derive(Clone,Eq,PartialEq)]
+#[derive(Clone,Debug,Eq,PartialEq,Serialize,Deserialize)]
 pub enum SearchKind
 {
     StarKind(StarKind),
@@ -1043,7 +1045,7 @@ impl SearchKind
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct Unwind
 {
     pub from: Id,
@@ -1076,7 +1078,7 @@ impl Unwind {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct Relay
 {
     pub from: Id,
@@ -1130,7 +1132,7 @@ impl Relay{
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub enum RelayPayload
 {
     Ping(Id),
@@ -1175,7 +1177,7 @@ impl RelayPayload
 
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ReportNucleusReady
 {
     pub sim: Id,
@@ -1183,7 +1185,7 @@ pub struct ReportNucleusReady
     pub star: Id
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct RequestNucleus
 {
     pub sim: Id,
@@ -1192,7 +1194,7 @@ pub struct RequestNucleus
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct AssignNucleus
 {
     pub sim: Id,
@@ -1200,27 +1202,27 @@ pub struct AssignNucleus
     pub listeners: Vec<NucleusReadyListener>
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct NucleusReadyListener
 {
     pub star: Id,
     pub transaction: Id
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub enum UnwindPayload
 {
     SearchFoundResult(SearchResult),
     SearchNotFoundResult(SearchResult),
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct WatchResult
 {
   pub kind: WatchResultKind
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub enum WatchResultKind
 {
     Nucleus(NucleusBomb)
@@ -1261,14 +1263,14 @@ impl fmt::Display for RelayPayload {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ReportAssignSimulationToServer
 {
     pub simulation_id: Id,
     pub simulation_config: Artifact,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ReqCreateSim
 {
     pub simulation: Id,
@@ -1276,7 +1278,7 @@ pub struct ReqCreateSim
     pub nearby_supervisors: HashSet<Id>,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ReportAssignSimulation
 {
     pub simulation_id: Id,
@@ -1284,14 +1286,14 @@ pub struct ReportAssignSimulation
 }
 
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ReportSupervisorForSim
 {
     pub simulation: Id,
     pub star: Id
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ReportNucleusNodePayload
 {
     pub sim: Id,
@@ -1299,7 +1301,7 @@ pub struct ReportNucleusNodePayload
 }
 
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct NodeSearchPayload
 {
     pub from: Id,
@@ -1325,7 +1327,7 @@ pub struct RecentConnectionTransaction
     pub timestamp: u64
 }
 
-#[derive(Clone)]
+#[derive(Debug,Serialize,Deserialize,Clone)]
 pub struct ReportUniqueSeqPayload
 {
     pub seq: i64

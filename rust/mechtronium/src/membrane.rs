@@ -269,9 +269,9 @@ impl WasmMembrane {
 
     fn inject_state(&self, state: &ReadOnlyState) ->Result<i32,Error>
     {
-        let bytes = &state.to_bytes(&self.configs)?;
+        let bytes = state.as_bytes(&self.configs)?;
 
-        let state_buffer_id = self.write_buffer( bytes )?;
+        let state_buffer_id = self.write_buffer( &bytes )?;
         let rtn = self.instance.exports.get_native_function::<i32,i32>("wasm_inject_state").unwrap().call(state_buffer_id.clone() )?;
         match rtn
         {

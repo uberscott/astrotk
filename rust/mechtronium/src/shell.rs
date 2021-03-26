@@ -346,7 +346,7 @@ impl <'a> MechtronShell<'a> {
         let message = builder.build(context.seq().clone())?;
         let bind = context.configs().binds.get(&self.info.config.bind.artifact).unwrap();
 
-        let api = message.payloads[0].buffer.get::<String>(&path!["api"])?;
+        let api = message.payloads[0].read_only(&context.configs())?.get::<String>(&path!["api"])?;
 
         match api.as_str() {
             "neutron_api" => {
@@ -356,14 +356,14 @@ impl <'a> MechtronShell<'a> {
                 {
                     self.panic(format!("attempt for non Neutron to access neutron_api {}", bind.kind));
                 } else {
-                    let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
+                    let call = message.payloads[0].read_only(&context.configs())?.get::<String>(&path!["call"])?;
                     match call.as_str() {
                         "create_mechtron" => {
                             // now get the state of the mechtronmessage.payloads
-                            let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].buffer.copy_to_buffer())?;
+                            let new_mechtron_state = State::new_from_meta(context.configs(), message.payloads[1].copy_to_buffer(&context.configs())?)?;
                             let new_mechtron_state = new_mechtron_state.read_only()?;
                             // very wasteful to be cloning the bytes here...
-                            let create_message = message.payloads[2].buffer.read_bytes().to_vec();
+                            let create_message = message.payloads[2].buffer.clone();
                             let create_message = Message::from_bytes(create_message, context.configs())?;
                             context.neutron_api_create(new_mechtron_state, create_message);
                         }
@@ -372,10 +372,10 @@ impl <'a> MechtronShell<'a> {
                 }
             },
             "create_api" => {
-                let call = message.payloads[0].buffer.get::<String>(&path!["call"])?;
+                let call = message.payloads[0].read_only(&context.configs())?.get::<String>(&path!["call"])?;
                 match call.as_str(){
                     "create_nucleus" => {
-                        let nucleus_config = CreateApiCallCreateNucleus::nucleus_config_artifact( &message.payloads )?;
+                        let nucleus_config = CreateApiCallCreateNucleus::nucleus_config_artifact( &message.payloads, &context.configs() )?;
                         let nucleus_config = Artifact::from(&nucleus_config)?;
                         context.configs().cache( &nucleus_config )?;
                         let nucleus_config = context.configs().nucleus.get(&nucleus_config)?;

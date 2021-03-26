@@ -1,5 +1,5 @@
 [package]
-name = "mechtronium_ext_local_filesystem"
+name = "mechtronium_server"
 version = "0.1.0"
 authors = ["Scott Williams <scott@mightydevco.com>"]
 edition = "2018"
@@ -7,5 +7,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-notify = "4.0.12"
-mechtronium_server = { path = "../mechtronium_server" }
+clap = "2.33.3"
+mechtronium = { path = "../mechtronium" }

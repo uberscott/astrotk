@@ -6,6 +6,7 @@
       <module fileurl="file://$PROJECT_DIR$/mechtron_common/mechtron_core.iml" filepath="$PROJECT_DIR$/mechtron_common/mechtron_core.iml" />
       <module fileurl="file://$PROJECT_DIR$/mechtronium_ext_local_filesystem/mechtronium_ext_local_filesystem.iml" filepath="$PROJECT_DIR$/mechtronium_ext_local_filesystem/mechtronium_ext_local_filesystem.iml" />
       <module fileurl="file://$PROJECT_DIR$/mechtronium_ext_web/mechtronium_ext_web.iml" filepath="$PROJECT_DIR$/mechtronium_ext_web/mechtronium_ext_web.iml" />
+      <module fileurl="file://$PROJECT_DIR$/mechtronium_server/mechtronium_server.iml" filepath="$PROJECT_DIR$/mechtronium_server/mechtronium_server.iml" />
       <module fileurl="file://$PROJECT_DIR$/mechtronium_system/mechtronium_system.iml" filepath="$PROJECT_DIR$/mechtronium_system/mechtronium_system.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/rust.iml" filepath="$PROJECT_DIR$/.idea/rust.iml" />
     </modules>
