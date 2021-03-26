@@ -1559,6 +1559,7 @@ mod test
     use crate::cluster::Cluster;
     use crate::transport::{connect, Connection, HasStar, NodeSearchPayload, Relay, RelayPayload, ReportUniqueSeqPayload, ReqCreateSim, Search, SearchKind, Wire, ReportSupervisorForSim, ReportNucleusNodePayload};
     use crate::star::{PanicErrorHandler, Server, Star, StarCore, Supervisor, TransactionResult, TransactionWatcher};
+    use serde::{Serialize, Deserialize};
 
     pub struct TestTransactionWatcher
     {
@@ -2005,6 +2006,27 @@ mod test
 //        client.request_nucleus_star(sim_id, watcher);
 
     }
+
+
+    #[test]
+    pub fn test_serialize_wire()
+    {
+        let version = 323423;
+        let wire = Wire::ReportVersion(version);
+        let mut s = flexbuffers::FlexbufferSerializer::new();
+        wire.serialize(&mut s).unwrap();
+        let r = flexbuffers::Reader::get_root(s.view()).unwrap();
+        let wire2 = Wire::deserialize(r).unwrap();
+
+        if let (Wire::ReportVersion(v1),Wire::ReportVersion(v2))=(wire,wire2)
+        {
+            assert_eq!(v1,v2);
+        }
+        else {
+            assert!(false);
+        }
+    }
+
 }
 
 

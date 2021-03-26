@@ -22,29 +22,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/api.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/api.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/artifact.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/buffers.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/configs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/configs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/core.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/id.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/id.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/message.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/message.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/state.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtron_common/src/util.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtron_common/src/util.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/mechtron.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/membrane.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/membrane.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/nucleus.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/shell.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/shell.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/star.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/star.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mechtronium/src/transport.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/transport.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium_ext_local_filesystem/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium_ext_local_filesystem/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium_ext_local_filesystem/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium_ext_local_filesystem/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -122,7 +101,7 @@
       <recent name="$PROJECT_DIR$/mechtron/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test transport::test">
+  <component name="RunManager" selected="Cargo.Test transport::test::test_serialize_wire">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -239,6 +218,21 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test transport::test::test_serialize_wire" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package mechtronium --lib transport::test::test_serialize_wire -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtronium_server" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --package rust --lib tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -279,9 +273,11 @@
       <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test membrane::test::test_inject_state" />
       <item itemvalue="Cargo.Test transport::test" />
+      <item itemvalue="Cargo.Test transport::test::test_serialize_wire" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test transport::test::test_serialize_wire" />
         <item itemvalue="Cargo.Test transport::test" />
       </list>
     </recent_temporary>
@@ -335,7 +331,7 @@
       <workItem from="1616700035038" duration="53000" />
       <workItem from="1616700119833" duration="13271000" />
       <workItem from="1616791980238" duration="295000" />
-      <workItem from="1616792354623" duration="3855000" />
+      <workItem from="1616792354623" duration="4795000" />
     </task>
     <servers />
   </component>
