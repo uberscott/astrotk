@@ -15,7 +15,7 @@ pub mod cache;
 pub mod shell;
 pub mod membrane;
 pub mod cluster;
-pub mod network;
+pub mod transport;
 
 #[cfg(test)]
 pub mod test;

@@ -1,8 +1,12 @@
 [workspace]
 members = [
   "main",
-  "mechtronium",
+  "mechtron",
   "mechtron_core",
   "mechtron_common",
-  "mechtron",
+
+  "mechtronium",
+  "mechtronium_system",
+  "mechtronium_ext_web",
+  "mechtronium_ext_local_filesystem",
   ]

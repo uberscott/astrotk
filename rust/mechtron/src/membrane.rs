@@ -365,6 +365,7 @@ pub fn mechtron_extra(context: i32, state_id: i32, message: i32) -> i32
 
 fn handle_response( response: Response, state: State )->(State,i32)
 {
+log("debug","handle_response");
     let builders= match response {
         Response::None => {
             -1
@@ -418,7 +419,9 @@ pub fn mechtron_create_inner(context: i32, state_id: i32, message: i32 ) -> Resu
         mechtron(config.kind.as_str(),context.clone(),state.clone())
     }.unwrap();
 
+log("debug", "precreate");
     let response = mechtron.create(&message)?;
+log("debug","postcreate");
 
     let state = state.replace(Option::None);
     let state = state.unwrap();

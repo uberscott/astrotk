@@ -15,11 +15,20 @@
     <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm_membrane/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/mechtron_wasm_membrane_guest/Cargo.toml" />
     <cargoProject FILE="$PROJECT_DIR$/mechtron_core/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtronium_system/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtronium_ext_web/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/mechtronium_ext_local_filesystem/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
     <list default="true" id="29d5a364-275b-4224-8108-afbcd66b7a92" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/mechtronium_ext_web/mechtronium_ext_web.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mechtronium_system/mechtronium_system.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mechtronium/src/network.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/network.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/star.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/star.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mechtronium/src/transport.rs" beforeDir="false" afterPath="$PROJECT_DIR$/mechtronium/src/transport.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -61,6 +70,7 @@
     <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent">
+    <property name="ASKED_SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
@@ -74,6 +84,9 @@
     <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtron_wasm_membrane/src/wasm.rs" value="true" />
     <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtron_wasm_membrane_guest/src/lib.rs" value="true" />
     <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtron_wasm_membrane_host/src/lib.rs" value="true" />
+    <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtronium_ext_local_filesystem/src/lib.rs" value="true" />
+    <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtronium_ext_web/src/main.rs" value="true" />
+    <property name="org.rust.disableDetachedFileInspection/Users/scott/projects/mechtron/rust/mechtronium_system/src/lib.rs" value="true" />
     <property name="settings.editor.selected.configurable" value="build.tools" />
   </component>
   <component name="RecentsManager">
@@ -92,7 +105,7 @@
       <recent name="$PROJECT_DIR$/mechtron/src" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test network::test">
+  <component name="RunManager" selected="Cargo.Test network::test::test_long_relay">
     <configuration default="true" type="ArquillianJUnit" factoryName="" nameIsGenerated="true">
       <option name="arquillianRunConfiguration">
         <value>
@@ -121,7 +134,7 @@
     </configuration>
     <configuration name="Run" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="run --package rust --bin rust" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtron" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -254,7 +267,23 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Web Server" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+      <option name="command" value="run" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$/mechtronium_ext_web" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <list>
+      <item itemvalue="Cargo.Web Server" />
       <item itemvalue="Cargo.Test nucleus::test::test_create_sim" />
       <item itemvalue="Cargo.Expand mechtronium::nucleus [rust]" />
       <item itemvalue="Cargo.Run" />
@@ -268,11 +297,11 @@
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test network::test::test_long_relay" />
         <item itemvalue="Cargo.Test network::test" />
         <item itemvalue="Cargo.Test network::test::test_supervisor" />
         <item itemvalue="Cargo.Test network::test::test_circular_graph" />
         <item itemvalue="Cargo.Test network::test::test_connection" />
-        <item itemvalue="Cargo.Test network::test::test_long_relay" />
       </list>
     </recent_temporary>
   </component>
@@ -322,6 +351,8 @@
       <workItem from="1615839672345" duration="29545000" />
       <workItem from="1616012657072" duration="79167000" />
       <workItem from="1616498714989" duration="10747000" />
+      <workItem from="1616700035038" duration="53000" />
+      <workItem from="1616700119833" duration="6007000" />
     </task>
     <servers />
   </component>
