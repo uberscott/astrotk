@@ -13,6 +13,8 @@ use crate::error::Error;
 use crate::transport::RouteProblem::{NucleusNotKnown, StarUnknown};
 use crate::router::NetworkRouter;
 use crate::star::{Star, StarCore, StarKind};
+use std::collections::hash_map::RandomState;
+use crate::nucleus::NucleusBomb;
 
 static PROTOCOL_VERSION: i32 = 100_001;
 
@@ -56,7 +58,8 @@ pub struct Connection
     found_nodes: RefCell<HashMap<Id,NodeFind>>,
     unfound_nodes: RefCell<HashSet<Id>>,
     queue: RefCell<Vec<Wire>>,
-    block: Cell<bool>
+    block: Cell<bool>,
+    watches: RefCell<HashSet<Watch>>
 }
 
 impl Connection
@@ -95,9 +98,23 @@ impl Connection
             found_nodes: RefCell::new(HashMap::new()),
             unfound_nodes: RefCell::new(HashSet::new()),
             queue: RefCell::new(vec!()),
-            block: Cell::new(true)
+            block: Cell::new(true),
+            watches: RefCell::new(HashSet::new())
         }
     }
+
+    pub fn add_watch( &self, star: Id, watch: Watch )
+    {
+        let mut watches = self.watches.borrow_mut();
+        watches.insert(watch);
+    }
+
+    pub fn remove_watch( &self, star: Id, watch: &Watch )
+    {
+        let mut watches = self.watches.borrow_mut();
+        watches.remove(watch);
+    }
+
 
     pub fn to_remote(&self, wire: Wire) ->Result<(),Error>
     {
@@ -451,8 +468,19 @@ impl ExternalRouter
                     }
                 }
             },
+            Wire::Broadcast(broadcast) => {
+                let routes = {
+                    let inner = self.inner.read()?;
+                    inner.get_all_watching_routes_excluding(&broadcast.watch(), &exclude)?
+                };
+
+                for route in routes
+                {
+                   route.wire(Wire::Broadcast(broadcast.clone()));
+                }
+            },
             _ => {
-                return Err("can only relay Wire::Relay type wires".into());
+                return Err("can only relay Wire::Relay, Wire::Broadcast , Wire::Search & Wire::Unwrap type wires".into());
             }
         }
         Ok(())
@@ -839,6 +867,13 @@ impl ExternalRoute for Connection
             HasStar::Unknown
         }
     }
+
+    fn has_watch( &self, watch: &Watch )->bool
+    {
+        let watches = self.watches.borrow();
+        watches.contains(watch)
+    }
+
 }
 
 
@@ -858,6 +893,7 @@ pub enum Wire
     Search(Search),
     Relay(Relay),
     Unwind(Unwind),
+    Broadcast(Broadcast),
     Panic(String)
 }
 
@@ -872,10 +908,30 @@ impl fmt::Display for Wire {
             Wire::MessageTransport(_) => { "MessageTransport" }
             Wire::Relay(relay) => { "Relay<>"}
             Wire::Search(_) => { "Search<>"}
+            Wire::Broadcast(_) => { "Broadcast<>"}
             Wire::Panic(_) => { "Panic" }
             Wire::Unwind(_) => { "Unwind" }
         };
         write!(f, "{}",r)
+    }
+}
+
+#[derive(Clone)]
+pub enum Broadcast
+{
+    Nucleus(NucleusBomb)
+}
+
+impl Broadcast
+{
+    pub fn watch(&self)->Watch
+    {
+        match self
+        {
+            Broadcast::Nucleus(bomb) => {
+                Watch::Nucleus(bomb.nucleus.clone())
+            }
+        }
     }
 }
 
@@ -899,6 +955,14 @@ pub struct SearchResult
     pub kind: SearchKind,
     pub transactions: Vec<Id>,
 }
+
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+pub enum Watch
+{
+    Nucleus(Id)
+}
+
 
 #[derive(Clone)]
 pub struct SearchNotResultFound
@@ -1090,8 +1154,9 @@ pub enum RelayPayload
     ReportNucleusNode(ReportNucleusNodePayload),
     ReportNucleusReady(ReportNucleusReady),
     ReportNucleusDetached(Id),
-    Watch(Id),
-    UnWatch(Id)
+    Watch(Watch),
+    UnWatch(Watch),
+    WatchResult(WatchResult),
 }
 
 impl RelayPayload
@@ -1107,6 +1172,8 @@ impl RelayPayload
         }
     }
 }
+
+
 
 #[derive(Clone)]
 pub struct ReportNucleusReady
@@ -1147,6 +1214,17 @@ pub enum UnwindPayload
     SearchNotFoundResult(SearchResult),
 }
 
+#[derive(Clone)]
+pub struct WatchResult
+{
+  pub kind: WatchResultKind
+}
+
+pub enum WatchResultKind
+{
+    Nucleus(NucleusBomb)
+}
+
 impl fmt::Display for RelayPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let r = match self {
@@ -1170,10 +1248,12 @@ impl fmt::Display for RelayPayload {
             RelayPayload::ReportNucleusReady(_) => "ReportNucleusReady",
             RelayPayload::RequestNucleusNode(_) => "RequestNucleusNode",
             RelayPayload::ReportNucleusNode(_) => "ReportNucleusNode",
+            RelayPayload::ReportNucleusDetached(_) => "ReportNucleusDetached",
             RelayPayload::SearchNotFound(_) => "SearchNotFound",
 
             RelayPayload::Watch(_) => "Watch",
             RelayPayload::UnWatch(_) => "UnWatch",
+            RelayPayload::WatchResult(_) => "WatchResult"
         };
         write!(f, "{}", r)
     }
@@ -1340,6 +1420,11 @@ impl ExternalRouterInner
         } ).collect())
     }
 
+    pub fn get_all_watching_routes_excluding(&self,  watch: &Watch, exclude: &Option<Id> ) ->Result<Vec<Arc<dyn ExternalRoute>>,Error>
+    {
+        Ok(self.routes.iter().filter(|route| exclude.is_none() || exclude.unwrap() != route.get_remote_node().unwrap() ).filter(|route| route.has_watch(watch) ).map(|route|route.clone()).collect())
+    }
+
 
     pub fn get_all_posible_routes_for_node(&self, node: &Id ) ->Result<Vec<Arc<dyn ExternalRoute>>,Error>
     {
@@ -1437,6 +1522,7 @@ pub trait ExternalRoute
     fn relay(&self, message_transport: MessageTransport) -> Result<(), Error>;
     fn has_route_to_star(&self, node_id: &Id) -> HasStar;
     fn get_remote_node(&self) -> Option<Id>;
+    fn has_watch(&self, watch: &Watch )->bool;
 }
 
 

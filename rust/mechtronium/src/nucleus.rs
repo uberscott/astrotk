@@ -122,6 +122,24 @@ impl Nuclei {
         sources.insert(nucleus.info.id.clone(),Arc::new(nucleus) );
         Ok(())
     }
+
+    pub fn create_bomb( &self, nucleus_id: &Id )->Result<NucleusBomb,Error>
+    {
+
+        let mut sources = self.nuclei.read()?;
+        let nucleus = sources.get(nucleus_id);
+        match nucleus
+        {
+            None => {
+                Err(format!("cannot find nucleus {:?}",nucleus_id).into())
+            }
+            Some(nucleus) => {
+                let mut bomb = nucleus.bomb()?;
+                Ok(bomb)
+            }
+        }
+
+    }
 }
 
 
@@ -259,6 +277,20 @@ impl Nucleus {
         };
 
         Ok(nucleus)
+    }
+
+    pub fn bomb(&self)->Result<NucleusBomb,Error>
+    {
+       let mut bomb = NucleusBomb::new( self.info.id.clone(), self.head.clone() );
+       let mut states = self.state.query( self.head.clone() )?;
+       if let Some(states) = states
+       {
+          for (key, state) in states
+          {
+              bomb.states.push(state);
+          }
+       }
+       Ok(bomb)
     }
 
     pub fn valid_neutron_id(id: Id) -> bool {
@@ -1928,8 +1960,6 @@ mod test
 
 }
 
-
-
 #[derive(Clone)]
 pub struct TronInfo
 {
@@ -1938,3 +1968,22 @@ pub struct TronInfo
     pub bind: Arc<BindConfig>
 }
 
+#[derive(Clone)]
+pub struct NucleusBomb
+{
+    pub nucleus: Id,
+    pub revision: Revision,
+    pub states: Vec<Arc<ReadOnlyState>>
+}
+
+impl NucleusBomb
+{
+    pub fn new(nucleus:Id,revision:Revision)->Self
+    {
+        NucleusBomb{
+            nucleus: nucleus,
+            revision: revision,
+            states: vec![]
+        }
+    }
+}

@@ -19,10 +19,10 @@ use crate::cache::{Cache, default_cache};
 use crate::cluster::Cluster;
 use crate::error::Error;
 use crate::mechtron::CreatePayloadsBuilder;
-use crate::nucleus::{Nuclei, NucleiContainer, Nucleus};
+use crate::nucleus::{Nuclei, NucleiContainer, Nucleus, NucleusBomb};
 use crate::router::{HasNucleus, InternalRouter, LocalRouter, NetworkRouter, SharedRouter};
 use crate::simulation::Simulation;
-use crate::transport::{AssignNucleus, Connection, ExternalRoute, NodeFind, NodeRouter, Relay, RelayPayload, ReportAssignSimulation, ReportAssignSimulationToServer, ReportSupervisorForSim, ReportUniqueSeqPayload, ReqCreateSim, Route, Search, SearchKind, SearchResult, Unwind, UnwindPayload, Wire, WireListener, ReportNucleusReady, ReportNucleusNodePayload, NucleusReadyListener};
+use crate::transport::{AssignNucleus, Connection, ExternalRoute, NodeFind, NodeRouter, Relay, RelayPayload, ReportAssignSimulation, ReportAssignSimulationToServer, ReportSupervisorForSim, ReportUniqueSeqPayload, ReqCreateSim, Route, Search, SearchKind, SearchResult, Unwind, UnwindPayload, Wire, WireListener, ReportNucleusReady, ReportNucleusNodePayload, NucleusReadyListener, WatchKind, WatchResult, WatchResultKind, Broadcast};
 use crate::transport::RelayPayload::{ReportSupervisorAvailable, RequestCreateSimulation, ReportNucleusNode};
 
 static MAX_HOPS : i32 = 16;
@@ -296,6 +296,12 @@ impl Star {
     }
 
 
+    fn on_broadcast( &self, broadcast: Broadcast, connection: Arc<Connection> )->Result<(),Error>
+    {
+        self.router.relay_wire(Wire::Broadcast(broadcast) );
+        Ok(())
+    }
+
     fn on_unwind( &self, unwind: Unwind, connection: Arc<Connection> )->Result<(),Error>
     {
 
@@ -398,6 +404,16 @@ impl Star {
 
         if relay.to != self.id()
         {
+
+            if let RelayPayload::Watch(watch) = &relay.payload
+            {
+                connection.add_watch(relay.from.clone(), watch.clone());
+            }
+            else if let RelayPayload::UnWatch(watch) = &relay.payload
+            {
+                connection.remove_watch(relay.from.clone(), watch.clone());
+            }
+
             let relay = relay.inc_hops();
             self.router.relay_wire(Wire::Relay(relay) );
         }
@@ -720,8 +736,34 @@ println!("RECEIVED REQUEST SUPERVISOR FOR SIM");
                         _ => {}
                     }
                 }
-
-
+                RelayPayload::Watch(watch)=>
+                {
+                    match &watch.kind
+                    {
+                        WatchKind::Nucleus(nucleus_id) => {
+                            if self.local().sources.has_nucleus(nucleus_id)
+                            {
+                               let bomb = self.local().sources.create_bomb(nucleus_id)?;
+                               let reply = relay.reply( RelayPayload::WatchResult(WatchResult{
+                                   kind: WatchResultKind::Nucleus(bomb)
+                               }));
+                               self.router.relay_wire(Wire::Relay(reply));
+                            }
+                            else {
+                                self.error_handler.borrow().on_error(format!("this star does not contain nucleus {:?}",nucleus_id).as_str());
+                            }
+                        }
+                    }
+                }
+                RelayPayload::WatchResult(result)=>
+                    {
+                        match &result.kind
+                        {
+                            WatchResultKind::Nucleus(bomb) => {
+                                self.local().replicas.update_nucleus(bomb.clone());
+                            }
+                        }
+                    }
                 _ => { }
             }
 
@@ -829,6 +871,7 @@ println!("REMOVED SOME");
 
 pub struct Local {
     sources: Arc<Nuclei>,
+    replicas: Replicas,
     router: Arc<dyn Route>,
     seq: Arc<IdSeq>,
     cache: Arc<Cache>
@@ -848,7 +891,8 @@ impl  Local{
             sources: Nuclei::new(cache.clone(), seq.clone(), router.clone()),
             router: router,
             seq: seq.clone(),
-            cache: cache.clone()
+            cache: cache.clone(),
+            replicas: Replicas::new()
         };
 
         rtn
@@ -1016,6 +1060,9 @@ println!("on_wire({})  {} -> {}", match &wire{
             }
             Wire::Unwind(unwind) => {
                 self.on_unwind(unwind,connection);
+            }
+            Wire::Broadcast(broadcast) => {
+                self.on_broadcast(broadcast,connection);
             }
 
             Wire::Panic(_) => {}
@@ -1260,3 +1307,41 @@ impl TransactionWatcher for SearchTransactionWatcher
 
     }
 }
+
+
+pub struct Replicas
+{
+    pub watching: HashSet<Id>,
+    pub nucleus_to_bomb: HashMap<Id,NucleusBomb>
+}
+
+impl Replicas
+{
+   pub fn new()->Self
+   {
+       Replicas{
+           watching: HashSet::new(),
+           nucleus_to_bomb: HashMap::new()
+       }
+   }
+
+   pub fn watch( &mut self, nucleus: &Id )
+   {
+       self.watching.insert(nucleus.clone() );
+   }
+
+  pub fn unwatch( &mut self, nucleus: &Id )
+  {
+      self.nucleus_to_bomb.remove(nuclues);
+      self.watching.remove(nucleus);
+  }
+
+  pub fn update_nucleus( &mut self, bomb: NucleusBomb )
+  {
+      if self.watching.contains(nucleus )
+      {
+          self.nucleus_to_bomb.insert(bomb.nucleus.clone(), bomb );
+      }
+  }
+}
+
