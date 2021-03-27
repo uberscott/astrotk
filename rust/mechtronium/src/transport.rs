@@ -13,11 +13,60 @@ use serde::{Serialize,Deserialize};
 use crate::error::Error;
 use crate::transport::RouteProblem::{NucleusNotKnown, StarUnknown};
 use crate::router::NetworkRouter;
-use crate::star::{Star, StarCore, StarKind};
+use crate::star::{Star, StarCore, StarKind, Supervisor, Server};
 use std::collections::hash_map::RandomState;
 use crate::nucleus::NucleusBomb;
+use crate::cache::{Cache, default_cache};
+use crate::cluster::Cluster;
 
 static PROTOCOL_VERSION: i32 = 100_001;
+
+pub struct Constellation
+{
+   pub stars: Vec<Arc<Star>>,
+   pub endpoint: Arc<Star>,
+}
+
+impl Constellation{
+
+    pub fn new_standalone(cache: Option<Arc<Cache>> ) ->Self
+    {
+        let cache = match cache {
+            None => Option::Some(default_cache()),
+            Some(cache) => Option::Some(cache)
+        };
+
+        let central = Arc::new(Star::new(StarCore::Central(RwLock::new(Cluster::new())), cache.clone() ));
+        let mesh= Arc::new(Star::new(StarCore::Mesh, cache.clone() ));
+        let supervisor = Arc::new(Star::new(StarCore::Supervisor(RwLock::new(Supervisor::new())), cache.clone() ));
+        let server = Arc::new(Star::new(StarCore::Server(RwLock::new(Server::new())), cache.clone() ));
+        let gateway = Arc::new(Star::new(StarCore::Gateway, cache.clone() ));
+
+        connect(central.clone(),mesh.clone() );
+        connect(supervisor.clone(),mesh.clone() );
+        connect(mesh.clone(),server.clone() );
+        connect(gateway.clone(),mesh.clone() );
+
+        let mut stars = vec![];
+        stars.push( central );
+        stars.push( mesh );
+        stars.push( supervisor );
+        stars.push( server );
+        stars.push( gateway.clone());
+
+        Constellation{
+            stars: stars,
+            endpoint: gateway
+        }
+    }
+
+    pub fn connect( &self, listener: Arc<dyn WireListener>)->Arc<Connection>
+    {
+        let (connection,_) = connect( self.endpoint.clone(), listener );
+        connection
+    }
+}
+
 
 
 pub fn connect( a: Arc<dyn WireListener>, b: Arc<dyn WireListener> )->(Arc<Connection>,Arc<Connection>)

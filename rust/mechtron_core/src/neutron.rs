@@ -49,7 +49,7 @@ log("neutron","creating a new mechtron...");
         let neutron_state_interface = NeutronStateInterface {};
 
         // grab the new mechtron create meta
-        let new_mechtron_create_meta = &create_message.payloads[0].buffer;
+        let new_mechtron_create_meta = &create_message.payloads[0].read_only(&CONFIGS);
 
 log("neutron","where is starhelix");
         // and derive the new mechtron config
