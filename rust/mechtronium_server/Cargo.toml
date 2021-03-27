@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.3"
+tokio = { version = "1.4.0", features = ["full"] }
 mechtronium = { path = "../mechtronium" }

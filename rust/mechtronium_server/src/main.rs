@@ -1,31 +1,68 @@
 extern crate clap;
+extern crate tokio;
 
 use clap::{App, Arg};
 use mechtronium::transport::Constellation;
+use mechtronium::error::Error;
 
+use tokio::io::{self,AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use std::num::ParseIntError;
+use tokio::sync::Mutex;
+use std::sync::Arc;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(),Error> {
     let matches = opts().get_matches();
 
     let constellation = Constellation::new_standalone(Option::None);
 
+    if let Option::Some(addrs) = matches.values_of("connect")
+    {
+        for addr in addrs
+        {
+            println!("connecting to {} ...", addr);
+            let socket = TcpStream::connect(addr).await;
+            match socket{
+                Ok(socket) => {
+                    let (mut rd, mut wr) = io::split(socket);
+                    println!("connected: {}", addr);
+                }
+                Err(error) => {
+
+                    println!("connection error: {}", error);
+                }
+            }
+        }
+    }
+
+
     if let Option::Some(port) = matches.value_of("listen")
     {
-        println!("listening to port: {}",port)
+        println!("listening to port: {}",port);
+        if let Ok(port) = port.parse::<usize>()
+        {
+            let mut listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+            println!("LISTENING FOR CONNECTIONS !!!");
+            loop {
+                let (mut socket, _) = listener.accept().await?;
+                println!("RECEIVED SOCKET!!!");
+            }
+        }
+        else {
+            panic!("not a valid listening port '{}'",port );
+        }
     }
     else {
         println!("no port specified");
     }
 
-    if let Option::Some(connections) = matches.values_of("connect")
-    {
-        for connect in connections
-        {
-           println!("connect to {}",connect);
-        }
-    }
+
+    Ok(())
 
 }
+
+
 
 
 pub fn opts()->App<'static, 'static>
